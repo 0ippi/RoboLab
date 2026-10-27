@@ -3,6 +3,19 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.8.0", date: "2026-10-27",
+    fi: ["Kaikki kurssit tarkistettiin ja korjattiin. Tehtävät kertovat tarkasti, mitä nappia painetaan, eikä mikään tehtävä enää kuittaudu väärin tai jää mahdottomaksi. Myös vihjeiden luvut on testattu.",
+      "Aloita tästä -kurssi uudistettiin. Rakennat robotin, jossa on oikeasti kaksi pyörää, ja ajat sillä eteen ja taakse. Kääntymistä harjoitellaan Mobiilirobotti 2D:ssä ylhäältä päin, missä se onnistuu. Mobiilirobotti näyttää nyt kummankin pyörän nopeuden.",
+      "Uusi etusivu: kurssia voi jatkaa yhdellä napilla, ja omat sekä kaikki työkalut ovat tiiviissä listassa. Sivupalkissa näkyvät vain avoimet työkalut, ja lukitut on koottu yhteen riviin.",
+      "Kun kurssi on auki, sivupalkki kapenee, jotta työkalun säätimet mahtuvat näkymän viereen. Myös robotinrakentajan osat pysyvät näkymän vieressä.",
+      "Korjauksia: Vie omalle robotille aukeaa myös kouluttamattomilla aivoilla, 2D-rakentajan pyöräparin pyörät eivät mene päällekkäin, ja opettaja voi antaa luokalle vain kursseja, jotka oppilaat voivat avata."],
+    en: ["Every course was checked and fixed. Tasks say exactly which button to press, and no task is ticked wrongly or impossible any more. The numbers in the hints have been tested too.",
+      "The Start here course was redesigned. You build a robot that really has two wheels and drive it forward and back. Turning is practised in Mobile robot 2D from above, where it works. The mobile robot now shows the speed of each wheel.",
+      "New home page: continue your course with one button, and your tools and all tools are in compact lists. The sidebar shows only the tools you can open, and locked ones are gathered on one row.",
+      "While a course is open, the sidebar narrows so the tool's controls fit next to the view. The robot builder's parts also stay next to the view.",
+      "Fixes: Put on a real robot opens even with an untrained brain, the 2D builder's wheel pair no longer overlaps, and teachers can only assign courses their students can open."],
+  },
+  {
     version: "2.7.1", date: "2026-10-27",
     fi: ["Luokkakoodin voi nyt syöttää Kurssit-sivun alussa myös silloin, kun käytössä on jo Education- tai Pro-taso, jotta opettaja näkee etenemisesi."],
     en: ["You can now enter a class code at the top of the Courses page even when you already have the Education or Pro plan, so your teacher can see your progress."],
