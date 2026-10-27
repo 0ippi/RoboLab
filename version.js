@@ -3,6 +3,15 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.4.0", date: "2026-10-27",
+    fi: ["Opettajille-sivu näkyy nyt vain opettajille (Teacher- ja Pro-taso). Opettajalla on kojelaudan alussa oma aloituskohta, ja Opettajille-sivun alussa kerrotaan kolmella askeleella, miten tunti otetaan käyttöön.",
+      "Uusi tietosuojaseloste: mitä tietoja pilvitili tallentaa, missä ne ovat (EU) ja miten ne poistetaan. Linkki löytyy kojelaudan alareunasta ja pilvitilin luonnista.",
+      "Kehittäjille: kehittäjäksi merkitty tili voi vaihtaa omaa tasoaan Tasot-sivulla testausta varten."],
+    en: ["The For teachers page now only shows for teachers (Teacher and Pro plans). Teachers get their own starting point at the top of the dashboard, and the For teachers page starts with three steps for running a lesson.",
+      "New privacy policy: what a cloud account stores, where it is kept (EU) and how to delete it. The link is at the bottom of the dashboard and in cloud account sign-up.",
+      "For developers: an account marked as a developer can switch its own plan on the Plans page for testing."],
+  },
+  {
     version: "2.3.0", date: "2026-10-27",
     fi: ["Uudet tasot: Free (ilmainen, ei tiliä), Education (2 €/kk, oppilaille ilmainen opettajan luokkakoodilla), Teacher (5 €/kk) ja Pro (7 €/kk). Päivitä-napista näet, mitä kukin taso sisältää.",
       "Free-tasolla ovat perustyökalut ja kolme ensimmäistä kurssia. Lukitut työkalut ja kurssit näkyvät lukkomerkillä, ja kurssin aikana sen omat työkalut ovat aina käytössä.",
