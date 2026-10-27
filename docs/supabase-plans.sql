@@ -66,7 +66,7 @@ declare
   i int;
 begin
   select * into s from public.subscriptions
-   where user_id = auth.uid() and plan in ('teacher', 'pro') and (valid_until is null or valid_until > now());
+   where user_id = auth.uid() and plan = 'teacher' and (valid_until is null or valid_until > now()); -- luokkakoodit vain Teacher-tasolla
   if not found then raise exception 'not-teacher'; end if;
   if p_seats is null or p_seats < 1 then raise exception 'bad-seats'; end if;
   select coalesce(sum(seats), 0) into used from public.classes where teacher_id = auth.uid() and valid_until > now();
