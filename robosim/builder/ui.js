@@ -29,6 +29,8 @@ export function mount(root, dim, tool) {
     errors: 0
   };
   let view, raf = 0, testRaf = 0, dead = false;
+  // Kurssien tarkistukset (courses.js): onko fysiikkatesti käynnissä ja mitä moottoreille on annettu
+  window.builderStatus = () => ({ dim, testing: !!S.test, actions: S.test ? [...S.test.actions] : [], kinds: S.test ? S.test.motors.map((m) => m.kind) : [] });
 
   root.innerHTML = `
     ${toolHead(tool, `
@@ -58,6 +60,13 @@ export function mount(root, dim, tool) {
             <button class="btn" id="rb-addWheel" title="${tr('Lisää moottoroidun pyörän valitun osan sivulle. Peilaa se toiselle puolelle.', 'Adds a motorised wheel to the side of the selected part. Mirror it to the other side.')}">⚙ ${tr('Pyörä', 'Wheel')}</button>
             <button class="btn" id="rb-addRotor" title="${tr('Lisää roottorin (potkurin) valitun osan päälle. Roottorien voimat tasataan niin, että puolella teholla robotti leijuu. Neuroverkko säätää jokaisen roottorin työntövoimaa.', 'Adds a rotor (propeller) on top of the selected part. Rotor forces are balanced so the robot hovers at half power. The neural network controls each rotor’s thrust.')}">🌀 ${tr('Roottori', 'Rotor')}</button>
             <button class="btn" id="rb-addLeg" title="${tr('Lisää jalan (reisi + sääri, lonkka- ja polvinivel) valitun osan alle.', 'Adds a leg (thigh + shin, hip and knee joints) under the selected part.')}">🦵 ${tr('Jalka', 'Leg')}</button>
+            <button class="btn" id="rb-addWheelPair" title="${dim === '3d' ? tr('Lisää moottoroidut pyörät valitun osan kummallekin puolelle. Sama käsky pyörittää molempia eteenpäin.', 'Adds motorised wheels to both sides of the selected part. The same command drives both forward.') : tr('Lisää moottoroidut pyörät valitun osan etu- ja takaosaan.', 'Adds motorised wheels to the front and back of the selected part.')}">⚙⚙ ${tr('Pyöräpari', 'Wheel pair')}</button>
+            <button class="btn" id="rb-addCaster" title="${tr('Lisää pienen, liukkaan tukipyörän valitun osan alle. Ei moottoria: pitää rungon pystyssä kahden pyörän robotissa.', 'Adds a small slippery caster under the selected part. No motor: keeps the body level on a two-wheel robot.')}">○ ${tr('Tukipyörä', 'Caster')}</button>
+            <button class="btn" id="rb-addArm" title="${tr('Lisää robottikäden (olka- ja kyynärnivel, kärjessä tarttuja) valitun osan päälle.', 'Adds a robot arm (shoulder and elbow joints, a gripper at the tip) on top of the selected part.')}">🦾 ${tr('Käsivarsi', 'Arm')}</button>
+            <button class="btn" id="rb-addGripper" title="${tr('Lisää kaksisormisen tarttujan valitun osan etuosaan. Sormet sulkeutuvat servoilla.', 'Adds a two-finger gripper to the front of the selected part. The fingers close with servos.')}">✊ ${tr('Tarttuja', 'Gripper')}</button>
+            <button class="btn" id="rb-addTail" title="${tr('Lisää vapaasti heiluvan hännän valitun osan takaosaan.', 'Adds a freely swinging tail to the back of the selected part.')}">〰 ${tr('Häntä', 'Tail')}</button>
+            <button class="btn" id="rb-addLidar" title="${tr('Lisää lidar-anturin valitun osan päälle ja kytkee etäisyysanturit päälle.', 'Adds a lidar sensor on top of the selected part and turns the distance sensors on.')}">📡 Lidar</button>
+            <button class="btn" id="rb-addCamera" title="${tr('Lisää kamerasilmän valitun osan etuosaan (ulkonäkö).', 'Adds a camera eye to the front of the selected part (appearance).')}">📷 ${tr('Kamera', 'Camera')}</button>
           </div>
           <h3 class="card-title">${tr('Toiminnot', 'Actions')}</h3>
           <div class="rsb-actions">
@@ -84,6 +93,8 @@ export function mount(root, dim, tool) {
           <div class="rsb-viewtools">
             <button class="btn" id="rb-modeMove" title="${tr('Siirrä (W)', 'Move (W)')}">✥</button>
             <button class="btn" id="rb-modeRotate" title="${tr('Käännä (E)', 'Rotate (E)')}">⟳</button>
+            <button class="btn" id="rb-modeScale" title="${tr('Skaalaa (S): vedä akselista venyttääksesi osaa yhteen suuntaan tai keskeltä koko osaa. Usea osa skaalataan yhdessä samassa suhteessa.', 'Scale (S): drag an axis to stretch a part in one direction or the centre to scale it all. Several parts are scaled together in proportion.')}">⤢</button>
+            <button class="btn" id="rb-boxSel" title="${tr('Valintalaatikko (B): vedä tyhjästä kohdasta laatikko osien ympärille. 2D:ssä veto valitsee aina; 3D:ssä myös Shift- tai Ctrl+veto.', 'Box select (B): drag a box around parts from empty space. In 2D dragging always selects; in 3D also Shift or Ctrl + drag.')}" aria-pressed="false">⬚</button>
             <label class="mini-toggle" title="${tr('Kiinnittää siirrot 5 cm:n ja käännöt 15°:n välein.', 'Snaps moves to 5 cm and rotations to 15°.')}"><input type="checkbox" id="rb-snap" checked> ${tr('Kiinnitys', 'Snap')}</label>
             <button class="btn" id="rb-focusBtn" title="${tr('Kohdista kamera robottiin (F)', 'Focus the camera on the robot (F)')}">⌖</button>
             <label class="mini-toggle" title="${tr('Näytä tai piilota nivelten merkit (H).', 'Show or hide the joint markers (H).')}"><input type="checkbox" id="rb-showJoints" checked> ${tr('Nivelet', 'Joints')}</label>
@@ -171,6 +182,7 @@ export function mount(root, dim, tool) {
     const b = selectedBody();
     if (S.test) view.attachGizmo(null);
     else if (b) view.attachGizmo('body', b.id, S.gizmoMode);
+    else if (S.sel.bodies.length > 1) view.attachGizmo('group', S.sel.bodies, S.gizmoMode);
     else if (S.sel.joint != null) view.attachGizmo('joint', S.sel.joint);
     else view.attachGizmo(null);
     renderTree();
@@ -183,7 +195,7 @@ export function mount(root, dim, tool) {
 
   function updateButtons() {
     const n = S.sel.bodies.length, one = n === 1;
-    q('addWheel').disabled = q('addLeg').disabled = q('addRotor').disabled = !one;
+    for (const id of ['addWheel', 'addLeg', 'addRotor', 'addWheelPair', 'addCaster', 'addArm', 'addGripper', 'addTail', 'addLidar', 'addCamera']) q(id).disabled = !one;
     q('jointBtn').disabled = n !== 2;
     q('mergeBtn').disabled = n !== 2;
     q('mirrorBtn').disabled = n === 0;
@@ -197,6 +209,7 @@ export function mount(root, dim, tool) {
     root.querySelector('.rsb').classList.toggle('pro', S.level === 'pro');
     q('modeMove').classList.toggle('on', S.gizmoMode === 'translate');
     q('modeRotate').classList.toggle('on', S.gizmoMode === 'rotate');
+    q('modeScale').classList.toggle('on', S.gizmoMode === 'scale');
     for (const t of root.querySelectorAll('.rsb-tabs button')) t.classList.toggle('on', t.dataset.tab === S.tab);
     for (const id of ['props', 'check', 'json']) q('tab-' + id).hidden = S.tab !== id;
     for (const btn of q('parts').querySelectorAll('button')) {
@@ -214,10 +227,11 @@ export function mount(root, dim, tool) {
       if (S.test) h = tr('Fysiikkatesti käynnissä. Liikuta moottoreita liukusäätimillä. Kameraa voi kääntää hiirellä.', 'Physics test running. Move the motors with the sliders. You can rotate the camera with the mouse.');
       else if (!S.model.bodies.length) h = tr('Aloita lisäämällä osa vasemmalta (esim. laatikko rungoksi) tai valitse valmis robotti pohjaksi yläpuolelta.', 'Start by adding a part on the left (e.g. a box as the body) or pick a ready robot as a template above.');
       else if (S.sel.joint != null) h = tr('Nivel valittu. Vedä se kohtaan, jossa osat kääntyvät toistensa suhteen. Säädä tyyppiä ja rajoja oikealla.', 'Joint selected. Drag it to where the parts turn relative to each other. Adjust its type and limits on the right.');
-      else if (n === 1) h = tr('Vedä nuolista siirtääksesi (W) tai kaarista kääntääksesi (E). Shift+klikkaa toista osaa yhdistääksesi ne nivelellä.', 'Drag the arrows to move (W) or the arcs to rotate (E). Shift+click another part to join them with a joint.');
-      else if (n === 2) h = tr(`Paina "Yhdistä nivelellä": "${S.sel.bodies[0]}" on osa, johon kiinnitetään, ja "${S.sel.bodies[1]}" kääntyy sen suhteen.`, `Press "Join with a joint": "${S.sel.bodies[0]}" is the part to attach to and "${S.sel.bodies[1]}" turns relative to it.`);
-      else if (n > 2) h = tr(`${n} osaa valittu. Voit peilata, monistaa tai poistaa ne.`, `${n} parts selected. You can mirror, duplicate or delete them.`);
-      else h = tr('Klikkaa osaa valitaksesi sen. Vedä tyhjää kohtaa kääntääksesi kameraa, rulla zoomaa.', 'Click a part to select it. Drag empty space to rotate the camera, scroll to zoom.');
+      else if (n === 1) h = tr('Siirrä (W), käännä (E) tai skaalaa (S) kahvasta. Osaan kiinnitetyt osat tulevat mukana (Alt + veto: vain tämä osa). Ctrl+klikkaa muita osia valitaksesi useita.', 'Move (W), rotate (E) or scale (S) with the handle. Parts attached to it come along (Alt + drag: this part only). Ctrl+click other parts to select several.');
+      else if (n === 2) h = tr(`Paina "Yhdistä nivelellä": "${S.sel.bodies[0]}" on osa, johon kiinnitetään, ja "${S.sel.bodies[1]}" kääntyy sen suhteen. Kahvasta voit myös siirtää molempia.`, `Press "Join with a joint": "${S.sel.bodies[0]}" is the part to attach to and "${S.sel.bodies[1]}" turns relative to it. You can also move both with the handle.`);
+      else if (n > 2) h = tr(`${n} osaa valittu. Siirrä, käännä tai skaalaa ne yhdessä kahvasta, tai peilaa, monista tai poista.`, `${n} parts selected. Move, rotate or scale them together with the handle, or mirror, duplicate or delete them.`);
+      else h = S.dim === '2d' ? tr('Klikkaa osaa valitaksesi sen, tai vedä tyhjästä kohdasta laatikko usean osan ympärille. Rulla zoomaa.', 'Click a part to select it, or drag a box around several parts from empty space. Scroll to zoom.')
+        : tr('Klikkaa osaa valitaksesi sen. Vedä tyhjää kohtaa kääntääksesi kameraa; Shift+veto valitsee laatikolla. Rulla zoomaa.', 'Click a part to select it. Drag empty space to rotate the camera; Shift+drag selects with a box. Scroll to zoom.');
     }
     q('hint').textContent = h;
   }
@@ -579,6 +593,21 @@ export function mount(root, dim, tool) {
         { label: tr('Painopisteen korkeus', 'Centre of mass height'), value: mp.com ? fmt(mp.com[1], 2) : '–', unit: 'm', sub: tr('matala = vakaampi', 'low = steadier') },
       ]);
       el.append(prop(tr('Massa ja painopiste', 'Mass and centre of mass'), tr('Lasketaan osien muodoista ja tiheyksistä. Painopisteen voi näyttää näkymässä (C).', 'Computed from the parts’ shapes and densities. You can show the centre of mass in the view (C).'), stats));
+      // Koko robotin skaalaus: osat, nivelet ja roottorit samassa suhteessa, robotti pysyy maan pinnalla
+      const sc = document.createElement('div');
+      sc.className = 'rsb-scale-all';
+      sc.innerHTML = `<input type="number" min="10" max="500" step="10" value="100" aria-label="${tr('Skaalaus prosentteina', 'Scale in percent')}"><span>%</span>
+        <button class="btn">${tr('Skaalaa', 'Scale')}</button>`;
+      sc.querySelector('button').onclick = () => {
+        const f = (+sc.querySelector('input').value || 100) / 100;
+        if (!(f > 0.05) || f === 1) return;
+        const box = new THREE.Box3();
+        for (const b of m.bodies) box.union(M.bodyBox(b));
+        const c = box.getCenter(new THREE.Vector3());
+        change(() => M.scaleBodies(m, m.bodies.map((b) => b.id), f, [c.x, box.min.y, S.dim === '2d' ? 0 : c.z], S.dim), true);
+        toast(tr(`Robotti skaalattu ${Math.round(f * 100)} %:iin. Massa muuttuu koon mukana; tarkista moottorien voimat.`, `Robot scaled to ${Math.round(f * 100)} %. The mass changes with size; check the motor strengths.`));
+      };
+      el.append(prop(tr('Skaalaa koko robotti', 'Scale the whole robot'), tr('Muuttaa kaikkien osien koon samassa suhteessa. 50 % = puolet pienempi, 200 % = kaksi kertaa isompi. Valitulle osalle tai osille voit käyttää myös skaalauskahvaa (S).', 'Resizes every part in the same proportion. 50 % = half the size, 200 % = twice as big. For selected parts you can also use the scale handle (S).'), sc));
     }
     const p = document.createElement('p');
     p.className = 'note';
@@ -770,6 +799,8 @@ export function mount(root, dim, tool) {
       }
       S.test.step();
       view.updatePhysics(S.test.poses());
+      const th = S.test.robot.thrusters || [];
+      if (th.length) view.spinRotors(th.reduce((a, t) => a + t.level, 0) / th.length);
       const fallen = S.test.fallen();
       q('physStatus').textContent = fallen ? tr('Kaatui', 'Fell over') : tr(`Pystyssä · runko ${fmt(S.test.rootHeight(), 2)} m`, `Upright · body ${fmt(S.test.rootHeight(), 2)} m`);
       q('physStatus').className = fallen ? 'bad' : 'ok';
@@ -791,22 +822,47 @@ export function mount(root, dim, tool) {
   }
 
   function buildSliders() {
-    const el = q('sliders');
+    const el = q('sliders'), t = S.test;
     el.innerHTML = '';
-    if (!S.test.motors.length) { el.innerHTML = `<p class="note">${tr('Robotissa ei ole moottoreita eikä roottoreita.', 'The robot has no motors or rotors.')}</p>`; return; }
-    S.test.motors.forEach((m, i) => {
+    if (!t.motors.length) { el.innerHTML = `<p class="note">${tr('Robotissa ei ole moottoreita eikä roottoreita.', 'The robot has no motors or rotors.')}</p>`; return; }
+    const slider = (label, kind, value, onInput, i) => {
       const d = document.createElement('div');
       d.className = 'rsb-slider';
-      d.innerHTML = `<div class="lab"><span></span><span>${m.kind === 'angle' ? tr('kulma', 'angle') : m.kind === 'thrust' ? tr('työntö (0 = leijuu)', 'thrust (0 = hover)') : tr('nopeus', 'speed')}</span></div>`;
-      d.querySelector('span').textContent = m.label;
+      d.innerHTML = `<div class="lab"><span></span><span></span></div>`;
+      d.querySelector('span').textContent = label;
+      d.querySelectorAll('span')[1].textContent = kind;
       const r = document.createElement('input');
-      r.type = 'range'; r.min = -1; r.max = 1; r.step = 0.01; r.value = 0;
-      r.oninput = () => { q('wiggle').checked = false; S.test.actions[i] = +r.value; };
+      r.type = 'range'; r.min = -1; r.max = 1; r.step = 0.01; r.value = value;
+      if (i != null) r.dataset.i = i;
+      r.oninput = () => onInput(+r.value);
       d.append(r);
       el.append(d);
+    };
+    // Roottorit: lentoavustin pitää robotin vaakatasossa, liukusäätimet antavat nousun ja suunnan
+    if (t.motors.some((m) => m.kind === 'thrust')) {
+      const lab = document.createElement('label');
+      lab.className = 'mini-toggle rsb-assist';
+      lab.title = tr('Pitää robotin vaakatasossa ja korkeudessaan. Pois päältä jokaista roottoria ohjataan erikseen, kuten neuroverkko tekee simulaatiossa.', 'Keeps the robot level and at its height. When off, each rotor is controlled separately, as the neural network does in the simulation.');
+      lab.innerHTML = `<input type="checkbox" id="rb-assist" ${t.assist ? 'checked' : ''}> ${tr('Lentoavustin (pitää vaakatasossa)', 'Flight assist (keeps it level)')}`;
+      lab.querySelector('input').onchange = (e) => {
+        t.assist = e.target.checked; t.vInt = 0;
+        t.motors.forEach((m, i) => { if (m.kind === 'thrust') t.actions[i] = 0; });
+        buildSliders();
+      };
+      el.append(lab);
+      if (t.assist) {
+        slider(tr('Nousu ja lasku', 'Climb and descend'), tr('↑ nousee, 0 = leijuu', '↑ climbs, 0 = hovers'), t.cmd.climb, (v) => { t.cmd.climb = v; });
+        slider(S.dim === '2d' ? tr('Eteen ja taakse', 'Forward and back') : tr('Eteen ja taakse (x)', 'Forward and back (x)'), tr('kallistaa', 'tilts'), t.cmd.pitch, (v) => { t.cmd.pitch = v; });
+        if (S.dim === '3d') slider(tr('Sivuttain (z)', 'Sideways (z)'), tr('kallistaa', 'tilts'), t.cmd.roll, (v) => { t.cmd.roll = v; });
+      }
+    }
+    t.motors.forEach((m, i) => {
+      if (m.kind === 'thrust' && t.assist) return;
+      slider(m.label, m.kind === 'angle' ? tr('kulma', 'angle') : m.kind === 'thrust' ? tr('työntö (0 = puoli tehoa)', 'thrust (0 = half power)') : tr('nopeus', 'speed'),
+        t.actions[i], (v) => { q('wiggle').checked = false; t.actions[i] = v; }, i);
     });
   }
-  const syncSliders = () => [...q('sliders').querySelectorAll('input')].forEach((r, i) => { r.value = S.test.actions[i]; });
+  const syncSliders = () => [...q('sliders').querySelectorAll('input[data-i]')].forEach((r) => { r.value = S.test.actions[+r.dataset.i]; });
 
   // ---------- Tapahtumat ----------
   function bindEvents() {
@@ -843,6 +899,15 @@ export function mount(root, dim, tool) {
     };
     q('addWheel').onclick = withParent(M.addWheel);
     q('addLeg').onclick = withParent(M.addLeg);
+    q('addWheelPair').onclick = withParent(M.addWheelPair);
+    q('addCaster').onclick = withParent(M.addCaster);
+    q('addArm').onclick = withParent(M.addArm);
+    q('addGripper').onclick = withParent(M.addGripper);
+    q('addTail').onclick = withParent(M.addTail);
+    // Anturit lisätään valittuun osaan muotoina, joten valinta säilyy
+    const sensor = (kind) => () => { const p = selectedBody(); if (p) change(() => M.addSensor(S.model, p, kind, S.dim), true); };
+    q('addLidar').onclick = sensor('lidar');
+    q('addCamera').onclick = sensor('camera');
     q('addRotor').onclick = () => {
       const b = selectedBody();
       if (!b) return;
@@ -876,6 +941,8 @@ export function mount(root, dim, tool) {
     q('delBtn').onclick = deleteSelection;
     q('modeMove').onclick = () => setGizmoMode('translate');
     q('modeRotate').onclick = () => setGizmoMode('rotate');
+    q('modeScale').onclick = () => setGizmoMode('scale');
+    q('boxSel').onclick = () => toggleBoxSel();
     q('snap').onchange = () => view.setSnap(q('snap').checked, 0.05, 15);
     q('focusBtn').onclick = focusRobot;
     for (const btn of root.querySelectorAll('#rb-level button')) btn.onclick = () => {
@@ -976,7 +1043,7 @@ export function mount(root, dim, tool) {
     q('testBtn').onclick = () => (S.test ? stopTest() : startTest());
     q('physStop').onclick = () => stopTest();
     q('physRestart').onclick = startTest;
-    q('physZero').onclick = () => { q('wiggle').checked = false; S.test.actions.fill(0); syncSliders(); };
+    q('physZero').onclick = () => { q('wiggle').checked = false; S.test.actions.fill(0); Object.assign(S.test.cmd, { climb: 0, pitch: 0, roll: 0 }); buildSliders(); };
 
     q('copyBtn').onclick = () => { const t = copySel(false); if (t) navigator.clipboard?.writeText(t).catch(() => {}); };
     q('pasteBtn').onclick = pasteFromButton;
@@ -1026,8 +1093,15 @@ export function mount(root, dim, tool) {
 
   function setGizmoMode(mode) {
     S.gizmoMode = mode;
-    if (selectedBody()) view.setGizmoMode(mode);
+    if (selectedBody() || S.sel.bodies.length > 1) view.setGizmoMode(mode);
     updateButtons();
+  }
+  function toggleBoxSel() {
+    view.boxMode = !view.boxMode;
+    q('boxSel').classList.toggle('on', view.boxMode);
+    q('boxSel').setAttribute('aria-pressed', view.boxMode);
+    setHint(view.boxMode ? tr('Valintalaatikko päällä: vedä tyhjästä kohdasta laatikko osien ympärille. Kameraa käännetään nyt hiiren oikealla napilla.', 'Box select on: drag a box around parts from empty space. Rotate the camera with the right mouse button now.') : undefined);
+    view.orbit.mouseButtons.RIGHT = view.boxMode ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
   }
 
   function deleteSelection() {
@@ -1069,6 +1143,8 @@ export function mount(root, dim, tool) {
     }
     else if (k === 'w') setGizmoMode('translate');
     else if (k === 'e') setGizmoMode('rotate');
+    else if (k === 's') setGizmoMode('scale');
+    else if (k === 'b') toggleBoxSel();
     else if (k === 'r') rotateSel(e.shiftKey ? -1 : 1);
     else if (k === 'g') toGround();
     else if (k === 'j') q('jointBtn').click();
@@ -1081,39 +1157,96 @@ export function mount(root, dim, tool) {
   }
 
   // ---------- Siirtokahvat ----------
-  let dragBefore = null;
-  function onTransformStart() { dragBefore = snap(); }
+  // Siirrettäessä osaan nivelillä kiinnitetyt osat (lapset) tulevat mukana kuin oikeassa kokoonpanossa.
+  // Alt + veto siirtää vain valitun osan. Usean osan valinnalla kahva on valinnan keskellä.
+  let dragBefore = null, drag = null;
+  function onTransformStart() {
+    dragBefore = snap();
+    const o = view.gizmo.object, kind = o?.userData.kind;
+    const ids = kind === 'body' ? [o.userData.id] : kind === 'group' ? o.userData.id.slice() : [];
+    const follow = view.altDrag ? [] : M.descendants(S.model, ids);
+    drag = { kind, ids, follow, all: [...ids, ...follow], pos: o ? o.position.clone() : null, q: o ? o.quaternion.clone() : null,
+      // ryhmän skaalaus näytetään vedon aikana pelkkänä kuvana ja tehdään malliin lopuksi
+      start: Object.fromEntries([...ids, ...follow].map((id) => [id, view.bodyObjects[id]?.position.clone()])) };
+  }
   function onTransform(kind, id, obj) {
-    const r = (v) => M.round(v);
+    const r = (v) => M.round(v), is2d = S.dim === '2d';
     if (kind === 'body') {
+      if (S.gizmoMode === 'scale') return; // osan skaalaus tehdään malliin vedon lopuksi
       const b = S.model.bodies.find((x) => x.id === id);
-      const np = [r(obj.position.x), r(obj.position.y), S.dim === '2d' ? 0 : r(obj.position.z)];
+      const np = [r(obj.position.x), r(obj.position.y), is2d ? 0 : r(obj.position.z)];
       const d = np.map((v, i) => v - b.pos[i]);
+      const prevQ = M.quat(b.rot);
       // Nivelet, joissa osa on liikkuva osa, seuraavat mukana (esim. polvi säären mukana)
-      S.model.joints.forEach((j, i) => {
-        if (j.b !== id) return;
-        j.pos = j.pos.map((v, k) => r(v + d[k]));
-        const g = view.jointObjects[i];
-        if (g) g.position.set(...j.pos);
-      });
+      for (const j of S.model.joints) if (j.b === id) j.pos = j.pos.map((v, k) => r(v + d[k]));
       b.pos = np;
       const e = new THREE.Euler().setFromQuaternion(obj.quaternion);
-      b.rot = S.dim === '2d' ? [0, 0, r(THREE.MathUtils.radToDeg(e.z))] : [e.x, e.y, e.z].map((v) => r(THREE.MathUtils.radToDeg(v)));
+      b.rot = is2d ? [0, 0, r(THREE.MathUtils.radToDeg(e.z))] : [e.x, e.y, e.z].map((v) => r(THREE.MathUtils.radToDeg(v)));
+      if (drag?.follow.length) {
+        if (d.some((v) => v)) M.moveBodies(S.model, drag.follow, d);
+        const dq = M.quat(b.rot).multiply(prevQ.invert());
+        if (Math.abs(dq.w) < 0.999999) M.rotateBodiesQ(S.model, drag.follow, dq, b.pos, S.dim);
+      }
+      view.syncBodies(S.model);
     } else if (kind === 'joint') {
       const j = S.model.joints[id];
-      j.pos = [r(obj.position.x), r(obj.position.y), S.dim === '2d' ? 0 : r(obj.position.z)];
+      j.pos = [r(obj.position.x), r(obj.position.y), is2d ? 0 : r(obj.position.z)];
+      view.buildLinks(S.model);
+    } else if (kind === 'group' && drag) {
+      const c = obj.position.toArray().map((v, i) => (is2d && i === 2 ? 0 : v));
+      if (S.gizmoMode === 'translate') {
+        const d = obj.position.clone().sub(drag.pos).toArray().map((v, i) => (is2d && i === 2 ? 0 : v));
+        M.moveBodies(S.model, drag.all, d);
+        drag.pos = obj.position.clone();
+        view.syncBodies(S.model);
+      } else if (S.gizmoMode === 'rotate') {
+        const dq = obj.quaternion.clone().multiply(drag.q.clone().invert());
+        M.rotateBodiesQ(S.model, drag.all, dq, c, S.dim);
+        drag.q = obj.quaternion.clone();
+        view.syncBodies(S.model);
+      } else {
+        const f = groupScale(obj);
+        for (const id2 of drag.all) {
+          const g = view.bodyObjects[id2], p0 = drag.start[id2];
+          if (!g || !p0) continue;
+          g.scale.setScalar(f);
+          g.position.copy(p0).sub(obj.position).multiplyScalar(f).add(obj.position);
+        }
+      }
     }
     renderProps();
   }
+  // Ryhmä skaalataan aina tasaisesti (keskiarvo kahvan akseleista), jotta osat pysyvät oikeassa suhteessa
+  const groupScale = (obj) => Math.max(0.05, S.dim === '2d' ? (obj.scale.x + obj.scale.y) / 2 : (obj.scale.x + obj.scale.y + obj.scale.z) / 3);
   function onTransformEnd() {
+    const o = view.gizmo.object;
+    if (o && drag && S.gizmoMode === 'scale') {
+      if (o.userData.kind === 'body') {
+        const b = S.model.bodies.find((x) => x.id === o.userData.id), k = o.scale.toArray();
+        o.scale.set(1, 1, 1);
+        if (b && k.some((v) => Math.abs(v - 1) > 1e-3)) M.scaleBody(S.model, b, k.map((v) => Math.max(0.05, v)), S.dim);
+      } else if (o.userData.kind === 'group') {
+        const f = groupScale(o);
+        o.scale.set(1, 1, 1);
+        if (Math.abs(f - 1) > 1e-3) M.scaleBodies(S.model, drag.all, f, o.position.toArray(), S.dim);
+      }
+    }
     const changed = dragBefore && dragBefore !== snap();
-    dragBefore = null;
+    dragBefore = null; drag = null;
     refresh();
     if (changed) persist();
   }
 
   // ---------- Käynnistys ----------
-  view = new Viewport(q('view'), { onPick: (kind, id, additive) => select(kind, id, additive), onTransformStart, onTransform, onTransformEnd });
+  // Valintalaatikko: laatikon sisällä olevat osat valitaan (Shift/Ctrl lisää aiempaan valintaan)
+  const onBoxSelect = (ids, additive) => {
+    S.sel = { bodies: additive ? [...new Set([...S.sel.bodies, ...ids])] : ids, joint: null };
+    refresh(true);
+    if (ids.length) setHint(tr(`${S.sel.bodies.length} osaa valittu. Vedä kahvasta siirtääksesi, kääntääksesi tai skaalataksesi ne yhdessä.`, `${S.sel.bodies.length} parts selected. Drag the handle to move, rotate or scale them together.`));
+  };
+  view = new Viewport(q('view'), { onPick: (kind, id, additive) => select(kind, id, additive), onBoxSelect, onTransformStart, onTransform, onTransformEnd });
+  // Automaattitestit (tests-app.html, ?memstore) pääsevät käsiksi rakentajan tilaan
+  if (/[?&]memstore\b/.test(location.search)) window.__builder = { S, view, select, onBoxSelect, onTransformStart, onTransform, onTransformEnd, setGizmoMode };
   const ro = new ResizeObserver(() => view && view.resize());
   ro.observe(q('view'));
   view.resize();

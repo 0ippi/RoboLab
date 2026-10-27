@@ -173,6 +173,109 @@ export function addLeg(model, parent, dim) {
   return [t, s];
 }
 
+// Pyöräpari: pyörä kummallekin puolelle (2D: eteen ja taakse). Molemmat pyörivät samaan suuntaan samalla käskyllä.
+export function addWheelPair(model, parent, dim) {
+  const [a] = addWheel(model, parent, dim);
+  const box = bodyBox(parent), ax = dim === '2d' ? 0 : 2;
+  const mid = (box.min.getComponent(ax) + box.max.getComponent(ax)) / 2;
+  const b = RS.clone(a);
+  b.id = uniqueId(model, a.id.replace(/\d+$/, ''));
+  b.pos = a.pos.slice();
+  b.pos[ax] = round(2 * mid - a.pos[ax]);
+  model.bodies.push(b);
+  const j = model.joints.find((x) => x.b === a.id);
+  model.joints.push({ ...RS.clone(j), b: b.id, pos: b.pos.slice() });
+  return [a, b];
+}
+
+// Tukipyörä: pieni liukas pallo rungon takaosan alla, vapaa nivel ilman moottoria
+export function addCaster(model, parent, dim) {
+  const box = bodyBox(parent), r = 0.08;
+  const id = uniqueId(model, tr('tukipyora', 'caster'));
+  const pos = [round(box.min.x + r * 1.5), round(box.min.y - r * 0.6), dim === '2d' ? 0 : round((box.min.z + box.max.z) / 2)];
+  const body = { id, pos, rot: [0, 0, 0], foot: true, friction: 0.15, color: '#8a96a8', shapes: [{ type: 'sphere', r, pos: [0, 0, 0], rot: [0, 0, 0] }] };
+  if (dim === '3d') body.frictionCombine = 'min';
+  model.bodies.push(body);
+  const j = { a: parent.id, b: id, pos: pos.slice(), axis: [0, 0, 1] };
+  setJointType(j, 'free');
+  if (dim === '2d') j.torque = 1;
+  model.joints.push(j);
+  return [body];
+}
+
+// Robottikäsi rungon päälle: olkavarsi ja kyynärvarsi servonivelillä, kärjessä kiinteä tarttuja
+export function addArm(model, parent, dim) {
+  const box = bodyBox(parent), w = 0.08, l1 = 0.4, l2 = 0.35;
+  const x = round(box.min.x + (box.max.x - box.min.x) * 0.7), z = dim === '2d' ? 0 : round((box.min.z + box.max.z) / 2), y0 = round(box.max.y);
+  const color = '#c39bff';
+  const up = { id: uniqueId(model, tr('olkavarsi', 'upperarm')), pos: [x, round(y0 + l1 / 2), z], rot: [0, 0, 0], color, density: 0.5,
+    shapes: [{ type: 'box', size: [w, l1, w], pos: [0, 0, 0], rot: [0, 0, 0] }] };
+  const fore = { id: uniqueId(model, tr('kyynarvarsi', 'forearm')), pos: [x, round(y0 + l1 + l2 / 2), z], rot: [0, 0, 0], color, density: 0.5,
+    shapes: [
+      { type: 'box', size: [w * 0.8, l2, w * 0.8], pos: [0, 0, 0], rot: [0, 0, 0] },
+      { type: 'box', size: [0.16, 0.04, 0.1], pos: [0, round(l2 / 2 + 0.02), 0], rot: [0, 0, 0], color: '#3d4a5c' },
+      { type: 'box', size: [0.03, 0.1, 0.06], pos: [-0.065, round(l2 / 2 + 0.09), 0], rot: [0, 0, 0], color: '#3d4a5c' },
+      { type: 'box', size: [0.03, 0.1, 0.06], pos: [0.065, round(l2 / 2 + 0.09), 0], rot: [0, 0, 0], color: '#3d4a5c' }
+    ] };
+  model.bodies.push(up, fore);
+  const shoulder = { a: parent.id, b: up.id, pos: [x, y0, z], axis: [0, 0, 1], lower: -90, upper: 90, speed: 3 };
+  const elbow = { a: up.id, b: fore.id, pos: [x, round(y0 + l1), z], axis: [0, 0, 1], lower: -120, upper: 120, speed: 4 };
+  if (dim === '2d') { shoulder.torque = 14; elbow.torque = 8; }
+  model.joints.push(shoulder, elbow);
+  return [up, fore];
+}
+
+// Tarttuja rungon etuosaan: kaksi sormea, jotka sulkeutuvat servoilla toisiaan kohti
+export function addGripper(model, parent, dim) {
+  const box = bodyBox(parent), len = 0.22, t = 0.04;
+  const x0 = round(box.max.x), yc = (box.min.y + box.max.y) / 2, z = dim === '2d' ? 0 : round((box.min.z + box.max.z) / 2);
+  const made = [];
+  for (const side of [1, -1]) {
+    const id = uniqueId(model, tr('sormi', 'finger'));
+    const y = round(yc + side * 0.07);
+    const f = { id, pos: [round(x0 + len / 2), y, z], rot: [0, 0, 0], color: '#3d4a5c', friction: 1.5, density: 0.5,
+      shapes: [{ type: 'box', size: [len, t, dim === '2d' ? 0.3 : 0.08], pos: [0, 0, 0], rot: [0, 0, 0] }] };
+    model.bodies.push(f);
+    const j = { a: parent.id, b: id, pos: [x0, y, z], axis: [0, 0, 1], lower: side > 0 ? -30 : 0, upper: side > 0 ? 0 : 30, speed: 3 };
+    if (dim === '2d') j.torque = 5;
+    model.joints.push(j);
+    made.push(f);
+  }
+  return made;
+}
+
+// Häntä rungon takaosaan: heiluu vapaasti ja tasapainottaa, kuten eläinroboteilla
+export function addTail(model, parent, dim) {
+  const box = bodyBox(parent), len = 0.45;
+  const x0 = round(box.min.x), y = round(box.max.y - 0.05), z = dim === '2d' ? 0 : round((box.min.z + box.max.z) / 2);
+  const id = uniqueId(model, tr('hanta', 'tail'));
+  const body = { id, pos: [round(x0 - len / 2), y, z], rot: [0, 0, 15], color: parent.color || COLORS[0], density: 0.4,
+    shapes: [{ type: 'box', size: [len, 0.05, 0.05], pos: [0, 0, 0], rot: [0, 0, 0] }] };
+  model.bodies.push(body);
+  const j = { a: parent.id, b: id, pos: [x0, y, z], axis: [0, 0, 1] };
+  setJointType(j, 'free');
+  if (dim === '2d') j.torque = 1;
+  model.joints.push(j);
+  return [body];
+}
+
+// Anturit: näkyvä osa lisätään valittuun osaan muotona (lidar katolle, kamera eteen). Lidar myös kytkee
+// robotin etäisyysanturit päälle, jos ne olivat pois.
+export function addSensor(model, parent, kind, dim) {
+  const box = bodyBox(parent);
+  const top = round(box.max.y - parent.pos[1]), front = round(box.max.x - parent.pos[0]);
+  if (kind === 'lidar') {
+    parent.shapes.push(dim === '2d'
+      ? { type: 'box', size: [0.18, 0.07, 0.3], pos: [0, round(top + 0.035), 0], rot: [0, 0, 0], color: '#2a3542', deco: 'visor' }
+      : { type: 'cylinder', r: 0.07, h: 0.06, pos: [0, round(top + 0.03), 0], rot: [0, 0, 0], color: '#2a3542', deco: 'ring' });
+    const key = dim === '2d' ? 'lidar' : 'scan';
+    if (!model.sensors[key]) model.sensors[key] = 5;
+  } else {
+    parent.shapes.push({ type: 'box', size: [0.06, 0.08, dim === '2d' ? 0.3 : 0.12], pos: [round(front + 0.03), round(top * 0.5), 0], rot: [0, 0, 0], color: '#2a3542', deco: 'eye' });
+  }
+  return [parent];
+}
+
 // ---------- Peilaus ----------
 // Kopioi osat peilikuvana: 3D:ssä sivulle (z) tai eteen-taakse (x), 2D:ssä eteen-taakse (x).
 // Nivelet kopioidaan, jos niiden molemmat osat kopioidaan tai toinen on valinnan ulkopuolinen emo.
@@ -288,6 +391,10 @@ export function addRotor(model, parent, dim) {
     ? { type: 'box', size: [0.36, 0.035, 0.3], pos: [pos[0], pos[1], 0], rot: [0, 0, 0], color: '#cfd8e3', round: 0, rotor: rid }
     : { type: 'cylinder', r: 0.17, h: 0.02, pos, rot: [0, 0, 0], color: '#cfd8e3', plain: true, rotor: rid });
   model.thrusters.push({ body: parent.id, pos, dir: [0, 1, 0], rid });
+  // Ilmanvastus lentävälle rungolle (jos käyttäjä ei ole asettanut omaa): ilman sitä pienikin kallistus kiihtyy
+  // hallitsemattomaksi pyörimiseksi, ja neuroverkon on vaikea oppia lentämään
+  parent.linearDamping ??= 0.3;
+  parent.angularDamping ??= 1.5;
   balanceRotors(model);
   return model.thrusters.length - 1;
 }
@@ -368,6 +475,74 @@ export function rotateBodies(model, ids, axisIndex, deg) {
     j.pos = turn(j.pos);
     j.axis = new THREE.Vector3(...j.axis).applyQuaternion(qr).toArray().map((v) => round(v, 4));
   }
+}
+
+// Osat, jotka on kiinnitetty annettuihin osiin nivelillä (emo → lapsi, myös lapsenlapset). Kun osaa siirretään,
+// siihen kiinnitetyt osat tulevat mukana kuin oikeassa kokoonpanossa. Päärunkoa ei koskaan lasketa lapseksi.
+export function descendants(model, ids) {
+  const own = new Set(ids), out = new Set(), stack = [...ids];
+  while (stack.length) {
+    const id = stack.pop();
+    for (const j of model.joints) {
+      if (j.a !== id || own.has(j.b) || out.has(j.b) || j.b === model.root) continue;
+      out.add(j.b); stack.push(j.b);
+    }
+  }
+  return [...out];
+}
+
+// Kääntää osia kvaternion qr verran pisteen center ympäri (vapaa kierto siirtokahvasta)
+export function rotateBodiesQ(model, ids, qr, center, dim) {
+  const sel = new Set(ids), c = new THREE.Vector3(...center);
+  const turn = (p) => new THREE.Vector3(...p).sub(c).applyQuaternion(qr).add(c).toArray().map((v) => round(v));
+  for (const b of model.bodies) {
+    if (!sel.has(b.id)) continue;
+    b.pos = turn(b.pos);
+    b.rot = quatToDeg(qr.clone().multiply(quat(b.rot)));
+    if (dim === '2d') { b.pos[2] = 0; b.rot = [0, 0, b.rot[2]]; }
+  }
+  for (const j of model.joints) {
+    if (!sel.has(j.b)) continue;
+    j.pos = turn(j.pos);
+    if (dim === '2d') j.pos[2] = 0;
+    else j.axis = new THREE.Vector3(...j.axis).applyQuaternion(qr).toArray().map((v) => round(v, 4));
+  }
+}
+
+// Kuinka paljon muodon oma akseli (muodon koordinaatistossa) venyy, kun osaa skaalataan osan akselien suunnassa k
+function axisFactor(qs, axis, k) {
+  const v = new THREE.Vector3(...axis).applyQuaternion(qs);
+  return Math.abs(v.x) * k[0] + Math.abs(v.y) * k[1] + Math.abs(v.z) * k[2];
+}
+function scaleShape(s, k, is2d) {
+  const qs = quat(s.rot);
+  s.pos = s.pos.map((v, i) => round(v * k[i]));
+  const fx = axisFactor(qs, [1, 0, 0], k), fy = axisFactor(qs, [0, 1, 0], k), fz = axisFactor(qs, [0, 0, 1], k);
+  if (s.size) s.size = [fx, fy, fz].map((f, i) => Math.max(0.01, round(s.size[i] * f)));
+  // Pallo pysyy pallona (2D: ympyrä) ja sylinterin säde lasketaan poikittaisista suunnista
+  if (s.type === 'sphere') s.r = Math.max(0.01, round(s.r * (is2d ? (k[0] + k[1]) / 2 : (k[0] + k[1] + k[2]) / 3)));
+  else if (s.r != null) s.r = Math.max(0.01, round(s.r * (fx + fz) / 2));
+  if (s.h != null) s.h = Math.max(0.01, round(s.h * fy));
+}
+
+// Skaalaa yhden osan omien akseliensa suunnassa (k = [kx, ky, kz]): muodot, niiden paikat ja osan roottorit
+export function scaleBody(model, body, k, dim) {
+  if (dim === '2d') k = [k[0], k[1], 1];
+  for (const s of body.shapes) scaleShape(s, k, dim === '2d');
+  for (const t of model.thrusters || []) if (t.body === body.id) t.pos = t.pos.map((v, i) => round(v * k[i]));
+}
+
+// Skaalaa osia tasaisesti kertoimella f pisteen center suhteen: paikat, muodot, nivelet ja roottorit
+export function scaleBodies(model, ids, f, center, dim) {
+  const sel = new Set(ids);
+  const sc = (p) => p.map((v, i) => (dim === '2d' && i === 2 ? 0 : round(center[i] + (v - center[i]) * f)));
+  for (const b of model.bodies) {
+    if (!sel.has(b.id)) continue;
+    b.pos = sc(b.pos);
+    for (const s of b.shapes) scaleShape(s, [f, f, f], dim === '2d');
+  }
+  for (const j of model.joints) if (sel.has(j.b)) j.pos = sc(j.pos);
+  for (const t of model.thrusters || []) if (sel.has(t.body)) t.pos = t.pos.map((v) => round(v * f));
 }
 
 // Pudottaa osat (tai koko robotin) niin, että alin kohta on maan pinnalla (y = 0)

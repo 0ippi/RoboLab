@@ -56,6 +56,10 @@ export class Viewport {
 
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.setSize(0.8);
+    // Usean osan valinnalla siirtokahva kiinnitetään näkymättömään apupisteeseen valinnan keskellä
+    this.pivot = new THREE.Object3D();
+    this.pivot.userData = { kind: 'group', id: null };
+    this.scene.add(this.pivot);
     this.gizmo.addEventListener('dragging-changed', (e) => {
       this.orbit.enabled = !e.value;
       if (e.value) this.cb.onTransformStart();
@@ -179,12 +183,54 @@ export class Viewport {
       this.jointGroup.add(g);
       this.jointObjects.push(g);
     });
+    this.buildLinks(model);
+    this.buildLoose(model);
 
     this.applySelection(selection);
     if (attachedKey) {
       const [kind, id] = attachedKey.split(':');
       const obj = kind === 'body' ? this.bodyObjects[id] : this.jointObjects[+id];
       if (obj) this.gizmo.attach(obj);
+    }
+  }
+
+  // Kiinnitysviivat: jokaisesta nivelestä katkoviiva kumpaankin osaan, jotta näkee, mitkä osat ovat kiinni toisissaan
+  buildLinks(model) {
+    if (this.links) { this.links.geometry.dispose(); this.links.material.dispose(); this.jointGroup.remove(this.links); }
+    const pts = [];
+    for (const j of model.joints) {
+      for (const id of [j.a, j.b]) {
+        const g = this.bodyObjects[id];
+        if (!g) continue;
+        pts.push(new THREE.Vector3(...j.pos), new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3()));
+      }
+    }
+    if (!pts.length) { this.links = null; return; }
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    this.links = new THREE.LineSegments(geo, new THREE.LineDashedMaterial({ color: cssColor('var(--text-3)'), dashSize: 0.05, gapSize: 0.04, depthTest: false, transparent: true, opacity: 0.8 }));
+    this.links.computeLineDistances();
+    this.links.renderOrder = 9;
+    this.links.userData = { links: true };
+    this.links.raycast = () => {}; // viivat eivät estä osien valintaa
+    this.jointGroup.add(this.links);
+  }
+
+  // Irralliset osat (ei nivelellä kiinni päärungossa) saavat punaisen kehyksen: ne putoaisivat simulaatiossa erilleen
+  buildLoose(model) {
+    const adj = {};
+    for (const j of model.joints) { (adj[j.a] ||= []).push(j.b); (adj[j.b] ||= []).push(j.a); }
+    const seen = new Set([model.root]), stack = [model.root];
+    while (stack.length) for (const n of adj[stack.pop()] || []) if (!seen.has(n)) { seen.add(n); stack.push(n); }
+    this.looseIds = model.bodies.filter((b) => !seen.has(b.id) && !b.static).map((b) => b.id);
+    for (const id of this.looseIds) {
+      const g = this.bodyObjects[id];
+      const helper = new THREE.Box3Helper(new THREE.Box3().setFromObject(g).expandByScalar(0.02), cssColor('var(--err)'));
+      helper.material.depthTest = false;
+      helper.material.transparent = true;
+      helper.renderOrder = 9;
+      helper.userData = { marker: true, loose: id };
+      helper.raycast = () => {};
+      this.modelGroup.add(helper);
     }
   }
 
@@ -200,6 +246,21 @@ export class Viewport {
   }
 
   attachGizmo(kind, id, mode) {
+    if (kind === 'group') {
+      // Apupiste valittujen osien rajojen keskelle; kierto ja skaala nollataan joka kerta
+      const box = new THREE.Box3();
+      for (const b of id) if (this.bodyObjects[b]) box.union(new THREE.Box3().setFromObject(this.bodyObjects[b]));
+      if (box.isEmpty()) { this.gizmo.detach(); return; }
+      this.pivot.position.copy(box.getCenter(new THREE.Vector3()));
+      if (this.dim === '2d') this.pivot.position.z = 0;
+      this.pivot.quaternion.identity();
+      this.pivot.scale.set(1, 1, 1);
+      this.pivot.userData.id = id.slice();
+      this.pivot.updateMatrixWorld();
+      this.gizmo.attach(this.pivot);
+      this.setGizmoMode(mode);
+      return;
+    }
     const obj = kind === 'body' ? this.bodyObjects[id] : kind === 'joint' ? this.jointObjects[id] : null;
     if (!obj) { this.gizmo.detach(); return; }
     this.gizmo.attach(obj);
@@ -209,11 +270,24 @@ export class Viewport {
   setGizmoMode(mode) {
     this.gizmo.setMode(mode);
     const is2d = this.dim === '2d';
-    if (mode === 'translate') {
-      this.gizmo.showX = true; this.gizmo.showY = true; this.gizmo.showZ = !is2d;
-    } else {
+    if (mode === 'rotate') {
       this.gizmo.showX = !is2d; this.gizmo.showY = !is2d; this.gizmo.showZ = true;
+    } else {
+      this.gizmo.showX = true; this.gizmo.showY = true; this.gizmo.showZ = !is2d;
     }
+  }
+
+  // Päivittää osien ja nivelmerkkien paikat mallista rakentamatta näkymää uudelleen (ryhmän siirto vedon aikana)
+  syncBodies(model) {
+    for (const b of model.bodies) {
+      const g = this.bodyObjects[b.id];
+      if (!g) continue;
+      g.position.set(...b.pos);
+      g.quaternion.copy(quat(b.rot));
+    }
+    model.joints.forEach((j, i) => { const g = this.jointObjects[i]; if (g) g.position.set(...j.pos); });
+    this.buildLinks(model);
+    this.modelGroup.children.filter((o) => o.userData.loose).forEach((o) => { o.box.setFromObject(this.bodyObjects[o.userData.loose]).expandByScalar(0.02); });
   }
 
   setSnap(enabled, step, angle) {
@@ -221,10 +295,55 @@ export class Viewport {
     this.gizmo.setRotationSnap(enabled ? THREE.MathUtils.degToRad(angle) : null);
   }
 
+  // Valintalaatikko: vedä tyhjästä kohdasta, niin laatikon sisällä olevat osat valitaan. 2D:ssä aina,
+  // 3D:ssä Shift- tai Ctrl-näppäimellä tai kun laatikkovalinta on päällä (muuten veto kääntää kameraa).
+  setupMarquee() {
+    let box = null;
+    const host = this.canvas.parentElement;
+    const rectOf = (a, b) => ({ l: Math.min(a.x, b.x), t: Math.min(a.y, b.y), r: Math.max(a.x, b.x), b: Math.max(a.y, b.y) });
+    this.canvas.addEventListener('pointerdown', (e) => {
+      this.altDrag = e.altKey; // Alt + veto: siirrä vain valittu osa ilman siihen kiinnitettyjä osia
+      if (e.button !== 0 || this.physicsMode || this.gizmo.axis) return;
+      if (!(this.dim === '2d' || this.boxMode || e.shiftKey || e.ctrlKey || e.metaKey)) return;
+      if (this.pickAt(e.clientX, e.clientY)) return;
+      box = { start: { x: e.clientX, y: e.clientY }, additive: e.shiftKey || e.ctrlKey || e.metaKey, el: null };
+      this.orbit.enabled = false;
+      this.canvas.setPointerCapture?.(e.pointerId);
+    });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!box) return;
+      const r = rectOf(box.start, { x: e.clientX, y: e.clientY });
+      if (!box.el && r.r - r.l + r.b - r.t < 6) return;
+      if (!box.el) { box.el = document.createElement('div'); box.el.className = 'rsb-marquee'; host.append(box.el); }
+      const hb = host.getBoundingClientRect();
+      Object.assign(box.el.style, { left: r.l - hb.left + 'px', top: r.t - hb.top + 'px', width: r.r - r.l + 'px', height: r.b - r.t + 'px' });
+    });
+    const end = (e) => {
+      if (!box) return;
+      const b = box;
+      box = null;
+      this.orbit.enabled = true;
+      if (!b.el) return; // pelkkä klikkaus: valinta hoidetaan klikkauksena
+      b.el.remove();
+      this.suppressClick = true;
+      const r = rectOf(b.start, { x: e.clientX, y: e.clientY }), cr = this.canvas.getBoundingClientRect();
+      const ids = Object.entries(this.bodyObjects).filter(([, g]) => {
+        const c = new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3()).project(this.camera);
+        const x = cr.left + (c.x + 1) / 2 * cr.width, y = cr.top + (1 - c.y) / 2 * cr.height;
+        return c.z < 1 && x >= r.l && x <= r.r && y >= r.t && y <= r.b;
+      }).map(([id]) => id);
+      this.cb.onBoxSelect?.(ids, b.additive);
+    };
+    this.canvas.addEventListener('pointerup', end);
+    this.canvas.addEventListener('pointercancel', end);
+  }
+
   setupPicking() {
+    this.setupMarquee();
     let down = null;
     this.canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     this.canvas.addEventListener('pointerup', (e) => {
+      if (this.suppressClick) { this.suppressClick = false; return; }
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return; // oli vetäminen, ei klikkaus
       if (this.gizmo.dragging || this.physicsMode) return;
       const r = this.canvas.getBoundingClientRect();
@@ -323,11 +442,23 @@ export class Viewport {
         mesh.position.set(...s.pos);
         mesh.quaternion.copy(quat(s.rot));
         mesh.castShadow = this.shadowSize > 0;
+        if (s.rotor) { mesh.userData.rotor = true; mesh.userData.baseQ = mesh.quaternion.clone(); }
         inner.add(mesh);
       }
       g.add(inner);
       this.physGroup.add(g);
       return g;
+    });
+    this.rotorSpin = 0;
+  }
+
+  // Roottorin lapa pyörii tehon mukaan (level 0…1); 2D-sivukuvassa pyöriminen näkyy lavan "välkkeenä"
+  spinRotors(level) {
+    this.rotorSpin += level * 0.9;
+    this.physGroup.traverse((o) => {
+      if (!o.userData.rotor) return;
+      if (this.dim === '2d') o.scale.x = 0.55 + 0.45 * Math.abs(Math.cos(this.rotorSpin));
+      else o.quaternion.copy(o.userData.baseQ).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rotorSpin));
     });
   }
 
