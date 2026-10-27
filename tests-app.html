@@ -464,8 +464,7 @@ async function test(name, fn) {
 
   await test("Aivonäkymä piirtää kaikki neuronit nimineen", async () => {
     const nn = w.__nn["2d"];
-    if (w.document.hidden) throw new Skip("selain ei piirrä tätä ikkunaa (piilossa)");
-    nn.drawBrainViz();
+    nn.drawBrainViz(true);
     eq(nn.S.vizNodes.length, nn.S.layers.reduce((a, b) => a + b, 0), "neuroneja");
     ok(nn.S.vizNodes[0].name && !/sisääntulo 1$/.test(nn.S.vizNodes[0].name), "sisääntulon nimi puuttuu");
   });
@@ -514,6 +513,17 @@ async function test(name, fn) {
     eq(got.length, params.length, "painoja");
     const max = Math.max(...params.map(Math.abs));
     for (let i = 0; i < params.length; i += 97) near(got[i], params[i], max / 30000 + 1e-6, `paino ${i}`);
+    // QR-koodin tiivis versio: 8-bittiset painot kerroksittain, mahtuu QR-koodiin
+    const layers = w.__nn["2d"].S.layers, meta = { dim: "2d", name: "QR", modelKey: "car", taskKey: "forward", layers, gen: 1 };
+    const d8 = await w.RSShare.encode(meta, Float32Array.from(params), true);
+    ok(("https://0ippi.github.io/RoboLab/index.html#/share/" + d8).length < 2900, "QR-linkki liian pitkä: " + d8.length);
+    const oldS2 = w.__nn["2d"].S;
+    w.location.hash = "#/share/" + d8;
+    await answerAsk(true);
+    await waitFor(() => w.location.hash === "#/nn2d" && w.__nn["2d"].S !== oldS2 && w.__nn["2d"].S?.trainer, 10000, "QR-linkin avaus");
+    const got8 = Array.from(w.__nn["2d"].S.trainer.best || w.__nn["2d"].S.trainer.mean);
+    eq(got8.length, params.length, "painoja (8-bit)");
+    for (let i = 0; i < params.length; i += 97) near(got8[i], params[i], max / 120, `8-bittinen paino ${i}`);
   });
 
   await test("Jakolinkki ei voi ajaa koodia eikä syöttää HTML:ää; rikkinäinen linkki ei kaada", async () => {

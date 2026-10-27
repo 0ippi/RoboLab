@@ -3,6 +3,13 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.12.1", date: "2026-10-28",
+    fi: ["Neuroverkon kaavio piirretään vain, kun se on näkyvissä: koulutus kuluttaa vähemmän suoritinta.",
+      "Puhelimessa simulaation lukemat ja kisan tulostaulu ovat pienempiä, jotta robotti näkyy paremmin."],
+    en: ["The neural network diagram is only drawn while it is visible: training uses less CPU.",
+      "On phones the simulation readouts and the race results board are smaller so the robot is easier to see."],
+  },
+  {
     version: "2.12.0", date: "2026-10-28",
     fi: ["Luokan haasteet: opettaja voi antaa luokalle haasteita samalla tavalla kuin kursseja, palautuspäivineen. Oppilas näkee ne Kurssit-sivulla tuloksineen, ja opettajan tulostaulu näyttää myös annetut haasteet, joista ei vielä ole tuloksia.",
       "Esimerkit-valikossa uudet yhdistelmät: Pyöräauto helposta vaikeaan (maasto vaikeutuu itsestään) sekä omat reitit Gripille (2D) ja Dustylle (3D).",
