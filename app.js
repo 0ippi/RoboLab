@@ -1707,8 +1707,11 @@ async function checkForUpdate(manual = false, startup = false) {
   const latest = text?.match(/version:\s*"([\d.]+)"/)?.[1] || null;
   navigator.serviceWorker?.getRegistration().then((reg) => reg?.update()).catch(() => {});
   if (latest && cmpVer(latest, VERSION) > 0) {
-    // Heti käynnistyksen jälkeen ei ole keskeneräistä työtä, joten päivitys voidaan ottaa suoraan käyttöön
-    if (startup && settings.autoUpdate) { toast(tr(`Päivitetään versioon ${latest}…`, `Updating to ${latest}…`)); applyUpdate(); }
+    // Heti käynnistyksen jälkeen ei ole keskeneräistä työtä, joten päivitys voidaan ottaa suoraan käyttöön.
+    // Automaattitesteissä (?memstore) ei ladata sivua uudelleen: julkaisun jälkeen välimuistin vanha version.js
+    // ja verkon uusi versio eroavat hetken, ja uudelleenlataus katkaisisi testin kesken.
+    const testing = /[?&]memstore\b/.test(location.search);
+    if (startup && settings.autoUpdate && !testing) { toast(tr(`Päivitetään versioon ${latest}…`, `Updating to ${latest}…`)); applyUpdate(); }
     else offerUpdate(latest, text);
     return latest;
   }

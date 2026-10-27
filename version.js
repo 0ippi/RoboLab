@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.12.2", date: "2026-10-28",
+    fi: ["Korjaus: sovelluksen automaattitestit eivät enää keskeydy, jos uusi versio julkaistaan kesken testiajon."],
+    en: ["Fix: the app's automatic tests no longer break off if a new version is published during a test run."],
+  },
+  {
     version: "2.12.1", date: "2026-10-28",
     fi: ["Neuroverkon kaavio piirretään vain, kun se on näkyvissä: koulutus kuluttaa vähemmän suoritinta.",
       "Puhelimessa simulaation lukemat ja kisan tulostaulu ovat pienempiä, jotta robotti näkyy paremmin."],

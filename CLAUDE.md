@@ -7,6 +7,8 @@ Selainpohjainen robotiikan työkalupakki (vanilla JS, ei build-vaihetta). Käytt
 - Käyttäjällä on RoboLab asennettuna: työpöydän ja Käynnistä-valikon pikakuvake ajaa `RoboLab.ps1`:n (käynnistää palvelimen taustalle ja avaa Edgen `--app`-ikkunan). Älä siirrä tai nimeä kansiota uudelleen päivittämättä pikakuvakkeita.
 - Testit: `tests.html` (laskenta) ja `tests-app.html` (koko sovellus kehyksessä `?memstore`-tilassa: tallennus muistiin, ei koske selaimen oikeisiin tietoihin). Kaikkien pitää mennä läpi. Sovelluksen `const`/`let`-globaalit luetaan testeissä `w.eval("nimi")`-kutsulla.
 - Piilossa olevassa esikatseluselaimessa requestAnimationFrame ei etene, joten simulaatioiden ajotesti ohitetaan siellä.
+- `?memstore` toimii vain testisivun kehyksessä (muuten sovellus käyttää selaimen oikeaa tallennusta). Testitilassa sovellus ei päivitä itseään käynnistyksessä (julkaisun jälkeen välimuistin vanha version.js ja verkon uusi eroavat hetken, ja uudelleenlataus katkaisi testit).
+- Paikallisen testiajon kannattaa käyttää tuoretta välimuistia: Chrome voi käyttää muokatun tiedoston vanhaa versiota (heuristinen välimuisti). Testisivun osoitteeseen uusi `?v=`-arvo ja tarvittaessa `fetch(tiedosto, { cache: "reload" })`.
 
 ## Jokainen muutos = uusi versio
 Sovellus huomaa päivitykset `version.js`:stä ja näyttää käyttäjälle "Päivitä nyt" -palkin ja "Mitä uutta" -ikkunan.
