@@ -37,11 +37,12 @@
   <h2>2. Mitä tietoja käsitellään</h2>
   <table>
     <tr><th>Tilanne</th><th>Tiedot</th><th>Missä</th></tr>
-    <tr><td>Käyttö ilman tiliä</td><td>Projektit, kurssien eteneminen, omat robotit, asetukset ja paikalliset käyttäjätilit</td><td>Vain omassa selaimessasi (localStorage). Eivät lähde laitteelta.</td></tr>
+    <tr><td>Käyttö ilman tiliä</td><td>Projektit, kurssien eteneminen, saavutukset ja haasteiden tulokset, omat robotit, asetukset ja paikalliset käyttäjätilit</td><td>Vain omassa selaimessasi (localStorage). Eivät lähde laitteelta.</td></tr>
     <tr><td>Pilvitili (vapaaehtoinen)</td><td>Sähköposti, salasanan tiiviste, nimi tai nimimerkki, RoboLab-tiedot (projektit, kurssit, robotit, asetukset; ei API-avainta) ja kirjautumisajat</td><td>Supabase, EU (Frankfurt)</td></tr>
     <tr><td>Tilaus</td><td>Taso (Free, Education, Teacher, Pro), voimassaolo ja oppilaspaikat. Maksun yhteydessä maksupalvelun asiakas- ja tilaustunnus.</td><td>Supabase, EU. Korttitiedot käsittelee vain maksupalvelu, eivät ne tule RoboLabille.</td></tr>
     <tr><td>Opettajan luokkakoodi</td><td>Luokan nimi, koodi, paikkamäärä ja voimassaolo</td><td>Supabase, EU</td></tr>
-    <tr><td>Oppilas syöttää luokkakoodin</td><td>Satunnainen laitetunnus (ei nimeä, ei tiliä), jotta samaa paikkaa ei käytetä kahdesti</td><td>Supabase, EU</td></tr>
+    <tr><td>Oppilas syöttää luokkakoodin</td><td>Satunnainen laitetunnus (ei nimeä, ei tiliä), jotta samaa paikkaa ei käytetä kahdesti, oppilaan valitsema nimimerkki sekä kurssien eteneminen ja haasteiden tulokset lukuina (ei vastauksia eikä projekteja), jotta luokan opettaja näkee ne</td><td>Supabase, EU</td></tr>
+    <tr><td>Jakolinkki (vapaaehtoinen)</td><td>Robotti, tehtävä ja opitut aivot, jotka käyttäjä itse jakaa</td><td>Linkin #-osassa: selain ei lähetä sitä palvelimelle. Kuka tahansa, jolle linkin annat, voi avata robotin.</td></tr>
     <tr><td>Edistymistiedosto opettajalle</td><td>Nimimerkki, luokkatunnus ja kurssien eteneminen</td><td>Tiedosto, jonka oppilas itse antaa opettajalle. Opettajan näkymä pitää sen vain muistissa.</td></tr>
     <tr><td>Volt Claude API -avaimella (vapaaehtoinen)</td><td>Voltille kirjoittamasi viestit ja halutessasi avoimen työkalun arvot</td><td>Lähetetään suoraan omalla avaimellasi Anthropicille vastausta varten</td></tr>
   </table>

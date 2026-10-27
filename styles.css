@@ -1015,6 +1015,22 @@ body.lesson-open.lesson-collapsed .ai-fab { right: calc(64px + 18px); }
 .nn-speed b { min-width: 52px; font-weight: 600; color: var(--text); }
 .nn-speed input { width: 160px; }
 .nn-view.placing { cursor: crosshair; }
+/* Koko näyttö: näkymä täyttää ikkunan, alareunassa tärkeimmät napit (toimii myös puhelimessa) */
+.nn-fs-btn { position: absolute; right: 10px; bottom: 10px; width: 34px; height: 34px; font-size: 1rem;
+  background: color-mix(in srgb, var(--surface) 85%, transparent); border: 1px solid var(--border); border-radius: var(--radius); }
+.nn-fs-bar { display: none; }
+.nn-stage.fs { position: fixed; inset: 0; z-index: 900; background: var(--bg); display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.nn-stage.fs .nn-view { flex: 1; height: auto; min-height: 0; border-radius: 0; }
+.nn-stage.fs .nn-fs-btn { bottom: calc(64px + env(safe-area-inset-bottom)); }
+.nn-stage.fs .nn-fs-bar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
+body.nn-fs-open { overflow: hidden; }
+/* Opastuskierros (coachTour app.js:ssä) */
+.coach { position: fixed; z-index: 950; max-width: min(330px, calc(100vw - 16px)); padding: 10px 12px; border-radius: var(--radius-lg);
+  background: var(--surface); color: var(--text); border: 1px solid var(--accent); box-shadow: var(--shadow); font-size: .88rem; }
+.coach p { margin: 0 0 8px; line-height: 1.45; }
+.coach .row-actions { justify-content: flex-end; margin: 0; }
+.coach-target { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--radius); }
+body.nn-fs-open .ai-fab { display: none; }
 /* Kisan tulostaulu näkymän oikeassa yläkulmassa */
 .nn-race {
   position: absolute; top: 10px; right: 10px; min-width: 170px; max-width: 46%; padding: 8px 10px; border-radius: var(--radius);
@@ -1052,6 +1068,39 @@ body.lesson-open.lesson-collapsed .ai-fab { right: calc(64px + 18px); }
 }
 .nn-brain-tip[hidden] { display: none; }
 .nn-wp .row-actions { margin-top: 6px; }
+/* Haasteet (neuroverkkosimulaatiot) */
+.nn-chs { display: grid; gap: 6px; margin-top: 8px; }
+.nn-ch { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.nn-ch.passed { border-color: color-mix(in srgb, var(--ok) 70%, var(--border)); background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.nn-ch-icon { font-size: 1.2rem; flex: none; }
+.nn-ch-text { flex: 1; min-width: 0; }
+.nn-ch-text b { display: block; font-size: .88rem; }
+.nn-ch-text small { display: block; color: var(--text-3); font-size: .76rem; }
+.nn-ch-text .nn-ch-res { color: var(--text-2); margin-top: 2px; }
+/* Haasteiden tulostaulu (opettajan luokkahuone) */
+.room-sub { margin: 18px 0 8px; }
+.ch-boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ch-board { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.ch-board > b { display: block; }
+.ch-board > small { display: block; color: var(--text-3); font-size: .74rem; margin-bottom: 6px; }
+.ch-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.ch-board li { display: flex; justify-content: space-between; gap: 8px; font-size: .86rem; }
+.ch-board li.ok em { color: var(--ok); }
+.ch-board em { font: 600 .84rem var(--mono); font-style: normal; }
+/* Saavutukset (Kurssit-sivu) */
+.ach-card h2 small { font-weight: 500; color: var(--text-3); font-size: .85rem; margin-left: 6px; }
+.ach-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.ach-list li { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); opacity: .65; }
+.ach-list li.got { opacity: 1; border-color: color-mix(in srgb, var(--ok) 60%, var(--border)); background: color-mix(in srgb, var(--ok) 8%, transparent); }
+.ach-icon { font-size: 1.4rem; flex: none; width: 1.6em; text-align: center; }
+.ach-list b { display: block; font-size: .86rem; }
+.ach-list small { display: block; font-size: .74rem; color: var(--text-3); }
+/* Jakolinkki ja QR-koodi */
+#rs-share { width: min(560px, calc(100vw - 32px)); }
+.share-link { display: flex; gap: 8px; margin: 10px 0 4px; }
+.share-link input { flex: 1; min-width: 0; font: .8rem var(--mono); }
+.share-qr { display: grid; justify-items: center; gap: 6px; margin: 8px 0; }
+.share-qr canvas { width: min(300px, 100%); height: auto; image-rendering: pixelated; border-radius: 6px; }
 .danger-link { color: var(--err); }
 
 .rs-dlg {

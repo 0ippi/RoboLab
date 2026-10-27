@@ -218,6 +218,18 @@
     eq(threw, true, "virhe");
   });
 
+  test("Kytkentäohje: jokaisella moottorilla on nastat eikä samaa nastaa käytetä kahdesti (kaikki 2D-mallit)", () => {
+    for (const [k, raw] of Object.entries(RS.MODELS)) {
+      const model = RS.normalizeModel(raw), info = RS.deployInfo("2d", model);
+      const g = RS.wiringGuide({ dim: "2d", model, name: raw.name });
+      const lines = g.code.split("\n").filter((l) => /^\| (M|T)\d+ \|/.test(l));
+      eq(lines.length, info.outputs.length, `${k}: moottoririvit`);
+      const pins = (g.code.match(/GP\d+/g) || []).filter((p) => p !== "GP4" && p !== "GP5"); // I2C-väylä on yhteinen
+      eq(new Set(pins).size, pins.length, `${k}: sama nasta kahdesti`);
+      eq(/GND/.test(g.code) && g.filename.endsWith(".md"), true, `${k}: virta ja tiedostonimi`);
+    }
+  });
+
   /* PID: lineaarinen stabiilisuus (Routh–Hurwitz) */
   test("PID: massa + PI ilman vaimennusta on epästabiili, D-termi vakauttaa", () => {
     const base = { plant: "mass", m: 1, b: 0, kp: 2, ki: 4, kd: 0, T: 3, setpoint: 1, umax: 0, antiWindup: true, dTau: 0 };

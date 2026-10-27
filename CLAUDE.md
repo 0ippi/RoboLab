@@ -29,7 +29,19 @@ Kun muutat sovellusta:
 - Uusinta (`S.mode = "replay"`): sama siemen = sama rata, aikajana ajaa alusta uudelleen (`replaySeek`), hidastus 0,1–2× pehmennetään `be.pose` + `lerp`. 3D: kiertävä kamera `st.orbit`.
 - Reittipisteet `st.waypoints` (2D {x,y}, 3D {x,z}) → episodin `cfg.targets` (myös työläisille). Maassa kulkevalle 2D-robotille y lasketaan maastosta.
 - Aivonäkymä `drawBrainViz()` (sisääntulojen nimet `RS.deployInfo`), anturit näkyviin `st.sensors`. Aivot tallennetaan enintään 1,5 s välein (`saveBrain`/`flushBrain`).
-- Testitilassa `window.__nn["2d"|"3d"]` antaa testeille pääsyn tilaan (S, st, finishGeneration, startRace, replaySeek, addWaypoint…).
+- Testitilassa `window.__nn["2d"|"3d"]` antaa testeille pääsyn tilaan (S, st, finishGeneration, startRace, replaySeek, addWaypoint, runChallenge…).
+- Maaston tai episodin pituuden vaihto ja reittipisteiden muutos kutsuvat `forgetBest()`: eri ehtojen pisteet eivät ole vertailukelpoisia.
+- Jakolinkki `#/share/<data>` (app.js router → `RSShare.open`): JSON + Int16-painot (QR-versiossa Int8 kerroksittain) deflate-raw + base64url. Avautuu kysymällä uuteen projektiin; koodi → `taskCodeUntrusted`, Oma tavoite tehdään koodiksi `goalCode`:lla. Localhostissa linkki osoittaa julkiseen sivuun (`PUBLIC_URL`). QR: `qrcode-generator@1.4.4` (LIB_FILES).
+- Koko näyttö: `.nn-stage.fs` (CSS, toimii myös iOS:ssä), alapalkin napit klikkaavat oikeita nappeja. Opastus: `coachTour(id, steps)` app.js:ssä, nähdyt `robolab-tips`.
+- Vie omalle robotille → Kytkentäohje: `RS.wiringGuide` (deploy.js) jakaa Picon nastat (I2C GP4/GP5, ulostulot GP6–22, sisääntulot GP26–28 ja GP0–3). Ei testattu oikealla laitteella.
+
+## Saavutukset ja haasteet (achievements.js)
+- `Achievements.unlock(id)` (tapahtumat työkaluista, `achieve()` nn.js:ssä) ja `check()` (kursseista johdetut, kutsutaan courses.js:n `persist`issa). Tallennus `robolab-achievements` ({ got, ch }).
+- Haasteet `CHALLENGES`: kiinteä siemen, maasto ja kesto; tulos mitataan omalla mittarilla (`measureCode`), ei käyttäjän palkkiolla. Tavoitteet on kalibroitu kouluttamalla (kouluttamaton ei läpäise, n. 30–60 s nopea koulutus läpäisee).
+- Luokkaan liittyneen oppilaan tulokset lähtevät `report_progress`-kutsussa kursseina `ch-<id>` (ei SQL-muutoksia); opettajan luokkahuoneessa haasteiden tulostaulu (`roomChallengesHtml` education.js:ssä).
+
+## Rakentajan jouset
+- Nivel `motor: false` + `spring` (jäykkyys) + `springDamping` = jousi (lepoasento 0). 2D: vääntö lasketaan `act()`:ssa ja rajataan osan hitausmomentin mukaan (muuten värähtelee); 3D: Rapierin moottori kulmaan (stiffness/damping). Valmisosat: Jousijalka (`addSpringLeg`), Kosketusanturi (`addBumper`, foot-osa joustavalla saranalla).
 - Kurssien pikakysymysten vaihtoehdot arvotaan joka avauksella (`s._qo`, ei tallennu).
 
 ## Kurssien tarkistukset

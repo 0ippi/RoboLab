@@ -71,6 +71,11 @@ const Courses = (() => {
     if (Math.abs(b.x - b.x0) > Math.abs(c.mem.far - b.x0)) c.mem.far = b.x;
     return { far: c.mem.far - b.x0, back: Math.abs(c.mem.far - b.x) };
   };
+  // Neuroverkkosimulaation sukupolvet tehtävän alusta (aivojen nollaus pienentää laskuria: silloin uusi pohja)
+  const gensSince = (c, key) => { const g = tools()[key + "Stats"]?.generation || 0; if (c.mem.g0 == null || g < c.mem.g0) c.mem.g0 = g; return g - c.mem.g0; };
+  // Oma tavoite, jossa palkitaan vain vauhdista (suunta puuttuu)
+  const speedOnly = () => { const s = tools().nn2d, g = s?.goal; return s?.taskKey === "custom" && !!g?.speed?.on && !["move", "target", "upright", "jump", "still"].some((k) => g[k]?.on); };
+  const usesTarget2d = () => { const s = tools().nn2d; return s?.taskKey === "target" || (s?.taskKey === "custom" && !!s.goal?.target?.on); };
   // Mobiilirobotti 2D:n näppäinohjauksella käännytty kulma vaiheen alusta (key: "spin" paikallaan, "arc" kaarella).
   // Laskuri nollautuu sivun latauksessa, joten pohja-arvo seuraa sitä.
   const turnedSince = (c, key) => {
@@ -533,6 +538,105 @@ const Courses = (() => {
       ],
     },
 
+    /* ----- Palkkiot ja tavoitteet: mitä robotti oppii, kun palkkiota muutetaan ----- */
+    {
+      id: "reward", icon: "target", minutes: 35, level: tr("Keskitaso", "Intermediate"),
+      title: tr("Palkkiot ja tavoitteet: opeta robotti oikein", "Rewards and goals: teach a robot the right thing"),
+      desc: tr("Kokoa robotille oma tavoite, huomaa miten väärin valittu palkkio harhauttaa oppimista, rakenna oma rata reittipisteillä ja kouluta helposta vaikeaan. Lopuksi vertaile ja kisauta aivoja.", "Build your own goal for a robot, see how a badly chosen reward misleads learning, make your own route with waypoints and train from easy to hard. Finally compare and race brains."),
+      outcomes: [tr("Osaat koota palkkion tavoitteista ja painoista", "Can build a reward from goals and weights"), tr("Tunnistat, milloin robotti oppii väärän asian (palkkion huijaus)", "Recognise when a robot learns the wrong thing (reward hacking)"),
+        tr("Osaat käyttää reittipisteitä ja opetussuunnitelmaa", "Can use waypoints and a curriculum"), tr("Osaat vertailla koulutuksia ja mitata tuloksen haasteella", "Can compare trainings and measure the result with a challenge")],
+      steps: [
+        {
+          id: "goal", tool: "nn2d", title: tr("Oma tavoite: mitä palkitaan?", "Your own goal: what is rewarded?"),
+          teach: tr("Tähän asti robotti on oppinut valmiista tehtävistä. **Oma tavoite** -ikkunassa kokoat palkkion itse: rastit kertovat, mistä palkitaan, ja liukusäädin, kuinka tärkeää se on muihin verrattuna.\n\nKokeillaan ensin pelkkää vauhtia: robotti saa pisteitä nopeudesta mihin tahansa suuntaan. Mitä luulet sen oppivan?",
+            "So far the robot has learned from ready-made tasks. In the **Custom goal** window you build the reward yourself: the ticks say what is rewarded, and the slider how important it is compared to the others.\n\nLet's first try speed alone: the robot gets points for speed in any direction. What do you think it will learn?"),
+          tasks: [
+            { id: "speed", text: tr("Paina Tehtävä ja maasto -kortin Oma tavoite, jätä rasti vain kohtaan Ole nopea ja paina Käytä tavoitetta", "Press Custom goal in the Task and terrain card, leave only Be fast ticked and press Use this goal"),
+              check: () => speedOnly() },
+            { id: "train", text: tr("Kouluta vähintään 15 sukupolvea", "Train for at least 15 generations"), after: "speed",
+              check: (c) => speedOnly() && gensSince(c, "nn2d") >= 15 },
+            { id: "watch", text: tr("Paina Näytä paras ja katso, mihin suuntaan auto ajaa", "Press Show best and see which way the car drives"), after: "train",
+              check: (c) => did({ ...c, t0: (c.mem.tw ??= Date.now()) }, "click", "#nn-replay") },
+          ],
+          hints: [tr("Oma tavoite -nappi on Tehtävä ja maasto -kortissa. Poista rastit muista kohdista: palkkiokoodi näkyy ikkunan alareunassa.", "The Custom goal button is in the Task and terrain card. Untick the other rows: the reward code shows at the bottom of the window."),
+            tr("Jos auto ajaa taaksepäin, se ei ole virhe: palkkio ei kertonut suuntaa.", "If the car drives backwards, that is not a bug: the reward didn't say which way.")],
+          quiz: { q: tr("Auto palkittiin vain vauhdista. Miksi se voi oppia ajamaan yhtä hyvin taaksepäin?", "The car was rewarded for speed alone. Why can it learn to drive backwards just as well?"),
+            options: [tr("Palkkio ei kerro suuntaa: vauhti taaksepäin antaa yhtä paljon pisteitä", "The reward doesn't say which way: speed backwards scores just as much"), tr("Koska auto on rakennettu väärin päin", "Because the car is built the wrong way round"), tr("Koska evoluutio valitsee suunnan aina satunnaisesti", "Because evolution always picks the direction at random")], correct: 0,
+            explain: tr("Robotti oppii juuri sen, mistä palkitaan. Jos tärkeä asia (tässä suunta) puuttuu palkkiosta, robotti ei voi tietää siitä. Tätä kutsutaan palkkion huijaukseksi (reward hacking).", "A robot learns exactly what is rewarded. If something important (here the direction) is missing from the reward, the robot can't know about it. This is called reward hacking.") },
+        },
+        {
+          id: "weights", tool: "nn2d", title: tr("Painot: mikä on tärkeintä?", "Weights: what matters most?"),
+          teach: tr("Kun tavoitteita on useita, **painot** ratkaisevat. Liiku suuntaan × 2 ja Säästä energiaa × 1 tarkoittaa, että eteneminen on kaksi kertaa niin tärkeää kuin energian säästäminen.\n\nJos säästö painaa liikaa, robotti voi oppia olemaan liikkumatta: sekin on palkkion kannalta hyvä ratkaisu! Hidastettu uusinta näyttää, mitä pyörät oikeasti tekevät.",
+            "With several goals, the **weights** decide. Move in a direction × 2 and Save energy × 1 means moving on is twice as important as saving energy.\n\nIf saving weighs too much, the robot may learn to stand still: that too is a good solution as far as the reward is concerned! A slowed-down replay shows what the wheels really do."),
+          tasks: [
+            { id: "mix", text: tr("Avaa Oma tavoite: valitse Liiku suuntaan eteenpäin painolla vähintään 2 sekä Säästä energiaa, ja paina Käytä tavoitetta", "Open Custom goal: pick Move in a direction forward with a weight of at least 2 plus Save energy, and press Use this goal"),
+              check: () => { const g = tools().nn2d?.goal; return tools().nn2d?.taskKey === "custom" && g?.move?.on && (g.move.dir ?? "+x") === "+x" && (g.move.w ?? 1) >= 2 && g?.energy?.on; } },
+            { id: "train", text: tr("Kouluta vähintään 15 sukupolvea", "Train for at least 15 generations"), after: "mix",
+              check: (c) => tools().nn2d?.goal?.move?.on && gensSince(c, "nn2d") >= 15 },
+            { id: "slow", text: tr("Paina Näytä paras ja hidasta uusinta nopeuteen 0,25× tai 0,1× simulaation alla olevista napeista", "Press Show best and slow the replay to 0.25× or 0.1× with the buttons under the simulation"), after: "train",
+              check: (c) => did(c, "click", '#nn-rp-rate [data-r="0.25"], #nn-rp-rate [data-r="0.1"]') },
+          ],
+          hints: [tr("Rastin vieressä oleva liukusäädin on paino. Kun liikutat sitä, tavoite rastittuu itsestään.", "The slider next to a tick is the weight. Moving it ticks the goal automatically."),
+            tr("Uusinnan nopeusnapit (0,1× … 2×) ja aikajana tulevat näkyviin, kun Näytä paras on päällä.", "The replay speed buttons (0.1× … 2×) and the timeline appear while Show best is on.")],
+          quiz: { q: tr("Robotti seisoo paikallaan, vaikka sen pitäisi ajaa eteenpäin. Mikä on todennäköisin syy?", "The robot stands still even though it should drive forward. What is the most likely cause?"),
+            options: [tr("Energian säästön paino on liian suuri suhteessa etenemiseen", "The weight of saving energy is too big compared to moving on"), tr("Populaatio on liian iso", "The population is too big"), tr("Maasto on liian tasainen", "The terrain is too flat")], correct: 0,
+            explain: tr("Jos paikallaan seisominen tuottaa enemmän pisteitä (ei energiankulutusta) kuin eteneminen, evoluutio löytää sen. Kasvata etenemisen painoa tai pienennä säästön painoa.", "If standing still scores more (no energy used) than moving on, evolution finds it. Raise the weight of moving or lower the weight of saving.") },
+        },
+        {
+          id: "route", tool: "nn2d", title: tr("Reittipisteet: oma rata", "Waypoints: your own route"),
+          teach: tr("**Mene kohteisiin** palkitsee jokaisesta askeleesta kohti kohdetta, ei vain perille pääsystä. Kohteet voivat olla arvottuja tai omia **reittipisteitä**: klikkaa näkymää, niin robotti oppii kulkemaan pisteet järjestyksessä ja aloittaa sitten alusta.",
+            "**Reach targets** rewards every step toward the target, not only getting there. The targets can be random or your own **waypoints**: click the view and the robot learns to visit the points in order and then start over."),
+          tasks: [
+            { id: "target", text: tr("Valitse Tehtävä-valikosta Mene kohteeseen", "Pick Reach the target from the Task menu"),
+              check: () => usesTarget2d() },
+            { id: "points", text: tr("Paina Aseta reittipisteet, klikkaa näkymään vähintään kaksi pistettä (esim. auton eteen ja taakse) ja paina Valmis", "Press Set waypoints, click at least two points in the view (e.g. in front of and behind the car) and press Done"), after: "target",
+              check: () => (tools().nn2d?.waypoints?.length || 0) >= 2 },
+            { id: "train", text: tr("Kouluta vähintään 20 sukupolvea ja katso Näytä paras -uusinnasta, kääntyykö auto pisteeltä toiselle", "Train for at least 20 generations and see in the Show best replay whether the car turns from one point to the next"), after: "points",
+              check: (c) => usesTarget2d() && (tools().nn2d?.waypoints?.length || 0) >= 2 && gensSince(c, "nn2d") >= 20 },
+          ],
+          hints: [tr("Näkymää voi siirtää vetämällä ja zoomata rullalla ennen klikkausta. Pelkkä veto ei lisää pistettä.", "You can move the view by dragging and zoom with the wheel before clicking. A drag doesn't add a point."),
+            tr("Pyöräauto ei voi kääntyä paikallaan 2D:ssä, joten se oppii peruuttamaan pisteeltä toiselle.", "The wheeled car can't turn in place in 2D, so it learns to reverse from one point to the next.")],
+          quiz: { q: tr("Miksi kohteen lähestymisestä palkitaan joka hetki eikä vain perille pääsystä?", "Why is approaching the target rewarded every moment and not only arriving?"),
+            options: [tr("Pienet edistysaskeleet ohjaavat oppimista; pelkkä maali olisi liian harvinainen palkkio", "Small steps forward guide learning; the goal alone would be too rare a reward"), tr("Muuten robotti ei näe kohdetta", "Otherwise the robot can't see the target"), tr("Se nopeuttaa tietokonetta", "It speeds up the computer")], correct: 0,
+            explain: tr("Jos palkkio tulee vain maalissa, satunnaiset alkuaivot eivät juuri koskaan pääse sinne, eikä evoluutio näe eroa yritysten välillä. Askeleittainen palkkio kertoo, kuka pääsi lähemmäs.", "If the reward only comes at the goal, random early brains hardly ever get there and evolution sees no difference between attempts. A step-by-step reward tells who got closer.") },
+        },
+        {
+          id: "curriculum", tool: "nn2d", title: tr("Opetussuunnitelma: helposta vaikeaan", "A curriculum: from easy to hard"),
+          teach: tr("Ihmisetkin oppivat helposta vaikeaan. **Vaikeuta maastoa automaattisesti** aloittaa tasaisesta ja vaihtaa vaikeampaan, kun oppiminen tasaantuu. Vaihdot näkyvät oppimiskäyrässä pystyviivoina.\n\nVertaa: robotti, joka heitetään heti esteiden keskelle, ei usein opi mitään.",
+            "People learn from easy to hard too. **Make the terrain harder automatically** starts on flat ground and changes to a harder terrain when learning levels off. The changes show in the learning curve as vertical lines.\n\nCompare: a robot thrown straight among obstacles often learns nothing."),
+          tasks: [
+            { id: "on", text: tr("Valitse tehtäväksi Liiku eteenpäin, maastoksi Tasainen ja kytke päälle Vaikeuta maastoa automaattisesti", "Pick Move forward as the task, Flat as the terrain and switch on Make the terrain harder automatically"),
+              check: () => tools().nn2d?.taskKey === "forward" && tools().nn2d?.autoTerrain === true },
+            { id: "level", text: tr("Kouluta, kunnes maasto vaihtuu ainakin kerran (oppimiskäyrään tulee pystyviiva)", "Train until the terrain changes at least once (a vertical line appears in the learning curve)"), after: "on",
+              check: (c) => { const t = tools().nn2dStats?.terrain; if (!t) return false; c.mem.t0 ??= tools().nn2d?.terrain === t ? t : "flat"; return tools().nn2d?.autoTerrain === true && t !== c.mem.t0; } },
+          ],
+          hints: [tr("Vaihto vaatii vähintään 20 sukupolvea samassa maastossa, ja paras tulos ei saa enää parantua. Nopealla koulutuksella se kestää yleensä alle minuutin.", "A change needs at least 20 generations on the same terrain with the best result no longer improving. With fast training it usually takes under a minute.")],
+          quiz: { q: tr("Miksi robotti kannattaa kouluttaa ensin tasaisella?", "Why is it worth training the robot on flat ground first?"),
+            options: [tr("Perustaidot opitaan helpommin ilman esteitä, ja ne siirtyvät vaikeampaan maastoon", "The basics are easier to learn without obstacles, and they carry over to harder terrain"), tr("Tasainen maasto on ainoa, jossa robotti voi kaatua", "Flat ground is the only terrain where the robot can fall"), tr("Vaikeassa maastossa ei voi kouluttaa ollenkaan", "You can't train on hard terrain at all")], correct: 0,
+            explain: tr("Kun liikkuminen ylipäätään onnistuu, pienet esteet ovat vain uusi lisähaaste. Alusta asti vaikeassa maastossa melkein kaikki yritykset epäonnistuvat samalla tavalla, eikä evoluutio löydä suuntaa.", "Once moving works at all, small obstacles are just a new extra challenge. On hard terrain from the start almost every attempt fails the same way, and evolution finds no direction.") },
+        },
+        {
+          id: "compare", tool: "nn2d", title: tr("Vertaa, kisaa ja mittaa", "Compare, race and measure"),
+          teach: tr("Kumpi aivoista on parempi? **Koulutusajot**-kortti tallentaa aivot ja oppimiskäyrän. Rastitetut ajot näkyvät kaaviossa ja pääsevät **kisaan** samalle radalle.\n\n**Haasteet** mittaavat tuloksen RoboLabin omalla mittarilla samalla radalla kaikille: oma palkkiofunktio ei vaikuta mittaukseen.",
+            "Which brain is better? The **Training runs** card saves the brain and the learning curve. Ticked runs show in the chart and take part in the **race** on the same track.\n\n**Challenges** measure the result with RoboLab's own meter on the same track for everyone: your own reward function doesn't affect the measurement."),
+          tasks: [
+            { id: "save", text: tr("Paina Koulutusajot-kortin Tallenna nykyinen koulutus", "Press Save the current training in the Training runs card"),
+              check: (c) => (tools().nn2dRuns?.list?.length || 0) > (c.base.tools.nn2dRuns?.list?.length || 0) },
+            { id: "race", text: tr("Rastita tallennettu ajo ja paina 🏁 Kisa. Katso tulostaulu, kun kisa päättyy", "Tick the saved run and press 🏁 Race. Look at the results board when the race ends"), after: "save",
+              // Päättyneiden kisojen laskuri (tools/nn.js); nollautuu sivun latauksessa, joten pohja seuraa sitä
+              check: (c) => { const n = window.rsRaces || 0; if (c.mem.races == null || n < c.mem.races) c.mem.races = n; return n > c.mem.races; } },
+            { id: "challenge", text: tr("Kokeile Haasteet-kortista jotain haastetta, johon nykyinen robottisi sopii", "Try a challenge in the Challenges card that fits your current robot"), after: "race",
+              check: (c) => did(c, "click", '#nn-ch [data-a="challenge"]') },
+          ],
+          hints: [tr("Kisa kestää episodin pituuden verran (nopeus enintään 4×). Tulostaulu näkyy simulaation oikeassa yläkulmassa.", "The race lasts one episode (speed at most 4×). The results board shows in the top right corner of the simulation."),
+            tr("Pikajuoksu sopii pyöräautolle. Haasteet, joiden nappi on harmaa, vaativat toisen robotin.", "Sprint fits the wheeled car. Challenges with a grey button need another robot.")],
+          quiz: { q: tr("Miksi kisassa ja haasteissa kaikki aivot ajavat samalla radalla?", "Why do all brains drive on the same track in races and challenges?"),
+            options: [tr("Vain samoilla ehdoilla tulokset ovat vertailukelpoisia", "Results are only comparable under the same conditions"), tr("Koska rata on aina tasainen", "Because the track is always flat"), tr("Jotta kisa olisi nopeampi", "So the race is quicker")], correct: 0,
+            explain: tr("Eri radalla toinen robotti voi saada helpomman maaston tai kohteet. Vertailu on reilu vain, kun ainoa ero on aivoissa.", "On a different track one robot could get easier terrain or targets. A comparison is only fair when the only difference is the brain.") },
+        },
+      ],
+    },
+
     /* ----- Aloita tästä: robotin perusosat käytännössä ----- */
     {
       id: "start", icon: "book", minutes: 20, level: tr("Aloittelija", "Beginner"),
@@ -905,19 +1009,19 @@ const Courses = (() => {
 
   // Oppimispolku: suositeltu järjestys. needs = kurssi, joka kannattaa tehdä ensin.
   // Aloittelijan polku: robotti ja elektroniikka → liike ja ohjaus → koordinaatit, käsivarsi, ROS ja tekoäly
-  const ORDER = ["start", "sensors", "power", "nav", "pid", "vision", "frames", "arm", "ros", "ai"];
+  const ORDER = ["start", "sensors", "power", "nav", "pid", "vision", "frames", "arm", "ros", "ai", "reward"];
   const STAGES = [
     { from: "start", title: tr("Taso 1 · Perusteet", "Level 1 · Basics"), desc: tr("Mikä robotti on, moottorit, anturit ja sähkö. Ei vaadi esitietoja.", "What a robot is, motors, sensors and power. No prior knowledge needed.") },
     { from: "nav", title: tr("Taso 2 · Liike, ohjaus ja näkö", "Level 2 · Motion, control and vision"), desc: tr("Reitinhaku, esteet, PID-säätö ja konenäkö.", "Path planning, obstacles, PID control and computer vision.") },
     { from: "frames", title: tr("Taso 3 · Edistyneet", "Level 3 · Advanced"), desc: tr("Koordinaatistot, robottikäsivarsi, ROS ja tekoäly. Lukio- ja ammattitaso.", "Frames, robot arms, ROS and AI. Upper secondary and vocational level.") },
   ];
   COURSES.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
-  const NEEDS = { arm: "frames", ai: "start", ros: "frames", sensors: "start" };
+  const NEEDS = { arm: "frames", ai: "start", ros: "frames", sensors: "start", reward: "ai" };
 
   /* ===== Oppaat ja repliikit =====
      Jokaisella kurssilla on oma robottiopas. Vaiheen alussa opas kertoo asian lyhyesti; koko teoria on
      "Lue lisää" -kohdan takana, jotta yhdellä kertaa näkyy vain vähän. who = vierailijahahmo tässä vaiheessa. */
-  const GUIDE = { start: "volt", arm: "grip", pid: "wobbly", nav: "dusty", power: "volt", frames: "zippy", ai: "neura", sensors: "wobbly", ros: "grip", vision: "zippy" };
+  const GUIDE = { start: "volt", arm: "grip", pid: "wobbly", nav: "dusty", power: "volt", frames: "zippy", ai: "neura", sensors: "wobbly", ros: "grip", vision: "zippy", reward: "neura" };
   const L = (fi, en, who) => ({ text: tr(fi, en), who });
   const SAY = {
     "sensors.serial": L("Minä pysyn pystyssä vain antureideni ansiosta! Katsotaan, miltä anturien data näyttää.", "I only stay upright thanks to my sensors! Let's see what sensor data looks like."),
@@ -1071,6 +1175,17 @@ const Courses = (() => {
         [tr("Ilman antureita robotti ei voi reagoida ympäristöön, vaan toistaa samaa liikettä", "Without sensors the robot can't react to its surroundings and just repeats the same motion"), tr("Anturit nopeuttavat tietokonetta", "Sensors speed up the computer"), tr("Ilman antureita verkkoa ei voi tallentaa", "Without sensors the network can't be saved")], 0,
         tr("Pelkän ajan perusteella robotti oppii vain ulkoa opitun liikesarjan. Anturien avulla se voi esimerkiksi väistää esteen, joka on joka kerta eri paikassa.", "From time alone the robot only learns a memorised motion. With sensors it can for example avoid an obstacle that is in a different place each time.")),
     ],
+    reward: [
+      Q(tr("Kävelijä palkitaan vain siitä, kuinka pitkälle sen pää päätyy. Se oppii heittäytymään eteenpäin ja kaatumaan. Mikä tämä on?", "A walker is rewarded only for how far its head ends up. It learns to throw itself forward and fall. What is this?"),
+        [tr("Palkkion huijaus: robotti löysi helpomman tavan saada pisteitä kuin tarkoitettiin", "Reward hacking: the robot found an easier way to score than intended"), tr("Liian pieni populaatio", "Too small a population"), tr("Fysiikkamoottorin virhe", "A bug in the physics engine")], 0,
+        tr("Robotti optimoi tarkalleen palkkiota. Jos kaatuminen tuottaa pisteitä, se on robotille hyvä ratkaisu. Korjaus: palkitse pystyssä pysymisestä ja rankaise kaatumisesta.", "The robot optimises exactly the reward. If falling scores, it is a good solution for the robot. Fix: reward staying upright and penalise falling.")),
+      Q(tr("Tavoitteina ovat Liiku suuntaan (paino 1) ja Säästä energiaa (paino 3). Robotti ei liiku. Mitä muutat ensin?", "The goals are Move in a direction (weight 1) and Save energy (weight 3). The robot doesn't move. What do you change first?"),
+        [tr("Kasvatan etenemisen painoa tai pienennän säästön painoa", "Raise the weight of moving or lower the weight of saving"), tr("Lisään populaatiota", "Increase the population"), tr("Vaihdan maaston vaikeammaksi", "Switch to a harder terrain")], 0,
+        tr("Painot kertovat, mikä on tärkeintä. Kun säästäminen painaa kolme kertaa enemmän, paikallaan oleminen voi olla palkkion kannalta paras ratkaisu.", "The weights say what matters most. When saving weighs three times more, standing still may be the best solution for the reward.")),
+      Q(tr("Miksi haasteen tulos mitataan RoboLabin omalla mittarilla eikä käyttäjän palkkiofunktiolla?", "Why is a challenge result measured with RoboLab's own meter and not the user's reward function?"),
+        [tr("Jotta kaikkien tulokset ovat vertailukelpoisia: oma palkkio voisi antaa pisteitä mistä tahansa", "So everyone's results are comparable: a custom reward could give points for anything"), tr("Koska palkkiofunktio on liian hidas", "Because the reward function is too slow"), tr("Koska palkkiofunktiota ei voi ajaa uudelleen", "Because the reward function can't be run again")], 0,
+        tr("Palkkio ohjaa oppimista, mutta tulos pitää mitata samalla tavalla kaikille. Muuten voisi \"voittaa\" kirjoittamalla palkkion, joka antaa paljon pisteitä.", "The reward steers learning, but the result has to be measured the same way for everyone. Otherwise you could \"win\" by writing a reward that gives lots of points.")),
+    ],
     ros: [
       Q(tr("Kamera julkaisee kuvia topiciin /camera/image, ja kaksi eri solmua tarvitsee kuvat. Miten ne saavat ne?", "A camera publishes images to /camera/image and two different nodes need them. How do they get them?"),
         [tr("Molemmat tilaavat saman topicin", "Both subscribe to the same topic"), tr("Kameran pitää julkaista kuva kahdesti eri nimillä", "The camera must publish twice under different names"), tr("Solmut lukevat kuvat URDF-tiedostosta", "The nodes read the images from the URDF file")], 0,
@@ -1099,6 +1214,7 @@ const Courses = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(P)); }
     catch { if (!persistWarned) { persistWarned = true; toast(tr("Kurssin edistymistä ei voitu tallentaa: selaimen tallennustila on täynnä.", "Course progress could not be saved: browser storage is full.")); } }
     window.Plans?.queueSync?.(); // luokkahuone: eteneminen opettajalle (plans.js)
+    window.Achievements?.check(); // kursseista johdetut saavutukset (achievements.js)
   };
   const byId = (id) => COURSES.find((c) => c.id === id);
   const cp = (id) => (P.c[id] ||= { step: 0, steps: {}, project: null, finished: false });
@@ -1558,6 +1674,7 @@ const Courses = (() => {
       <h2 class="path-title">${tr("Oppimispolku", "Learning path")}</h2>
       <p class="note path-note">${tr("Kurssit on järjestetty niin, että jokainen rakentaa edellisten päälle. Voit silti aloittaa mistä tahansa.", "The courses are ordered so each one builds on the previous ones. You can still start anywhere.")}</p>
       ${COURSES.map((c, i) => { const st = STAGES.find((x) => x.from === c.id); return (st ? `${i ? "</div>" : ""}<h3 class="stage-title">${st.title}</h3><p class="note stage-note">${st.desc}</p><div class="course-grid">` : "") + courseCard(c, i); }).join("")}</div>
+      ${window.Achievements ? Achievements.cardHtml() : ""}
       ${window.Education ? Education.studentCardHtml() : ""}`;
     window.Education?.bindStudentCard(root);
     window.Plans?.bindClassForm(root);

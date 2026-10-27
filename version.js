@@ -3,6 +3,27 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.11.0", date: "2026-10-28",
+    fi: ["Haasteet neuroverkkosimulaatioissa: kouluta robotti ja kokeile, läpäiseekö se haasteen (esim. Pikajuoksu, Tasapaino, Esterata, Imurointikierros). Tulos mitataan aina samalla radalla, ja yritys näytetään uusintana.",
+      "Saavutukset: Kurssit-sivulla näkyvät merkit, jotka avautuvat ominaisuuksia kokeilemalla sekä kursseja ja haasteita suorittamalla.",
+      "Luokan tulostaulu: luokkakoodilla liittyneiden oppilaiden haastetulokset näkyvät opettajan luokkahuoneessa ja CSV-viennissä.",
+      "Uusi kurssi Palkkiot ja tavoitteet: kokoa oma tavoite, huomaa miten väärä palkkio harhauttaa, käytä reittipisteitä ja opetussuunnitelmaa sekä vertaile ja kisauta aivoja.",
+      "Jaa linkkinä: robotti, tehtävä ja opitut aivot linkkinä ja QR-koodina. Avaaja saa ne uuteen projektiin; mitään ei tallenneta palvelimelle.",
+      "Rakentajaan jousinivel sekä valmisosat Jousijalka ja Kosketusanturi (joustava puskuri, joka kertoo osumasta).",
+      "Vie omalle robotille -ikkunassa Kytkentäohje: osat ja Raspberry Pi Picon nastat juuri tälle robotille.",
+      "Simulaation koko näytön tila (myös puhelimessa) ja lyhyt opastus ensimmäisellä käyttökerralla.",
+      "Korjaus: kun maaston tai episodin pituuden vaihtaa, Näytä paras ja haasteet käyttävät nykyisiä aivoja eivätkä vanhan maaston parhaita."],
+    en: ["Challenges in the neural network simulations: train a robot and try whether it passes a challenge (e.g. Sprint, Balance, Obstacle course, Vacuum round). The result is always measured on the same track, and the attempt is shown as a replay.",
+      "Achievements: badges on the Courses page that unlock as you try features and finish courses and challenges.",
+      "Class leaderboard: the challenge results of students who joined with a class code show in the teacher's classroom and the CSV export.",
+      "New course Rewards and goals: build your own goal, see how a wrong reward misleads, use waypoints and a curriculum, and compare and race brains.",
+      "Share as a link: the robot, task and learned brain as a link and a QR code. Whoever opens it gets them in a new project; nothing is stored on a server.",
+      "A spring joint in the builder plus the ready-made Spring leg and Touch sensor (a springy bumper that reports a hit).",
+      "A Wiring guide in the Put on a real robot window: parts and Raspberry Pi Pico pins for this robot.",
+      "Full-screen mode for the simulation (also on phones) and a short guide the first time you open it.",
+      "Fix: after changing the terrain or episode length, Show best and the challenges use the current brain, not the best one from the old terrain."],
+  },
+  {
     version: "2.10.0", date: "2026-10-28",
     fi: ["Koulutusajot neuroverkkosimulaatioissa: tallenna koulutus, vertaa oppimiskäyriä samassa kaaviossa ja ota vanhat aivot takaisin käyttöön. Kun nollaat aivot tai vaihdat robottia, kunnollinen koulutus tallentuu listaan itsestään.",
       "Kisa: rastitetut koulutusajot ja nykyiset aivot ajavat samalla radalla, ja tulostaulu kertoo voittajan.",

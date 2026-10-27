@@ -8,7 +8,7 @@ const APP = VERSION + "-app", LIBS = "robolab-libs-v1";
 const APP_FILES = [
   "./", "index.html", "styles.css", "manifest.webmanifest", "version.js",
   "i18n.js", "calc.js", "kin.js", "motion.js", "plan.js", "robot.js", "app.js", "plot.js", "view3d.js", "gridmap.js",
-  "three-view.js", "arm-view.js", "courses.js", "plans.js", "education.js", "assistant.js", "robots.js", "library.js", "accounts.js", "account-ui.js", "cloud-config.js", "cloud.js", "volt-worker.js", "tietosuoja.html",
+  "three-view.js", "arm-view.js", "courses.js", "plans.js", "education.js", "achievements.js", "assistant.js", "robots.js", "library.js", "accounts.js", "account-ui.js", "cloud-config.js", "cloud.js", "volt-worker.js", "tietosuoja.html",
   "tools/traj.js", "tools/path.js", "tools/occmap.js", "tools/mobile.js", "tools/scene3d.js", "tools/units.js",
   "tools/rotation.js", "tools/arm.js", "tools/projects.js", "tools/pid.js", "tools/motor.js", "tools/power.js",
   "tools/serial.js", "tools/vision.js","tools/nn.js", "tools/builder.js",
@@ -32,6 +32,7 @@ const LIB_FILES = [
   "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/environments/RoomEnvironment.js",
   "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs",
   "https://cdn.jsdelivr.net/npm/planck@1.4.2/dist/planck.min.js",
+  "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js",
 ];
 
 self.addEventListener("install", (e) => {

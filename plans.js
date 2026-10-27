@@ -172,6 +172,8 @@ const Plans = (() => {
     const assigned = new Set((c.courses || []).map((x) => x.id));
     const items = Courses.summary().filter((p) => p.finished || p.done > 0 || assigned.has(p.id))
       .map((p) => ({ course: p.id, steps: p.steps, done: p.done, finished: p.finished, hints: p.hints, score: p.score ?? null, score_max: p.scoreMax ?? null }));
+    // Haasteiden tulokset samassa muodossa ("ch-<haaste>"): opettaja näkee luokan tulostaulun (achievements.js)
+    items.push(...(window.Achievements?.challengeItems() || []));
     const sig = JSON.stringify(items);
     if (sig === c.sent && !c.pending) return;
     try {

@@ -21,7 +21,9 @@ const Library = (() => {
     add(kind, name, data) {
       const d = load(), item = { id: uid(), name: String(name).slice(0, 80), data: JSON.parse(JSON.stringify(data)), saved: new Date().toISOString() };
       (d[kind] ||= []).push(item);
-      return store(d) ? item.id : null;
+      if (!store(d)) return null;
+      window.Achievements?.unlock("ownRobot");
+      return item.id;
     },
     update(kind, id, data) {
       const d = load(), it = (d[kind] || []).find((x) => x.id === id);

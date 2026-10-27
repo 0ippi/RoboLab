@@ -344,9 +344,10 @@ async function test(name, fn) {
     ok(!("tuntematon" in G("activeProject")().tools), "tuntematon työkalu hyväksyttiin");
     ok(!({}).polluted && !w.Object.prototype.polluted, "prototyyppi saastui");
     for (const r of ["#/projects", "#/power", "#/motor", "#/dashboard"]) await go(r, 300);
-    await go("#/nn2d", 2500);
+    await go("#/nn2d", 1000);
     eq(w.getToolState("nn2d", { speed: 1 }).speed, 1, "nopeus ei ole luku");
-    ok(w.document.querySelector("#nn-trust .alert.warn"), "varoitus tuodusta koodista puuttuu");
+    // Fysiikkakirjaston lataus voi kestää hetken, joten varoitusta odotetaan
+    await waitFor(() => w.document.querySelector("#nn-trust .alert.warn"), 10000, "varoitus tuodusta koodista");
     await sleep(500);
     ok(!w.__pwned && !window.__pwned, "tuotu koodi tai HTML suoritettiin");
   });
@@ -482,6 +483,95 @@ async function test(name, fn) {
     ok(!w.document.querySelector("#nn-runs img"), "nimi päätyi HTML:ksi");
     await sleep(300);
     ok(!w.__pwned && !window.__pwned, "koodia suoritettiin");
+  });
+
+  // RS.ask-ikkunan vahvistus (ok = true) tai peruutus
+  async function answerAsk(ok) {
+    const dlg = await waitFor(() => w.document.querySelector("#rs-ask[open]"), 3000, "kysymys");
+    const text = dlg.querySelector(".rs-ask-text").textContent;
+    dlg.querySelector(ok ? "[data-yes]" : "[data-no]").click();
+    return text;
+  }
+
+  await test("Jakolinkki avaa robotin ja aivot uuteen projektiin", async () => {
+    await go("#/dashboard"); await go("#/nn2d", 2500);
+    const nn = await waitFor(() => w.__nn?.["2d"]?.S?.trainer && w.__nn["2d"], 5000, "työkalu");
+    if (!nn.S.trainer.best && !nn.S.trainer.mean) nn.S.trainer.ask(); // kouluttamattomilla aivoilla painot arvotaan ensin
+    const params = Array.from(nn.S.trainer.best || nn.S.trainer.mean);
+    w.document.querySelector('[data-a="share"]').click();
+    const url = await waitFor(() => w.document.querySelector("#rs-share #sh-url")?.value, 5000, "linkki");
+    ok(/#\/share\/[\w-]+$/.test(url), "linkin muoto: " + url.slice(0, 60));
+    w.document.querySelector("#rs-share [data-close]").click();
+    const count = projCount(), oldS = nn.S;
+    w.location.hash = "#/share/" + url.split("#/share/")[1];
+    const q = await answerAsk(true);
+    ok(/uuteen projektiin|new project/.test(q), "kysymys");
+    // Työkalu piirretään uudelleen uudessa projektissa (uusi tila S)
+    await waitFor(() => w.location.hash === "#/nn2d" && w.__nn["2d"].S !== oldS && w.__nn["2d"].S?.trainer, 10000, "avaus");
+    ok(/^(Jaettu|Shared)/.test(G("activeProject")().name), "projektin nimi");
+    eq(projCount(), count + 1, "projekteja");
+    const got = Array.from(w.__nn["2d"].S.trainer.best || w.__nn["2d"].S.trainer.mean);
+    eq(got.length, params.length, "painoja");
+    const max = Math.max(...params.map(Math.abs));
+    for (let i = 0; i < params.length; i += 97) near(got[i], params[i], max / 30000 + 1e-6, `paino ${i}`);
+  });
+
+  await test("Jakolinkki ei voi ajaa koodia eikä syöttää HTML:ää; rikkinäinen linkki ei kaada", async () => {
+    w.__pwned = false;
+    const evil = '<img src=x onerror="window.__pwned=true">';
+    const layers = [21, 4, 2], n = w.RS.Brain.paramCount(layers);
+    const data = await w.RSShare.encode({ dim: "2d", name: evil, modelKey: "car", code: "window.parent.__pwned = true; return 0;", layers, gen: 3, terrain: '"><b>x', duration: "x" }, new Float32Array(n).fill(0.1));
+    const oldS = w.__nn?.["2d"]?.S;
+    w.location.hash = "#/share/" + data;
+    const q = await answerAsk(true);
+    ok(q.includes(evil), "nimi näkyy tekstinä");
+    await waitFor(() => w.location.hash === "#/nn2d" && w.__nn["2d"].S !== oldS && w.__nn["2d"].S?.trainer, 10000, "avaus");
+    const st = G("activeProject")().tools.nn2d;
+    eq(st.taskCodeUntrusted, true, "koodia ei merkitty tarkistettavaksi");
+    eq(st.duration, 12, "kesto ei ole luku");
+    await waitFor(() => w.document.querySelector("#nn-trust .alert.warn"), 10000, "varoitus koodista");
+    // Rikkinäinen linkki: ilmoitus, ei virhettä eikä uutta projektia
+    const count = projCount();
+    w.location.hash = "#/share/AAAA-rikki_";
+    await waitFor(() => /rikki|broken/.test(lastToast()), 3000, "ilmoitus");
+    eq(projCount(), count, "projekteja");
+    await sleep(300);
+    ok(!w.__pwned && !window.__pwned, "koodia suoritettiin");
+  });
+
+  await test("Haaste: aivot mitataan kiinteällä radalla, tulos tallentuu ja yritys näytetään uusintana", async () => {
+    fresh(); await boot("#/nn2d");
+    const nn = await waitFor(() => w.__nn?.["2d"]?.S?.trainer && w.__nn["2d"], 10000, "työkalu");
+    await waitFor(() => w.document.querySelector('#nn-ch [data-a="challenge"][data-id="sprint"]'), 3000, "haastelista");
+    nn.S.trainer.ask(); // kouluttamattomilla aivoilla painot arvottaisiin joka kerta uudelleen
+    nn.runChallenge("sprint");
+    const r1 = w.Achievements.challengeState("sprint");
+    ok(r1 && Number.isFinite(r1.best), "tulos puuttuu");
+    eq(nn.S.mode, "replay", "yritystä ei näytetä");
+    eq(nn.S.episode.cfg.terrain, "flat", "haasteen maasto");
+    eq(nn.S.episode.cfg.seed, w.Achievements.CHALLENGES.find((c) => c.id === "sprint").seed, "haasteen rata");
+    nn.setMode("idle");
+    // Sama rata ja samat aivot → täsmälleen sama tulos
+    nn.runChallenge("sprint");
+    near(w.Achievements.challengeState("sprint").best, r1.best, 1e-9, "toistettavuus");
+    nn.setMode("idle");
+    ok(w.document.querySelector('#nn-ch [data-id="balance"]').disabled, "toisen robotin haastetta voi kokeilla");
+    // Mittari ei riipu käyttäjän palkkiofunktiosta
+    eq(w.Achievements.measureCode(w.Achievements.CHALLENGES.find((c) => c.id === "sprint")).includes("s.x - s.prevX"), true, "mittari");
+  });
+
+  await test("Saavutukset: avautuvat kerran, kursseista johdetut tarkistetaan ja näkyvät Kurssit-sivulla", async () => {
+    eq(w.Achievements.unlock("goal"), true, "ensimmäinen kerta");
+    eq(w.Achievements.unlock("goal"), false, "toinen kerta");
+    ok(/Saavutus|Achievement/.test(lastToast()), "ilmoitus puuttuu");
+    const n = w.Courses.exams.start.length;
+    ls().set("robolab-courses-v1", JSON.stringify({ active: null, c: { start: { step: 0, finished: true, project: null, steps: {}, exam: { done: true, score: n, first: [], cur: [] } } } }));
+    await boot("#/learn");
+    w.Achievements.check();
+    await waitFor(() => w.Achievements._read().got.course1 && w.Achievements._read().got.exam, 3000, "kurssisaavutukset");
+    await go("#/dashboard"); await go("#/learn", 400);
+    ok(w.document.querySelectorAll(".ach-list li.got").length >= 3, "saavutukset eivät näy Kurssit-sivulla");
+    w.saveProjects(); // seuraavat testit lukevat projektitallennuksen
   });
 
   await test("Liian suuri tuonti perutaan eikä muu tallennus jää jumiin", async () => {
@@ -632,7 +722,7 @@ async function test(name, fn) {
     eq(f.format, "robolab-class-progress", "muoto");
     ok(!JSON.stringify(f).includes("refl"), "pohdintavastaukset mukana");
     const r = w.Education.parseProgress(JSON.stringify(f));
-    eq([r.alias, r.classCode, Object.keys(r.courses).length], ["oppilas 3", "7B", 10], "jäsennys");
+    eq([r.alias, r.classCode, Object.keys(r.courses).length], ["oppilas 3", "7B", w.Courses._courses.length], "jäsennys");
     for (const bad of ["x", "{}", JSON.stringify({ ...f, version: 9 }), JSON.stringify({ ...f, courses: "x" })]) {
       let threw = false; try { w.Education.parseProgress(bad); } catch { threw = true; } ok(threw, "hyväksyttiin: " + bad.slice(0, 30));
     }
@@ -1016,6 +1106,37 @@ async function test(name, fn) {
     B.setGizmoMode("translate");
   });
 
+  await test("Rakentaja: jousijalka ja kosketusanturi; jousi pitää nivelen lepoasennossa", async () => {
+    fresh(); await boot();
+    await go("#/build2d", 2500);
+    const d = w.document, q = (id) => d.querySelector("#rb-" + id), B = w.__builder;
+    q("parts").querySelector('[data-type="box"]').click(); await sleep(150);
+    const root = B.S.model.root;
+    for (const id of ["addSpringLeg", "addBumper"]) { B.select("body", root); await sleep(30); q(id).click(); await sleep(60); }
+    const springs = B.S.model.joints.filter((j) => j.motor === false && j.spring > 0);
+    eq(springs.length, 2, "jousinivelet (polvi ja puskuri)");
+    ok(B.S.model.bodies.some((b) => b.foot && /puskuri|bumper/.test(b.id)), "puskuri ei ole kosketusanturi");
+    eq(B.S.model.joints.filter((j) => j.motor !== false).length, 1, "moottoreita (vain lonkka)");
+    // Jousinivelen ominaisuudet: jäykkyys ja vaimennus, ei nopeutta eikä vääntöä
+    B.select("joint", B.S.model.joints.indexOf(springs[0])); await sleep(80);
+    ok(/Jousen jäykkyys|Spring stiffness/.test(d.querySelector(".rsb-right, #rb-props")?.textContent || d.body.textContent), "jousen asetukset puuttuvat");
+    // Fysiikka: jousella kiinnitetty vaakasuora varsi pysyy lähes vaakasuorassa, ilman jousta se putoaa roikkumaan
+    await w.RS.loadPlanck();
+    const arm = (joint) => {
+      const m = w.RS.normalizeModel({ bodies: [{ id: "a", shape: "box", w: 1, h: 0.2, static: true, x: 0, y: 2 }, { id: "b", shape: "box", w: 0.6, h: 0.1, x: 0.3, y: 2 }],
+        joints: [{ a: "a", b: "b", x: 0, y: 2, motor: false, ...joint }], root: "a" });
+      const world = new w.planck.World({ gravity: w.RS.V(0, -10) }), r = new w.RS.Robot(world, m);
+      let low = 0;
+      for (let i = 0; i < 240; i++) { r.act([]); world.step(1 / 60, 8, 3); low = Math.min(low, world.getJointList().getJointAngle()); }
+      return { low, springs: r.springs.length };
+    };
+    const sp = arm({ spring: 30, springDamping: 2 }), free = arm({});
+    eq(sp.springs, 1, "jousi");
+    ok(sp.low > -0.1, "jousi ei pitänyt vartta: " + sp.low);
+    ok(free.low < -1, "vapaa nivel ei pudonnut: " + free.low);
+    w.saveProjects();
+  });
+
   await test("Rakentaja 2D: valintalaatikko valitsee osat vetämällä", async () => {
     fresh(); await boot(); // tyhjä robotti: aiempien testien osat eivät vaikuta
     await go("#/build2d", 2500);
@@ -1111,7 +1232,7 @@ async function test(name, fn) {
   await test("Free: kolme ensimmäistä kurssia auki, lukittu kurssi ohjaa Tasot-sivulle", async () => {
     await go("#/learn");
     const locked = [...w.document.querySelectorAll(".course")].filter((c) => c.querySelector('a[href="#/plans"]')).length;
-    eq(locked, 7, "lukittuja kursseja");
+    eq(locked, w.Courses._courses.length - 3, "lukittuja kursseja");
     w.Courses.start("pid");
     await sleep(300);
     eq(w.location.hash, "#/plans", "ohjaus");
@@ -1216,10 +1337,15 @@ async function test(name, fn) {
     ls().set("robolab-courses-v1", JSON.stringify({ active: null, c: { start: { step: start.steps.length - 1, finished: true, project: null,
       steps: Object.fromEntries(start.steps.map((s) => [s.id, { tasks: {}, quiz: 0, hint: 1, refl: "", base: null, done: true }])),
       exam: { done: true, score: 2, first: [0, 1, 0], cur: [0, 0, 0] } } } }));
+    // Haasteen tulos (neuroverkkosimulaation Haasteet-kortti) kulkee opettajalle samalla tavalla
+    ls().set("robolab-achievements", JSON.stringify({ got: {}, ch: { sprint: { best: 52.3, passed: true, at: 1 } } }));
     await boot();
     await w.Plans.syncProgress();
-    const sent = [...pm.server.classes.get(code).progress.values()][0].find((p) => p.course === "start");
+    const items = [...pm.server.classes.get(code).progress.values()][0];
+    const sent = items.find((p) => p.course === "start");
     ok(sent?.finished && sent.score === 2 && sent.score_max === 3, "eteneminen ei mennyt opettajalle: " + JSON.stringify(sent));
+    const ch = items.find((p) => p.course === "ch-sprint");
+    ok(ch?.finished && ch.score === 52 && ch.score_max === 40, "haastetulos ei mennyt opettajalle: " + JSON.stringify(ch));
     // Opettaja näkee luokkahuoneessa oppilaan, suorituksen ja pisteet
     useDevice("A"); await boot();
     await go("#/teach", 600);
@@ -1227,6 +1353,7 @@ async function test(name, fn) {
     w.document.querySelector(`[data-edu="open-room"][data-c="${code}"]`).click();
     await waitFor(() => w.document.querySelector("#room-table")?.textContent.includes("Aino K"), 4000, "oppilas luokkahuoneessa");
     ok(/✓\s*2\/3/.test(w.document.querySelector("#room-table td.done")?.textContent || ""), "suoritus ja pisteet: " + w.document.querySelector("#room-table").textContent.slice(0, 200));
+    ok(/Aino K[\s\S]*52/.test(w.document.querySelector("#room-table .ch-board")?.textContent || ""), "haasteiden tulostaulu");
     // Kurssien valinta näkymästä
     w.document.querySelector('[data-assign="pid"]').checked = true;
     w.document.querySelector('[data-edu="room-save"]').click();

@@ -550,7 +550,23 @@ const Education = (() => {
         <td><button class="link-btn" data-edu="room-remove" data-dev="${esc(s.device)}" data-alias="${esc(s.alias || "")}" aria-label="${tr("Poista oppilas", "Remove student")}">✕</button></td></tr>`).join("")}</tbody>
       <tfoot><tr><td>${tr("Suorittaneita", "Completed")}</td>${cols.map((a) => `<td>${d.students.filter((s) => s.progress.some((p) => p.course === a.id && p.finished)).length} / ${d.students.length}</td>`).join("")}<td colspan="2"></td></tr></tfoot>
     </table></div>
-    <p class="note small">${tr("✓ = kurssi suoritettu ja loppukokeen pisteet. Palkki = tehdyt vaiheet. Punainen = palautuspäivä mennyt eikä kurssia ole suoritettu.", "✓ = course completed with the final quiz score. Bar = steps done. Red = the due date has passed and the course isn't completed.")}</p>`;
+    <p class="note small">${tr("✓ = kurssi suoritettu ja loppukokeen pisteet. Palkki = tehdyt vaiheet. Punainen = palautuspäivä mennyt eikä kurssia ole suoritettu.", "✓ = course completed with the final quiz score. Bar = steps done. Red = the due date has passed and the course isn't completed.")}</p>
+    ${roomChallengesHtml(d)}`;
+  }
+
+  // Haasteiden tulostaulu: oppilaiden parhaat tulokset (achievements.js lähettää ne muodossa "ch-<haaste>")
+  const roomBoards = (d) => (window.Achievements?.CHALLENGES || []).map((c) => ({
+    c, rows: d.students.map((s) => ({ s, p: s.progress.find((x) => x.course === "ch-" + c.id) })).filter((r) => r.p)
+      .sort((a, b) => (b.p.score ?? 0) - (a.p.score ?? 0)),
+  })).filter((b) => b.rows.length);
+  function roomChallengesHtml(d) {
+    const boards = roomBoards(d);
+    if (!boards.length) return "";
+    return `<h4 class="room-sub">🏁 ${tr("Haasteiden tulostaulu", "Challenge leaderboard")}</h4>
+      <div class="ch-boards">${boards.map(({ c, rows }) => `<div class="ch-board"><b>${esc(c.name)}</b><small>${esc(c.desc)}</small>
+        <ol>${rows.slice(0, 10).map((r, i) => `<li class="${r.p.finished ? "ok" : ""}"><span>${["🥇", "🥈", "🥉"][i] || `${i + 1}.`} ${esc(r.s.alias || "?")}</span>
+          <em>${r.p.score ?? 0}${c.unit ? " " + esc(c.unit) : ""}${r.p.finished ? " ✓" : ""}</em></li>`).join("")}</ol></div>`).join("")}</div>
+      <p class="note small">${tr("Oppilaat kokeilevat haasteita neuroverkkosimulaatioiden Haasteet-kortissa (2D sisältyy Education-tasoon). ✓ = tavoite saavutettu. Taulun voi näyttää luokalle heijastimella.", "Students try the challenges in the Challenges card of the neural network simulations (2D is included in the Education plan). ✓ = goal reached. You can show the board to the class on a projector.")}</p>`;
   }
 
   function roomHtml(d) {
@@ -602,13 +618,15 @@ const Education = (() => {
   }
 
   function roomCsv(d) {
-    const cols = roomCourses(d);
-    const head = [tr("Nimimerkki", "Alias"), tr("Viimeksi", "Last seen"), ...cols.map((a) => a.course.title), ...cols.map((a) => `${a.course.title} – ${tr("loppukoe", "final quiz")}`)];
+    const cols = roomCourses(d), chs = roomBoards(d).map((b) => b.c);
+    const head = [tr("Nimimerkki", "Alias"), tr("Viimeksi", "Last seen"), ...cols.map((a) => a.course.title), ...cols.map((a) => `${a.course.title} – ${tr("loppukoe", "final quiz")}`),
+      ...chs.map((c) => `${tr("Haaste", "Challenge")}: ${c.name}`)];
     const rows = d.students.map((s) => {
       const ps = cols.map((a) => s.progress.find((p) => p.course === a.id));
       return [s.alias, s.seen ? new Date(s.seen).toISOString().slice(0, 16).replace("T", " ") : "",
         ...ps.map((p) => (!p ? "" : p.finished ? "100 %" : Math.round((p.done / (p.steps || 1)) * 100) + " %")),
-        ...ps.map((p) => (p?.score != null ? `${p.score}/${p.score_max ?? ""}` : ""))];
+        ...ps.map((p) => (p?.score != null ? `${p.score}/${p.score_max ?? ""}` : "")),
+        ...chs.map((c) => { const p = s.progress.find((x) => x.course === "ch-" + c.id); return p ? `${p.score ?? 0}${p.finished ? " ✓" : ""}` : ""; })];
     });
     return [head, ...rows].map((l) => l.map(csvCell).join(";")).join("\r\n");
   }

@@ -916,6 +916,13 @@ function router() {
     setTimeout(() => window.Courses?.start(deep[1]), 0);
     route = "learn";
   }
+  // Jaettu robotti #/share/<data> (neuroverkkosimulaation Jaa linkkinä): avataan kysymällä uuteen projektiin
+  const shared = route.match(/^share\/([\w-]+)$/);
+  if (shared) {
+    history.replaceState(null, "", "#/dashboard");
+    setTimeout(() => window.RSShare?.open(shared[1]), 0);
+    route = "dashboard";
+  }
   let tool = TOOLS.find((t) => t.id === route);
   if (route !== "settings" && !tool) {
     route = "dashboard";
@@ -1484,6 +1491,63 @@ function toggleSidebar() {
   if (matchMedia("(max-width: 860px)").matches) $("#app").classList.toggle("mobile-open");
   else if (lessonNarrow && !settings.sidebarCollapsed) setLessonLayout(false);
   else set("sidebarCollapsed", !settings.sidebarCollapsed);
+}
+
+/* ===== Opastuskierros: lyhyet kuplat työkalun tärkeimpien kohtien vieressä ensimmäisellä käyttökerralla =====
+   Ei peitä sivua eikä estä käyttöä: kupla on kohteen vieressä, ja Ohita lopettaa. Nähdyt kierrokset: robolab-tips. */
+const TIPS_KEY = "robolab-tips";
+function tipsSeen(id) { try { return !!JSON.parse(localStorage.getItem(TIPS_KEY) || "{}")[id]; } catch { return false; } }
+function markTips(id) {
+  try { const d = JSON.parse(localStorage.getItem(TIPS_KEY) || "{}"); d[id] = Date.now(); localStorage.setItem(TIPS_KEY, JSON.stringify(d)); } catch {}
+}
+// steps: [{ sel: CSS-valitsin, text }]; force: näytetään, vaikka kierros on jo nähty (Opastus-nappi)
+function coachTour(id, steps, { force = false } = {}) {
+  if (!force && tipsSeen(id)) return;
+  document.querySelector(".coach")?.remove();
+  const unmark = () => document.querySelectorAll(".coach-target").forEach((e) => e.classList.remove("coach-target"));
+  unmark();
+  let i = 0, target = null;
+  const box = document.createElement("div");
+  box.className = "coach";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-label", tr("Opastus", "Guide"));
+  document.body.append(box);
+  const place = () => {
+    if (!target?.isConnected) { end(); return; }
+    const r = target.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight;
+    let top = r.bottom + 10;
+    if (top + bh > innerHeight - 8) top = Math.max(8, r.top - bh - 10);
+    box.style.top = top + "px";
+    box.style.left = Math.min(Math.max(8, r.left), innerWidth - bw - 8) + "px";
+  };
+  function end() {
+    box.remove(); unmark(); markTips(id);
+    window.removeEventListener("resize", place);
+    document.removeEventListener("scroll", place, true);
+    window.removeEventListener("hashchange", end);
+  }
+  function show() {
+    target = document.querySelector(steps[i].sel);
+    if (!target) { if (++i < steps.length) show(); else end(); return; }
+    unmark();
+    target.classList.add("coach-target");
+    target.scrollIntoView({ block: "nearest" });
+    box.innerHTML = `<p><b>${i + 1}/${steps.length}</b> ${esc(steps[i].text)}</p>
+      <div class="row-actions"><button class="link-btn" data-c="skip">${tr("Ohita", "Skip")}</button>
+      <button class="btn primary" data-c="next">${i < steps.length - 1 ? tr("Seuraava", "Next") : tr("Valmis", "Done")}</button></div>`;
+    place();
+    box.querySelector('[data-c="next"]').focus({ preventScroll: true });
+  }
+  box.onclick = (e) => {
+    const c = e.target.closest("[data-c]")?.dataset.c;
+    if (c === "skip") end();
+    else if (c === "next") { if (++i < steps.length) show(); else end(); }
+  };
+  box.onkeydown = (e) => { if (e.key === "Escape") end(); };
+  window.addEventListener("resize", place);
+  document.addEventListener("scroll", place, true);
+  window.addEventListener("hashchange", end);
+  show();
 }
 
 function toast(msg) {
