@@ -164,6 +164,11 @@ export class Robot3D {
       // värähtelee nivelketjuissa, kuten jaloissa.
       if (control === 'position') joint.configureMotorModel(RAPIER.MotorModel.ForceBased);
       if (j.motor !== false) this.motors.push(entry);
+      // Jousi (ei moottoria): nivel joustaa takaisin lepoasentoon (kulma 0), kuten iskunvaimennin tai joustava polvi
+      else if (j.spring > 0) {
+        joint.configureMotorModel(RAPIER.MotorModel.ForceBased);
+        joint.configureMotorPosition(0, j.spring, j.springDamping ?? 3);
+      }
     }
 
     this.root = this.byId[model.root].body;
