@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoboLab-testit</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: #0f1115; color: #e6e8eb; }
+  h1 { font-size: 20px; }
+  .pass { color: #3ecf8e; } .fail { color: #f2555a; }
+  li { margin: 2px 0; } code { color: #a4abb6; }
+</style>
+</head>
+<body>
+<h1>RoboLab — laskimien yksikkötestit</h1>
+<p id="summary"></p>
+<ul id="out"></ul>
+<script>window.ROBOLAB_LANG = "fi"; // testit tarkistavat suomenkielisiä viestejä</script>
+<script src="i18n.js"></script>
+<script src="calc.js"></script>
+<script src="kin.js"></script>
+<script src="motion.js"></script>
+<script src="plan.js"></script>
+<script src="robot.js"></script>
+<script src="plot.js"></script>
+<script src="robosim/core/util.js"></script>
+<script src="robosim/core/brain.js"></script>
+<script src="robosim/core/trainer.js"></script>
+<script src="robosim/core/models.js"></script>
+<script src="robosim/core/robot.js"></script>
+<script src="robosim/core/deploy.js"></script>
+<script src="robosim/core/tasks.js"></script>
+<script src="robosim/core/usb.js"></script>
+<script>
+  const results = [];
+  function test(name, fn) {
+    try { fn(); results.push({ name, ok: true }); }
+    catch (e) { results.push({ name, ok: false, msg: e.message }); }
+  }
+  function near(actual, expected, tol, what = "") {
+    if (!(Math.abs(actual - expected) <= tol)) throw new Error(`${what} odotettiin ${expected} ± ${tol}, saatiin ${actual}`);
+  }
+  function eq(actual, expected, what = "") {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${what} odotettiin ${JSON.stringify(expected)}, saatiin ${JSON.stringify(actual)}`);
+  }
+
+  const pidBase = { kp: 0, ki: 0, kd: 0, plant: "first", T: 5, K: 1, tau: 0.5, m: 1, b: 0.5,
+                    setpoint: 1, umax: 0, antiWindup: true, dTau: 0, distT: 0, distMag: 0 };
+
+  /* PID */
+  test("P-säädin, 1. kertaluku: loppuarvo = K·Kp / (1 + K·Kp)", () => {
+    const sim = Calc.simulatePid({ ...pidBase, kp: 4 });
+    near(sim.y.at(-1), 4 / 5, 1e-3, "loppuarvo");
+  });
+  test("PI-säädin poistaa pysyvän virheen", () => {
+    const sim = Calc.simulatePid({ ...pidBase, kp: 2, ki: 4, T: 10 });
+    near(Calc.stepMetrics(sim, 1).sse, 0, 0.005, "pysyvä virhe");
+  });
+  test("1. kertaluvun käyrän nousuaika 10–90 % = τ·ln 9", () => {
+    // Tunnuslukufunktio tarkistetaan analyyttisellä käyrällä 1 − e^(−t/τ)
+    const tau = 0.5, t = [], y = [];
+    for (let i = 0; i <= 5000; i++) { t.push(i * 0.001); y.push(1 - Math.exp(-t[i] / tau)); }
+    near(Calc.stepMetrics({ t, y }, 1).rise, tau * Math.log(9), 0.002, "nousuaika");
+  });
+  test("Ylitys lasketaan oikein", () => {
+    const t = [0, 1, 2, 3], y = [0, 1.3, 0.95, 1];
+    near(Calc.stepMetrics({ t, y }, 1).overshoot, 30, 1e-9, "ylitys");
+  });
+  test("Liian suuret vahvistukset massalle tunnistetaan epästabiiliksi", () => {
+    const sim = Calc.simulatePid({ ...pidBase, plant: "mass", b: 0, kp: 5, ki: 200, T: 20 });
+    if (!sim.unstable) throw new Error("ei tunnistettu epästabiiliksi");
+  });
+  test("Ohjauksen raja pitää u:n rajoissa", () => {
+    const sim = Calc.simulatePid({ ...pidBase, kp: 50, umax: 2 });
+    if (Math.max(...sim.u.map(Math.abs)) > 2 + 1e-12) throw new Error("u ylitti rajan");
+  });
+
+  /* Moottori */
+  const motorBase = { mass: 1, wheelD: 0.1, motors: 2, rpm: 60, stallTorque: 0.5, stallCurrent: 2,
+                      ratio: 1, eff: 1, noLoadCurrent: 0.1, vNom: 6, vBat: 6, crr: 0, slopeDeg: 0, mu: 1, driveShare: 1 };
+  test("Huippunopeus = rpm·π·D/60", () => {
+    near(Calc.motor(motorBase).v0, Math.PI * 0.1, 1e-9, "v0");
+  });
+  test("Vetovoima = n·T/r", () => {
+    near(Calc.motor(motorBase).Fs, 2 * 0.5 / 0.05, 1e-9, "Fs");
+  });
+  test("Ilman vastusta ajonopeus = huippunopeus ja virta = tyhjäkäyntivirta", () => {
+    const r = Calc.motor(motorBase);
+    near(r.vOp, r.v0, 1e-9, "vOp");
+    near(r.iTotal, 0.2, 1e-9, "virta");
+  });
+  test("Välityssuhde 2 puolittaa nopeuden ja tuplaa momentin", () => {
+    const a = Calc.motor(motorBase), b = Calc.motor({ ...motorBase, ratio: 2 });
+    near(b.v0, a.v0 / 2, 1e-9, "v0"); near(b.Fs, a.Fs * 2, 1e-9, "Fs");
+  });
+  test("Puolikas jännite puolittaa nopeuden ja momentin", () => {
+    const a = Calc.motor(motorBase), b = Calc.motor({ ...motorBase, vBat: 3 });
+    near(b.v0, a.v0 / 2, 1e-9, "v0"); near(b.Fs, a.Fs / 2, 1e-9, "Fs");
+  });
+  test("Mäki, johon voima ei riitä → robotti ei liiku", () => {
+    const r = Calc.motor({ ...motorBase, stallTorque: 0.01, slopeDeg: 30 });
+    eq(r.moves, false, "moves"); eq(r.vOp, 0, "vOp");
+  });
+  test("Jyrkin mäki: m·g·sinθ = Fs (ilman vierintävastusta)", () => {
+    const r = Calc.motor({ ...motorBase, stallTorque: 0.05, mu: 5 });
+    near(r.maxSlope, Math.asin(r.Fs / (1 * Calc.G)) * 180 / Math.PI, 1e-9, "kulma");
+  });
+  test("Pito rajoittaa: kaltevuus ≤ atan(μ)", () => {
+    const r = Calc.motor({ ...motorBase, mu: 0.3 });
+    near(r.maxSlope, Math.atan(0.3) * 180 / Math.PI, 1e-9, "kulma");
+    eq(r.tractionLimited, true, "tractionLimited");
+  });
+
+  /* Neuroverkko ja koulutusalgoritmit (RoboSim) */
+  test("Neuroverkko: parametrien määrä = Σ ulos·(sisään+1)", () => {
+    eq(RS.Brain.paramCount([3, 4, 2]), 4 * 4 + 2 * 5, "paramCount");
+  });
+  test("Neuroverkko: ulostulot välillä −1…1 (tanh)", () => {
+    const L = [3, 8, 2], b = new RS.Brain(L), p = RS.Brain.randomParams(L).map((v) => v * 20);
+    const out = b.forward(p, [5, -3, 1]);
+    eq(out.length, 2, "pituus");
+    if (![...out].every((v) => v >= -1 && v <= 1)) throw new Error("ulostulo ylittää rajat");
+  });
+  test("Evoluutiostrategia löytää yksinkertaisen tehtävän optimin", () => {
+    const L = [2, 1], target = 0.5;
+    const t = RS.makeTrainer("es", L, { popSize: 21, sigma: 0.1, lr: 0.05 }, new Float32Array(3));
+    for (let g = 0; g < 300; g++) t.tell(t.ask().map((p) => -p.reduce((s, v) => s + (v - target) ** 2, 0)));
+    t.mean.forEach((v, i) => near(v, target, 0.1, `paino ${i}`));
+  });
+  test("Geneettinen algoritmi parantaa tulosta", () => {
+    const L = [2, 1], f = (p) => -p.reduce((s, v) => s + (v - 0.5) ** 2, 0);
+    const t = RS.makeTrainer("ga", L, { popSize: 30, sigma: 0.1, lr: 0 }, new Float32Array(3));
+    const first = f(new Float32Array(3));
+    for (let g = 0; g < 150; g++) t.tell(t.ask().map(f));
+    if (!(t.bestFitness > first * 0.1)) throw new Error(`paras ${t.bestFitness}, alku ${first}`);
+  });
+
+  /* Aivojen vienti omalle robotille */
+  test("Vienti: sisääntuloja ja moottoreita yhtä monta kuin simulaatiossa (kaikki 2D-mallit)", () => {
+    for (const [k, raw] of Object.entries(RS.MODELS)) {
+      const m = RS.normalizeModel(raw), info = RS.modelInfo(m), d = RS.deployInfo("2d", m);
+      eq(d.inputs.length, info.obsSize, k + " sisääntulot"); eq(d.outputs.length, info.actSize, k + " moottorit");
+      eq(new Set(d.inputs.map((x) => x.id)).size, d.inputs.length, k + " yksilölliset nimet");
+    }
+  });
+  test("Vienti: float32-luvut palautuvat täsmälleen tekstistä", () => {
+    for (let n = 0; n < 500; n++) {
+      const v = Math.fround((Math.random() - 0.5) * 10 ** Math.round(Math.random() * 8 - 5));
+      eq(Math.fround(+RS.f32str(v)), v, "luku " + v);
+    }
+    eq(RS.cf(6), "6.0f", "kokonaisluku C:ssä"); eq(RS.cf(0), "0.0f", "nolla C:ssä");
+  });
+  const deployCase = () => {
+    const m = RS.normalizeModel(RS.MODELS.car), info = RS.modelInfo(m), layers = [info.obsSize, 8, info.actSize];
+    return { dim: "2d", model: m, layers, params: RS.Brain.randomParams(layers), name: "Testiauto", gen: 5, task: "eteen" };
+  };
+  test("Vienti JSON: tiedoston painoilla laskettu verkko = simulaation verkko", () => {
+    const c = deployCase(), j = JSON.parse(RS.deployCode("json", c).code);
+    let x = j.selftest.input, k = 0;
+    for (let l = 1; l < j.layers.length; l++) {
+      const y = [];
+      for (let o = 0; o < j.layers[l]; o++) { let s = 0; for (const v of x) s += j.params[k++] * v; y.push(Math.tanh(s + j.params[k++])); }
+      x = y;
+    }
+    eq(k, j.params.length, "kaikki painot käytetty");
+    x.forEach((v, i) => near(v, j.selftest.output[i], 1e-6, "ulostulo " + i)); // välikerrokset tallentuvat float32:na
+    const ref = new RS.Brain(c.layers).forward(c.params, RS.deployTestInput(c.layers[0]));
+    x.forEach((v, i) => near(v, ref[i], 1e-6, "simulaatio " + i));
+  });
+  test("Vienti C ja Python: kaikki painot ja sisääntulot mukana", () => {
+    const c = deployCase(), n = c.params.length;
+    for (const t of ["arduino", "c", "python"]) {
+      const code = RS.deployCode(t, c).code;
+      const body = t === "python" ? code.split("PARAMS = array('f', [")[1].split("])")[0] : code.split("rl_params[] RL_STORE = {")[1].split("};")[0];
+      eq(body.split(",").filter((s) => s.trim()).length, n, t + " painot");
+      if (t !== "c" && !RS.deployInfo("2d", c.model).inputs.every((x) => code.includes((t === "python" ? "x[IN_" : "rlIn[RL_IN_") + x.id + "]"))) throw new Error(t + ": sisääntulo puuttuu");
+    }
+  });
+  test("Roottorit: drooni saa ohjattavat roottorit ja ne näkyvät viedyssä koodissa", () => {
+    const m = RS.normalizeModel(RS.MODELS.zippy), info = RS.modelInfo(m);
+    eq([info.motors, info.thrusters, info.actSize], [0, 2, 2], "moottorit, roottorit, ulostulot");
+    const layers = [info.obsSize, 4, info.actSize];
+    const code = RS.deployCode("arduino", { dim: "2d", model: m, layers, params: RS.Brain.randomParams(layers), name: "Zippy" }).code;
+    if (!code.includes("t0_thrust") || !code.includes("t1_thrust")) throw new Error("roottorien ohjaus puuttuu koodista");
+  });
+  /* Kävelypalkkio */
+  const walkState = (o) => ({ x: 0, prevX: 0, y: 1, startY: 1, upright: 1, energy: 0, footContacts: 2, fallen: false, ...o });
+  test("Kävely: eteneminen pystyssä palkitaan, ryömiminen ei", () => {
+    const f = RS.compileTask(RS.TASKS.walk.code);
+    const up = f(walkState({ x: 0.01 }), {}), crawl = f(walkState({ x: 0.01, upright: 0.1, y: 0.4 }), {});
+    if (!(up > crawl)) throw new Error(`pystyssä ${up} ≤ ryömien ${crawl}`);
+  });
+  test("Kävely: askel (maakosketusten muutos) antaa bonuksen, kaatuminen lopettaa", () => {
+    const f = RS.compileTask(RS.TASKS.walk.code), m = { feet: 2 };
+    const step = f(walkState({ footContacts: 1 }), m), still = f(walkState({ footContacts: 1 }), m);
+    if (!(step > still)) throw new Error("askelbonus puuttuu");
+    const s = walkState({ fallen: true });
+    if (!(f(s, {}) < -4) || !s.done) throw new Error("kaatuminen ei rankaise tai lopeta");
+  });
+
+  /* USB-live-linkki */
+  test("Live-linkin luonnoksessa yhtä monta sisään- ja ulostuloa kuin aivoissa", () => {
+    const m = RS.normalizeModel(RS.MODELS.car), info = RS.deployInfo("2d", m);
+    const code = RS.USB.linkSketch(info);
+    if (!code.includes(`N_IN = ${info.inputs.length}`) || !code.includes(`N_OUT = ${info.outputs.length}`)) throw new Error("väärä määrä");
+    eq((code.match(/TODO M\d+ \(/g) || []).length, info.outputs.length, "moottorien TODO-rivit");
+  });
+
+  test("Väärä roottorin osa tunnistetaan", () => {
+    let threw = false;
+    try { RS.normalizeModel({ ...RS.MODELS.zippy, thrusters: [{ body: "eiole", x: 0, y: 0 }] }); } catch { threw = true; }
+    eq(threw, true, "virhe");
+  });
+  test("Vienti: väärän kokoiset aivot hylätään", () => {
+    const c = deployCase();
+    let threw = false;
+    try { RS.deployCode("c", { ...c, layers: [3, 8, 2], params: RS.Brain.randomParams([3, 8, 2]) }); } catch { threw = true; }
+    eq(threw, true, "virhe");
+  });
+
+  /* PID: lineaarinen stabiilisuus (Routh–Hurwitz) */
+  test("PID: massa + PI ilman vaimennusta on epästabiili, D-termi vakauttaa", () => {
+    const base = { plant: "mass", m: 1, b: 0, kp: 2, ki: 4, kd: 0, T: 3, setpoint: 1, umax: 0, antiWindup: true, dTau: 0 };
+    eq(Calc.simulatePid(base).growing, true, "PI");
+    eq(Calc.simulatePid({ ...base, kd: 3 }).growing, false, "PID");
+  });
+
+  /* Käsivarren nivel */
+  const jointBase = { payload: 0.5, length: 0.4, armMass: 0.6, speed: 1, accel: 2,
+                      rpm: 60, stallTorque: 1, stallCurrent: 2, noLoadCurrent: 0.2, vNom: 6, vBat: 6, ratio: 10, eff: 0.8 };
+  test("Nivel: painovoiman momentti = g·(m·L + M·L/2)", () => {
+    near(Calc.jointMotor(jointBase).tGrav, Calc.G * (0.5 * 0.4 + 0.6 * 0.2), 1e-9, "tGrav");
+  });
+  test("Nivel: hitausmomentti = m·L² + M·L²/3 ja kiihdytysmomentti = J·α", () => {
+    const r = Calc.jointMotor(jointBase);
+    near(r.J, 0.5 * 0.16 + 0.6 * 0.16 / 3, 1e-12, "J"); near(r.tDyn, r.J * 2, 1e-12, "tDyn");
+  });
+  test("Nivel: välityssuhde ratioFor30 antaa täsmälleen 30 % pitokuorman", () => {
+    const a = Calc.jointMotor(jointBase);
+    near(Calc.jointMotor({ ...jointBase, ratio: a.ratioFor30 }).holdLoad, 0.3, 1e-9, "holdLoad");
+  });
+
+  /* Sähköjärjestelmä */
+  const powerBase = {
+    battery: { v: 7.4, mAh: 2000, cRate: 10, burstC: 20, usable: 1 },
+    reg: { type: "buck", vOut: 5, eff: 1, maxA: 3, dropout: 1 },
+    loads: [{ name: "a", qty: 2, avg: 500, peak: 1000, rail: "bat", kind: "other" }],
+    wire: { length: 0, area: 1 },
+    driver: { contA: 1, peakA: 3, maxV: 12 },
+  };
+  test("Käyttöaika = kapasiteetti / keskivirta", () => {
+    near(Calc.power(powerBase).runtimeH, 2, 1e-9, "h");
+  });
+  test("Hakkuri: tulovirta = Vout·Iout / (η·Vin)", () => {
+    const r = Calc.power({ ...powerBase, reg: { ...powerBase.reg, eff: 0.8 },
+      loads: [{ name: "x", qty: 1, avg: 1000, peak: 1000, rail: "reg", kind: "other" }] });
+    near(r.totAvg, 5 / (0.8 * 7.4), 1e-9, "virta");
+  });
+  test("Lineaarisäädin: tulovirta = lähtövirta, häviö = (Vin−Vout)·I", () => {
+    const r = Calc.power({ ...powerBase, reg: { ...powerBase.reg, type: "linear" },
+      loads: [{ name: "x", qty: 1, avg: 500, peak: 500, rail: "reg", kind: "other" }] });
+    near(r.totAvg, 0.5, 1e-9, "virta"); near(r.regLossAvg, 2.4 * 0.5, 1e-9, "häviö");
+  });
+  test("Akun jatkuvan virran ylitys antaa virheen", () => {
+    const r = Calc.power({ ...powerBase, battery: { ...powerBase.battery, cRate: 0.25 } });
+    if (!r.warnings.some((w) => w.level === "err" && w.text.includes("Keskivirta"))) throw new Error("ei varoitusta");
+  });
+  test("Moottoriohjaimen raja tarkistetaan", () => {
+    const r = Calc.power({ ...powerBase, loads: [{ name: "M", qty: 1, avg: 1500, peak: 4000, rail: "bat", kind: "motor" }] });
+    eq(r.warnings.filter((w) => w.text.startsWith("M:")).length, 2, "varoituksia");
+  });
+  test("Johdon resistanssi: 1 m, 1 mm² kuparia ≈ 17,2 mΩ", () => {
+    near(Calc.wireResistance(1, 1), 0.01724, 1e-6, "R");
+  });
+
+  /* Sarjaportti */
+  test("Nimetyt arvot", () => eq(Calc.parseLine("dist:12.5, gyro=-3"), { dist: 12.5, gyro: -3 }));
+  test("Välilyönnit kaksoispisteen ympärillä", () => eq(Calc.parseLine("a : 1  b: 2"), { a: 1, b: 2 }));
+  test("Pelkät luvut nimetään ch1, ch2…", () => eq(Calc.parseLine("1 2.5\t-3e2"), { ch1: 1, ch2: 2.5, ch3: -300 }));
+  test("Teksti ohitetaan", () => eq(Calc.parseLine("Käynnistyy... versio 1.2"), { ch1: 1.2 }));
+  test("Tyhjä rivi", () => eq(Calc.parseLine(""), {}));
+
+  /* Rotaatiot */
+  const matNear = (A, B, tol, what) => A.forEach((r, i) => r.forEach((v, j) => near(v, B[i][j], tol, `${what}[${i}][${j}]`)));
+  const ORDERS = ["ZYX", "XYZ", "ZXY", "YXZ", "ZYZ", "ZXZ"];
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (const frame of ["intrinsic", "extrinsic"]) for (const order of ORDERS) {
+    test(`Euler ${order} ${frame}: matriisi → kulmat → matriisi`, () => {
+      for (let n = 0; n < 50; n++) {
+        const ang = [rand() * 6 - 3, rand() * 2.8 - 1.4, rand() * 6 - 3];
+        if (order[0] === order[2]) ang[1] = rand() * 3 + 0.05;
+        const R = Kin.eulerToMat(ang, order, frame);
+        matNear(Kin.eulerToMat(Kin.matToEuler(R, order, frame), order, frame), R, 1e-9, "R");
+      }
+    });
+  }
+  test("Sisäinen ZYX = Rz·Ry·Rx", () => {
+    const R = Kin.eulerToMat([0.3, -0.4, 1.1], "ZYX");
+    matNear(R, Kin.mul(Kin.mul(Kin.rotAxis(2, 0.3), Kin.rotAxis(1, -0.4)), Kin.rotAxis(0, 1.1)), 1e-12, "R");
+  });
+  test("Sisäinen XYZ = ulkoinen ZYX käänteisillä kulmilla", () => {
+    matNear(Kin.eulerToMat([0.2, 0.5, -0.7], "XYZ", "intrinsic"), Kin.eulerToMat([-0.7, 0.5, 0.2], "ZYX", "extrinsic"), 1e-12, "R");
+  });
+  test("Kardaanilukko (pitch 90°) palauttaa saman rotaation", () => {
+    const R = Kin.eulerToMat([0.4, Math.PI / 2, -0.3], "ZYX");
+    const a = Kin.matToEuler(R, "ZYX");
+    matNear(Kin.eulerToMat(a, "ZYX"), R, 1e-9, "R");
+    if (!Kin.gimbalLocked(a, "ZYX")) throw new Error("lukkoa ei tunnistettu");
+  });
+  test("Kvaternio ↔ matriisi edestakaisin", () => {
+    for (let n = 0; n < 50; n++) {
+      const q = Kin.quatNormalize([rand() - 0.5, rand() - 0.5, rand() - 0.5, rand() - 0.5]);
+      const q2 = Kin.matToQuat(Kin.quatToMat(q));
+      const s = Math.sign(q[3]) || 1;
+      q.forEach((v, i) => near(q2[i], v * s, 1e-9, "q"));
+    }
+  });
+  test("Akseli–kulma: 90° Z-akselin ympäri", () => {
+    const R = Kin.quatToMat(Kin.axisAngleToQuat([0, 0, 1], Math.PI / 2));
+    matNear(R, [[0, -1, 0], [1, 0, 0], [0, 0, 1]], 1e-12, "R");
+    const aa = Kin.quatToAxisAngle(Kin.matToQuat(R));
+    near(aa.angle, Math.PI / 2, 1e-12, "kulma"); near(aa.axis[2], 1, 1e-12, "akseli");
+  });
+  test("Ortogonaalisuusvirhe tunnistaa väärän matriisin", () => {
+    near(Kin.orthoError(Kin.rotAxis(0, 0.7)), 0, 1e-12, "oikea");
+    if (Kin.orthoError([[1, 0, 0], [0, 2, 0], [0, 0, 1]]) < 0.5) throw new Error("ei tunnistettu");
+  });
+
+  /* Kinematiikka */
+  const planar2 = { convention: "classic", joints: [
+    { type: "R", theta: 0, d: 0, a: 0.3, alpha: 0, min: -Math.PI, max: Math.PI },
+    { type: "R", theta: 0, d: 0, a: 0.25, alpha: 0, min: -Math.PI, max: Math.PI }] };
+  const tip = (chain, q) => { const T = Kin.fk(chain, q).at(-1); return [T[0][3], T[1][3], T[2][3]]; };
+  test("FK 2R: x = a₁cos q₁ + a₂cos(q₁+q₂)", () => {
+    const p = tip(planar2, [0.4, 0.9]);
+    near(p[0], 0.3 * Math.cos(0.4) + 0.25 * Math.cos(1.3), 1e-12, "x");
+    near(p[1], 0.3 * Math.sin(0.4) + 0.25 * Math.sin(1.3), 1e-12, "y");
+  });
+  const ur = { convention: "classic", joints: [
+    { type: "R", theta: 0, d: 0.089, a: 0, alpha: Math.PI / 2 }, { type: "R", theta: 0, d: 0, a: -0.425, alpha: 0 },
+    { type: "R", theta: 0, d: 0, a: -0.392, alpha: 0 }, { type: "R", theta: 0, d: 0.109, a: 0, alpha: Math.PI / 2 },
+    { type: "R", theta: 0, d: 0.095, a: 0, alpha: -Math.PI / 2 }, { type: "R", theta: 0, d: 0.082, a: 0, alpha: 0 }] };
+  test("DH klassinen → modifioitu → klassinen säilyttää työkalun asennon", () => {
+    const q = [0.3, -1.1, 1.4, -0.6, 0.8, 0.2];
+    const T = Kin.fk(ur, q).at(-1);
+    const m = Kin.toModified(ur);
+    matNear(Kin.fk(m, q).at(-1), T, 1e-12, "mod");
+    matNear(Kin.fk(Kin.toClassic(m), q).at(-1), T, 1e-12, "takaisin");
+  });
+  test("Modifioitu → klassinen, kun ensimmäisellä rivillä on siirtymä", () => {
+    const m = { convention: "modified", joints: [
+      { type: "R", theta: 0, d: 0.1, a: 0.05, alpha: 0.4 }, { type: "P", theta: 0, d: 0, a: 0.2, alpha: -0.3 }], tool: { a: 0.1, alpha: 0 } };
+    const q = [0.7, 0.12];
+    matNear(Kin.fk(Kin.toClassic(m), q).at(-1), Kin.fk(m, q).at(-1), 1e-12, "T");
+  });
+  test("IK 2R analyyttinen osuu kohteeseen (molemmat kyynärpäät)", () => {
+    for (const up of [true, false]) {
+      const r = Kin.ik2R(planar2, 0.35, 0.2, up);
+      if (!r.reachable) throw new Error("ei ulottuvilla");
+      const p = tip(planar2, r.q);
+      near(p[0], 0.35, 1e-9, "x"); near(p[1], 0.2, 1e-9, "y");
+    }
+  });
+  test("IK 2R: ulottumattomissa oleva kohde tunnistetaan", () => {
+    eq(Kin.ik2R(planar2, 1, 0).reachable, false, "reachable");
+  });
+  test("IK DLS 6-DOF: osuu FK:n tuottamaan pisteeseen", () => {
+    const goal = tip(ur, [0.5, -1.2, 1.3, -0.4, 0.6, 0]);
+    const r = Kin.ikDls(ur, [0, -1, 1, 0, 0.5, 0], goal, { mode: "pos3", tol: 1e-6, maxIter: 500 });
+    if (!r.converged) throw new Error("ei konvergoinut, virhe " + r.err);
+    tip(ur, r.q).forEach((v, i) => near(v, goal[i], 1e-5, "p"));
+  });
+  test("IK DLS 3R asennolla", () => {
+    const c3 = { convention: "classic", joints: [...planar2.joints, { type: "R", theta: 0, d: 0, a: 0.1, alpha: 0 }] };
+    const goal = Kin.task(c3, [0.2, 0.8, -0.5], "planarOri");
+    const r = Kin.ikDls(c3, [0, 0.3, 0], goal, { mode: "planarOri", tol: 1e-7 });
+    if (!r.converged) throw new Error("ei konvergoinut");
+  });
+  test("Nivelrajat pidetään DLS:ssä", () => {
+    const lim = { ...planar2, joints: planar2.joints.map((j) => ({ ...j, min: -0.5, max: 0.5 })) };
+    const r = Kin.ikDls(lim, [0, 0], [0, 0.5], { mode: "planar" });
+    r.q.forEach((v) => { if (Math.abs(v) > 0.5 + 1e-12) throw new Error("raja ylitetty"); });
+  });
+  test("Ojennettu 2R on singulaarinen", () => {
+    near(Kin.manipulability(planar2, [0.3, 0], "planar"), 0, 1e-6, "w");
+  });
+  test("Tasomaisuus tunnistetaan", () => {
+    eq(Kin.isPlanar(planar2), true, "2R"); eq(Kin.isPlanar(ur), false, "UR");
+  });
+
+  /* Trajektorit */
+  const endState = (prof) => prof.sample(prof.T);
+  test("Kuutiopolynomi: reunaehdot paikka ja nopeus", () => {
+    const c = Motion.cubic(1, 3, 2, 0.5, -0.2);
+    near(c.sample(0)[0], 1, 1e-12, "p0"); near(c.sample(2)[0], 3, 1e-12, "p1");
+    near(c.sample(0)[1], 0.5, 1e-12, "v0"); near(c.sample(2)[1], -0.2, 1e-12, "v1");
+  });
+  test("Kvinttipolynomi: reunaehdot paikka, nopeus ja kiihtyvyys", () => {
+    const c = Motion.quintic(0, 1, 1.5, 0.1, 0.2, 0.3, -0.4);
+    const s0 = c.sample(0), s1 = c.sample(1.5);
+    near(s0[0], 0, 1e-12, "p0"); near(s1[0], 1, 1e-9, "p1"); near(s0[1], 0.1, 1e-12, "v0"); near(s1[1], 0.2, 1e-9, "v1");
+    near(s0[2], 0.3, 1e-12, "a0"); near(s1[2], -0.4, 1e-9, "a1");
+  });
+  test("Lepotilasta lepotilaan kuutio: huippunopeus 1,5·h/T", () => {
+    near(Motion.sampleProfile(Motion.cubic(0, 2, 4), 2000).vMax, 1.5 * 2 / 4, 1e-4, "vmax");
+  });
+  test("Trapetsi: kesto = h/v + v/a ja rajat pitävät", () => {
+    const tr = Motion.trapezoid(0, 10, 2, 1);
+    near(tr.T, 10 / 2 + 2 / 1, 1e-12, "T"); near(endState(tr)[0], 10, 1e-9, "loppu");
+    const s = Motion.sampleProfile(tr, 2000);
+    if (s.vMax > 2 + 1e-9 || s.aMax > 1 + 1e-9) throw new Error("raja ylittyi");
+  });
+  test("Trapetsi lyhyellä matkalla on kolmio", () => {
+    const tr = Motion.trapezoid(0, 1, 5, 1);
+    eq(tr.triangle, true, "kolmio"); near(tr.T, 2, 1e-12, "T"); near(endState(tr)[0], 1, 1e-12, "loppu");
+  });
+  test("Trapetsi negatiiviseen suuntaan", () => {
+    const tr = Motion.trapezoid(5, -3, 2, 4);
+    near(endState(tr)[0], -3, 1e-9, "loppu");
+    if (tr.sample(tr.T / 2)[1] >= 0) throw new Error("nopeuden pitäisi olla negatiivinen");
+  });
+  for (const [h, v, a, j] of [[10, 2, 1, 2], [0.5, 2, 1, 2], [3, 0.5, 4, 1], [0.01, 1, 1, 1000], [20, 3, 2, 0.5]]) {
+    test(`S-käyrä h=${h}, v=${v}, a=${a}, j=${j}: päätyy kohteeseen ja pysyy rajoissa`, () => {
+      const sc = Motion.scurve(0, h, v, a, j);
+      near(endState(sc)[0], h, 1e-9, "loppu");
+      near(sc.sample(sc.T - 1e-12)[0], h, 1e-6, "jatkuvuus");
+      const s = Motion.sampleProfile(sc, 4000);
+      if (s.vMax > v * (1 + 1e-9) || s.aMax > a * (1 + 1e-9) || s.jMax > j * (1 + 1e-9)) throw new Error(`raja ylittyi v=${s.vMax} a=${s.aMax} j=${s.jMax}`);
+    });
+  }
+
+  /* Reittisuunnittelu */
+  const mkGrid = (rows) => ({ w: rows[0].length, h: rows.length, occ: Uint8Array.from(rows.join("").split("").map((c) => (c === "#" ? 1 : 0))) });
+  const open5 = mkGrid([".....", ".....", ".....", ".....", "....."]);
+  test("A* vapaassa ruudukossa: vinoreitti 4·√2", () => {
+    near(Plan.gridSearch(open5, [0, 0], [4, 4], { algo: "astar" }).cost, 4 * Math.SQRT2, 1e-9, "pituus");
+  });
+  test("Ilman vinoliikettä Manhattan-pituus 8", () => {
+    near(Plan.gridSearch(open5, [0, 0], [4, 4], { diagonal: false }).cost, 8, 1e-9, "pituus");
+  });
+  const wall = mkGrid([".....", ".###.", ".#...", ".#.#.", "...#."]);
+  test("A* ja Dijkstra löytävät yhtä lyhyen reitin, A* tutkii vähemmän", () => {
+    const a = Plan.gridSearch(wall, [0, 0], [4, 4], { algo: "astar" });
+    const d = Plan.gridSearch(wall, [0, 0], [4, 4], { algo: "dijkstra" });
+    near(a.cost, d.cost, 1e-9, "pituus");
+    if (a.expanded.length > d.expanded.length) throw new Error("A* tutki enemmän");
+  });
+  test("Vinoliike ei leikkaa esteen kulmaa", () => {
+    const g = mkGrid([".#", "#."]);
+    eq(Plan.gridSearch(g, [0, 0], [1, 1]).found, false, "found");
+  });
+  test("Suljettu maali: ei reittiä", () => {
+    const g = mkGrid(["...#.", "...#.", "####."]);
+    eq(Plan.gridSearch(g, [0, 0], [4, 0]).found, false, "found");
+  });
+  test("RRT löytää reitin, joka ei törmää", () => {
+    const g = mkGrid(Array.from({ length: 20 }, (_, y) => Array.from({ length: 20 }, (_, x) => (x === 10 && y < 15 ? "#" : ".")).join("")));
+    const r = Plan.rrt(g, [2, 2], [17, 2], { iters: 5000, seed: 3 });
+    if (!r.found) throw new Error("ei löytynyt");
+    for (let k = 1; k < r.path.length; k++) if (!Plan.segmentFree(g, ...r.path[k - 1], ...r.path[k])) throw new Error("törmäys");
+  });
+  test("RRT* on vähintään yhtä lyhyt kuin RRT samalla siemenellä", () => {
+    const g = mkGrid(Array.from({ length: 20 }, () => "....................")) ;
+    const a = Plan.rrt(g, [1, 1], [18, 18], { iters: 1500, seed: 5 });
+    const b = Plan.rrt(g, [1, 1], [18, 18], { iters: 1500, seed: 5, star: true });
+    if (b.cost > a.cost + 1e-9) throw new Error(`RRT* ${b.cost} > RRT ${a.cost}`);
+  });
+  test("Lidar-säde osuu seinään oikealla etäisyydellä", () => {
+    const g = mkGrid(["......#..."]);
+    near(Plan.raycast(g, 0.5, 0.5, 0, 20).dist, 5.5, 1e-9, "etäisyys");
+  });
+  test("Log-odds-päivitys: vapaat solut negatiivisiksi, osuma positiiviseksi", () => {
+    const g = mkGrid(["......#..."]);
+    const L = new Float32Array(10);
+    const r = Plan.raycast(g, 0.5, 0.5, 0, 20);
+    Plan.updateRay(L, g, 0.5, 0.5, 0, r.dist, r.hit);
+    for (let i = 0; i < 6; i++) if (!(L[i] < 0)) throw new Error("solu " + i + " ei vapaa");
+    if (!(L[6] > 0)) throw new Error("osumasolu ei varattu");
+    eq(L[7], 0, "seinän takana");
+  });
+
+  /* Mobiilirobotti */
+  test("Suoraan ajo: x = v·t", () => {
+    let p = [0, 0, 0];
+    for (let i = 0; i < 100; i++) p = Robot.integrate(p, 0.5, 0, 0.01);
+    near(p[0], 0.5, 1e-12, "x"); near(p[1], 0, 1e-12, "y");
+  });
+  test("Ympyrä RK4: palaa lähtöön yhden kierroksen jälkeen", () => {
+    let p = [0, 0, 0];
+    const w = 1, n = 628, dt = (2 * Math.PI) / w / n;
+    for (let i = 0; i < n; i++) p = Robot.integrate(p, 0.5, w, dt, "rk4");
+    near(p[0], 0, 1e-6, "x"); near(p[1], 0, 1e-6, "y");
+  });
+  test("Euler kertaa enemmän virhettä kuin RK4 samalla askeleella", () => {
+    // Tarkka ratkaisu (v = ω = 1): x = sin t, y = 1 − cos t
+    const t = 6.3;
+    const run = (m) => { let p = [0, 0, 0]; for (let i = 0; i < 63; i++) p = Robot.integrate(p, 1, 1, 0.1, m); return Math.hypot(p[0] - Math.sin(t), p[1] - (1 - Math.cos(t))); };
+    if (!(run("euler") > 10 * run("rk4"))) throw new Error("Euler ei ollut selvästi epätarkempi");
+  });
+  test("Pyörät ↔ v, ω edestakaisin", () => {
+    const [wl, wr] = Robot.diffToWheels(0.4, 1.2, 0.03, 0.2);
+    const [v, w] = Robot.diffFromWheels(wl, wr, 0.03, 0.2);
+    near(v, 0.4, 1e-12, "v"); near(w, 1.2, 1e-12, "ω");
+  });
+  test("Pyöränopeuden rajoitus säilyttää kaarevuuden", () => {
+    const [wl, wr] = Robot.limitWheels(10, 30, 15);
+    near(wr, 15, 1e-12, "oikea"); near(wl / wr, 1 / 3, 1e-12, "suhde");
+  });
+  test("Pure Pursuit: suoraan edessä oleva kohde → kaarevuus 0", () => {
+    near(Robot.purePursuit([0, 0, 0], [[0, 0], [1, 0], [2, 0]], 0.5).curvature, 0, 1e-12, "κ");
+  });
+  test("Pure Pursuit: vasemmalla oleva kohde → positiivinen kaarevuus 1/r", () => {
+    // Piste (1, 1) on 1 m säteisellä ympyrällä, jonka keskipiste on (0, 1)
+    near(Robot.purePursuit([0, 0, 0], [[1, 1]], 0.1).curvature, 1, 1e-12, "κ");
+  });
+
+  /* TF ja URDF */
+  test("TF: lapsen maailmamuunnos = vanhempi · paikallinen", () => {
+    const { world } = TF.resolveFrames([
+      { name: "world", parent: "", xyz: [0, 0, 0], rpy: [0, 0, 0] },
+      { name: "base", parent: "world", xyz: [1, 0, 0], rpy: [0, 0, Math.PI / 2] },
+      { name: "sensor", parent: "base", xyz: [0.5, 0, 0], rpy: [0, 0, 0] }]);
+    near(world.sensor[0][3], 1, 1e-12, "x"); near(world.sensor[1][3], 0.5, 1e-12, "y");
+  });
+  test("TF: silmukka ja puuttuva vanhempi tunnistetaan", () => {
+    const r = TF.resolveFrames([{ name: "a", parent: "b", xyz: [0, 0, 0], rpy: [0, 0, 0] }, { name: "b", parent: "a", xyz: [0, 0, 0], rpy: [0, 0, 0] }, { name: "c", parent: "x", xyz: [0, 0, 0], rpy: [0, 0, 0] }]);
+    if (!r.errors.some((e) => e.includes("Silmukka"))) throw new Error("silmukkaa ei tunnistettu");
+    if (!r.errors.some((e) => e.includes('"x"'))) throw new Error("puuttuvaa vanhempaa ei tunnistettu");
+  });
+  test("TF: käänteismuunnos · muunnos = I", () => {
+    const T = TF.fromXyzRpy([0.3, -0.2, 0.5], [0.4, -0.7, 1.9]);
+    matNear(Kin.mul(TF.inverse(T), T), Kin.identity(4), 1e-12, "I");
+  });
+  test("RPY on ROS:n mukainen: R = Rz(y)·Ry(p)·Rx(r)", () => {
+    const T = TF.fromXyzRpy([0, 0, 0], [0.1, 0.2, 0.3]);
+    const R = Kin.mul(Kin.mul(Kin.rotAxis(2, 0.3), Kin.rotAxis(1, 0.2)), Kin.rotAxis(0, 0.1));
+    matNear(T.slice(0, 3).map((r) => r.slice(0, 3)), R, 1e-12, "R");
+  });
+  const URDF = `<robot name="t">
+    <link name="base"><visual><geometry><box size="0.2 0.1 0.05"/></geometry></visual></link>
+    <link name="arm"/><link name="tip"/>
+    <joint name="j1" type="revolute"><parent link="base"/><child link="arm"/><origin xyz="0 0 0.1"/><axis xyz="0 0 1"/><limit lower="-1" upper="1"/></joint>
+    <joint name="j2" type="prismatic"><parent link="arm"/><child link="tip"/><origin xyz="0.3 0 0"/><axis xyz="1 0 0"/><limit lower="0" upper="0.2"/></joint>
+  </robot>`;
+  test("URDF: jäsennys ja juurilinkki", () => {
+    const m = TF.parseUrdf(URDF);
+    eq(m.root, "base", "juuri"); eq(m.joints.length, 2, "nivelet"); eq(m.errors.length, 0, "virheet");
+    eq(m.links.base.visuals[0].geom.size, [0.2, 0.1, 0.05], "laatikko");
+  });
+  test("URDF: kiertyvä + liukuva nivel", () => {
+    const T = TF.urdfFk(TF.parseUrdf(URDF), { j1: Math.PI / 2, j2: 0.1 });
+    near(T.tip[0][3], 0, 1e-12, "x"); near(T.tip[1][3], 0.4, 1e-12, "y"); near(T.tip[2][3], 0.1, 1e-12, "z");
+  });
+  test("URDF: rikkinäinen XML ja puuttuva linkki", () => {
+    if (!TF.parseUrdf("<robot><link name='a'></robot>").error) throw new Error("XML-virhettä ei tunnistettu");
+    const m = TF.parseUrdf(`<robot name="x"><link name="a"/><joint name="j" type="fixed"><parent link="a"/><child link="b"/></joint></robot>`);
+    if (!m.errors.length) throw new Error("puuttuvaa linkkiä ei tunnistettu");
+  });
+
+  /* Regressiotestit (testauskierroksen löydökset) */
+  test("PID: pitkä simulaatio ei tee nopeasta laitoksesta epästabiilia", () => {
+    for (const T of [3, 30, 120]) {
+      const sim = Calc.simulatePid({ ...pidBase, kp: 2, ki: 4, tau: 0.01, T });
+      if (sim.unstable) throw new Error("epästabiili, T = " + T);
+      near(sim.y.at(-1), 1, 0.01, "loppuarvo T=" + T);
+    }
+  });
+  test("PID: kuvaajaan enintään ~2000 pistettä", () => {
+    if (Calc.simulatePid({ ...pidBase, kp: 1, T: 120 }).t.length > 2101) throw new Error("liikaa pisteitä");
+  });
+  test("PID: häiriön alkuhetki 0 = ei häiriötä", () => {
+    const a = Calc.simulatePid({ ...pidBase, kp: 2, ki: 1 });
+    const b = Calc.simulatePid({ ...pidBase, kp: 2, ki: 1, distMag: 5, distT: 0 });
+    near(b.y.at(-1), a.y.at(-1), 1e-12, "loppuarvo");
+  });
+  test("Kuvaajan asteikko: lähes samat arvot eivät jumita", () => {
+    const r = niceTicks(0.3, 0.30000000000000004, 5);
+    if (r.ticks.length > 50) throw new Error("liikaa jakoviivoja");
+  });
+  test("RRT: lähtö = maali → reitin pituus 0", () => {
+    const r = Plan.rrt(open5, [2, 2], [2, 2], { seed: 1 });
+    eq(r.found, true, "found"); eq(r.cost, 0, "pituus");
+  });
+
+  const failed = results.filter((r) => !r.ok);
+  document.getElementById("summary").innerHTML = failed.length
+    ? `<b class="fail">${failed.length} / ${results.length} testiä epäonnistui</b>`
+    : `<b class="pass">Kaikki ${results.length} testiä läpäisty</b>`;
+  document.getElementById("out").innerHTML = results.map((r) =>
+    `<li class="${r.ok ? "pass" : "fail"}">${r.ok ? "✓" : "✗"} ${r.name}${r.msg ? ` — <code>${r.msg}</code>` : ""}</li>`).join("");
+  window.testResults = { passed: results.length - failed.length, failed: failed.map((f) => f.name + ": " + f.msg) };
+</script>
+</body>
+</html>

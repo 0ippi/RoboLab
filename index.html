@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fi" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoboLab</title>
+<meta name="description" content="Robotiikan laskimet, simulaatiot, robottirakentajat, neuroverkkokoulutus ja kurssit.">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+<!-- 3D-kirjastot ladataan vasta tarvittaessa. Kaikki 3D-näkymät käyttävät samaa Three.js-versiota. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+    "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- Sivupalkki -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24"><rect x="5" y="7" width="14" height="11" rx="2"/><circle cx="9.5" cy="12.5" r="1.4"/><circle cx="14.5" cy="12.5" r="1.4"/><path d="M12 7V4M10 4h4M3 11v4M21 11v4"/></svg>
+      </div>
+      <div class="brand-text">
+        <strong>RoboLab</strong>
+        <span>Robotiikan työkalut</span>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-footer">
+      <a href="#/settings" class="nav-item" data-route="settings">
+        <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        <span class="label">Asetukset</span>
+      </a>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Pääalue -->
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="sidebar-toggle" title="Sivupalkki (Ctrl+B)" aria-label="Näytä tai piilota sivupalkki">
+        <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+      <div class="crumbs" id="crumbs"></div>
+      <button class="search" id="palette-open">
+        <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span>Hae työkaluja…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+      <button class="btn install-btn" id="install-app" hidden>
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+        <span>Asenna sovellus</span>
+      </button>
+    </header>
+
+    <div class="work">
+      <main class="content" id="content"></main>
+      <!-- Kurssin oppitunti työkalun vieressä -->
+      <aside class="lesson" id="lesson" hidden aria-label="Oppitunti"></aside>
+    </div>
+
+    <footer class="statusbar" id="statusbar"></footer>
+  </div>
+</div>
+
+<!-- Komentopaletti -->
+<div class="palette-backdrop" id="palette" hidden>
+  <div class="palette" role="dialog" aria-label="Komentopaletti">
+    <input id="palette-input" placeholder="Kirjoita työkalun tai komennon nimi…" autocomplete="off">
+    <ul id="palette-list"></ul>
+  </div>
+</div>
+
+<!-- Pikanäppäimet -->
+<div class="palette-backdrop" id="shortcuts-dialog" hidden>
+  <div class="palette dlg" role="dialog" aria-modal="true" aria-labelledby="sc-title">
+    <div class="dlg-head"><h2 id="sc-title"></h2><button class="btn"></button></div>
+    <div class="dlg-body"></div>
+  </div>
+</div>
+
+<!-- Tekoälyavustaja -->
+<button class="ai-fab" id="ai-fab" aria-haspopup="dialog"></button>
+<aside class="ai-panel" id="ai-panel" hidden role="dialog" aria-labelledby="ai-title"></aside>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="version.js"></script>
+<script src="accounts.js"></script>
+<script src="i18n.js"></script>
+<script src="calc.js"></script>
+<script src="kin.js"></script>
+<script src="motion.js"></script>
+<script src="plan.js"></script>
+<script src="robot.js"></script>
+<script src="app.js"></script>
+<script src="robots.js"></script>
+<script src="library.js"></script>
+<script src="account-ui.js"></script>
+<script src="plot.js"></script>
+<script src="view3d.js"></script>
+<script src="gridmap.js"></script>
+<script src="three-view.js"></script>
+<script src="arm-view.js"></script>
+<script src="tools/traj.js"></script>
+<script src="tools/path.js"></script>
+<script src="tools/occmap.js"></script>
+<script src="tools/mobile.js"></script>
+<script src="tools/scene3d.js"></script>
+<script src="tools/units.js"></script>
+<script src="tools/rotation.js"></script>
+<script src="tools/arm.js"></script>
+<script src="tools/projects.js"></script>
+<script src="tools/pid.js"></script>
+<script src="tools/motor.js"></script>
+<script src="tools/power.js"></script>
+<script src="tools/serial.js"></script>
+<script src="tools/vision.js"></script>
+<!-- Robottien tekoäly (RoboSim): neuroverkko, koulutus ja 2D-fysiikka; 3D ja rakentaja ladataan moduuleina tarvittaessa -->
+<script src="robosim/core/util.js"></script>
+<script src="robosim/core/models.js"></script>
+<script src="robosim/core/tasks.js"></script>
+<script src="robosim/core/terrain.js"></script>
+<script src="robosim/core/robot.js"></script>
+<script src="robosim/core/brain.js"></script>
+<script src="robosim/core/deploy.js"></script>
+<script src="robosim/core/usb.js"></script>
+<script src="robosim/core/trainer.js"></script>
+<script src="robosim/core/sim.js"></script>
+<script src="robosim/core/deco.js"></script>
+<script src="robosim/core/render.js"></script>
+<script src="tools/nn.js"></script>
+<script src="tools/builder.js"></script>
+<script src="courses.js"></script>
+<script src="assistant.js"></script>
+</body>
+</html>
