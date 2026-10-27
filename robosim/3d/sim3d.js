@@ -5,8 +5,15 @@ import { Robot3D, modelInfo3D } from './robot3d.js';
 
 export const DT = 1 / 60;
 
-function makeTargets(model, terrain, rng, start) {
+function makeTargets(model, terrain, rng, start, own) {
   const list = [];
+  // Käyttäjän omat reittipisteet: maassa kulkevalle robotille maan pinnalle, ilmassa liikkuvalle annetulle korkeudelle
+  if (own?.length) {
+    return own.map((p) => {
+      const x = +p.x || 0, z = +p.z || 0;
+      return { x, y: Number.isFinite(p.y) ? p.y : terrain.heightAt(x, z), z };
+    });
+  }
   // Mallin oma kohdealue (esim. robottikäden ulottuvilla olevat pisteet ilmassa)
   const area = model.target;
   if (area) {
@@ -30,7 +37,7 @@ function makeTargets(model, terrain, rng, start) {
 }
 
 export class Episode3D {
-  // cfg: { RAPIER, model, taskFn, terrain, seed, population, layers, duration }
+  // cfg: { RAPIER, model, taskFn, terrain, seed, population, layers, duration, targets? }
   constructor(cfg) {
     this.cfg = cfg;
     const R = cfg.RAPIER;
@@ -54,7 +61,7 @@ export class Episode3D {
       };
     });
     const r0 = this.agents[0].robot;
-    this.targets = makeTargets(cfg.model, this.terrain, RS.rng(cfg.seed + 7), { x: r0.startX, z: r0.startZ });
+    this.targets = makeTargets(cfg.model, this.terrain, RS.rng(cfg.seed + 7), { x: r0.startX, z: r0.startZ }, cfg.targets);
     for (const a of this.agents) a.prevTargetDist = this.targetDist(a);
   }
 

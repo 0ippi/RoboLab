@@ -22,7 +22,7 @@ function run(d) {
   try {
     ep = new Episode3D({
       RAPIER, model: d.model, taskFn: new Function('s', 'm', d.code), terrain: d.terrain, seed: d.seed,
-      population: d.population, layers: d.layers, duration: d.duration,
+      population: d.population, layers: d.layers, duration: d.duration, targets: d.targets,
     });
     while (!ep.finished) ep.step();
     postMessage({ type: 'done', id: d.id, fitness: ep.fitness() });

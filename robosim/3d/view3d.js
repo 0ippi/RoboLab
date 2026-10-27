@@ -4,6 +4,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { shapeTransform } from './robot3d.js';
 import * as Look from './look.js';
 
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
+
 export class View3D {
   constructor(canvas) {
     this.canvas = canvas;
@@ -53,7 +55,12 @@ export class View3D {
 
     this.terrainGroup = new THREE.Group();
     this.robotGroup = new THREE.Group();
-    this.scene.add(this.terrainGroup, this.robotGroup);
+    // Anturipisteet (maaston korkeusmittaus edessä) ja omat reittipisteet
+    this.scanGroup = new THREE.Group();
+    this.wpGroup = new THREE.Group();
+    this.scene.add(this.terrainGroup, this.robotGroup, this.scanGroup, this.wpGroup);
+    this.wpKey = '';
+    this.race = null;
     this.materials = new Map();
     this.episode = null;
     this.follow = true;
@@ -76,12 +83,13 @@ export class View3D {
     g.clear();
   }
 
-  // Rakentaa maaston ja robottien kappaleet uutta episodia varten.
-  setEpisode(ep) {
+  // Rakentaa maaston ja robottien kappaleet uutta episodia varten. race: kisaajien värit (kaikki näkyvät täysin)
+  setEpisode(ep, race) {
     const sameTerrain = this.episode && this.episode.cfg.terrain === ep.cfg.terrain && this.episode.cfg.seed === ep.cfg.seed;
     this.episode = ep;
-    if (!sameTerrain) this.buildTerrain(ep.terrain);
+    if (!sameTerrain) { this.buildTerrain(ep.terrain); this.wpKey = ''; }
     this.clearGroup(this.robotGroup);
+    this.race = race || null;
     // Geometriat jaetaan kaikkien robottien kesken.
     const geoms = ep.cfg.model.bodies.map((b) => b.shapes.map((s) => this.geometry(s)));
     ep.agents.forEach((a) => {
@@ -108,9 +116,64 @@ export class View3D {
         groups[a.robot.parts.indexOf(t.part)].add(cone);
         return { cone, t };
       });
-      this.setFocusStyle(a, false);
+      this.setFocusStyle(a, !!this.race);
     });
     this.lastFocus = null;
+    // Kisassa jokaisen robotin yllä on oman värinen merkki (kartio kärki alaspäin)
+    this.raceMarks = (this.race || []).map((color) => {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.34, 16), new THREE.MeshBasicMaterial({ color }));
+      m.rotation.x = Math.PI;
+      this.robotGroup.add(m);
+      return m;
+    });
+  }
+
+  // Ruudun piste maastoon: reittipisteiden asettaminen klikkaamalla. Palauttaa { x, y, z } tai null.
+  pick(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE.Raycaster();
+    this.camera.updateMatrixWorld();
+    ray.setFromCamera(ndc, this.camera);
+    const hit = ray.intersectObjects(this.terrainGroup.children, false).find((h) => h.object.isMesh && !h.object.material.wireframe);
+    if (hit) return { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+    const p = new THREE.Vector3();
+    return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p) ? { x: p.x, y: 0, z: p.z } : null;
+  }
+
+  // Omat reittipisteet: tolpat ja niitä yhdistävä viiva. Rakennetaan uudelleen vain, kun pisteet muuttuvat.
+  drawWaypoints(list) {
+    const key = list ? JSON.stringify(list.map((p) => [p.x, p.y, p.z].map((v) => +v.toFixed(2)))) : '';
+    if (key === this.wpKey) return;
+    this.wpKey = key;
+    this.clearGroup(this.wpGroup);
+    if (!list?.length) return;
+    const mat = new THREE.MeshBasicMaterial({ color: this.theme.target });
+    for (const p of list) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 8), mat);
+      pole.position.set(p.x, p.y + 0.35, p.z);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), mat);
+      ball.position.set(p.x, p.y + 0.72, p.z);
+      this.wpGroup.add(pole, ball);
+    }
+    const pts = [...list, list[0]].map((p) => new THREE.Vector3(p.x, p.y + 0.05, p.z));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineDashedMaterial({ color: this.theme.target, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: 0.7 }));
+    line.computeLineDistances();
+    this.wpGroup.add(line);
+  }
+
+  // Maaston korkeusanturin mittauspisteet pieninä palloina
+  drawScan(points) {
+    while (this.scanGroup.children.length < (points?.length || 0)) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshBasicMaterial({ color: this.theme.target }));
+      this.scanGroup.add(m);
+    }
+    this.scanGroup.children.forEach((m, i) => {
+      const p = points?.[i];
+      m.visible = !!p;
+      if (p) m.position.set(p.x, p.y + 0.03, p.z);
+    });
   }
 
   buildTerrain(t) {
@@ -173,26 +236,47 @@ export class View3D {
     for (const tv of a.thrustViews || []) tv.cone.visible = focused;
   }
 
+  // opts: { focus, showAll, follow, snap, showTarget, lerp, scan, orbit, waypoints }
   draw(opts) {
     const ep = this.episode;
     if (ep) {
-      const focus = opts.focus;
-      if (focus !== this.lastFocus) {
+      const focus = opts.focus, race = this.race;
+      if (!race && focus !== this.lastFocus) {
         if (this.lastFocus != null && ep.agents[this.lastFocus]) this.setFocusStyle(ep.agents[this.lastFocus], false);
         if (focus >= 0) this.setFocusStyle(ep.agents[focus], true);
         this.lastFocus = focus;
       }
+      const L = opts.lerp;
       ep.agents.forEach((a, i) => {
-        const visible = a.robot.parts.length > 0 && (opts.showAll || i === focus);
+        const visible = a.robot.parts.length > 0 && (race || opts.showAll || i === focus);
         a.view.forEach((g, bi) => {
           g.visible = visible;
           if (!visible) return;
           const body = a.robot.parts[bi].body;
           const p = body.translation(), r = body.rotation();
-          g.position.set(p.x, p.y, p.z);
-          g.quaternion.set(r.x, r.y, r.z, r.w);
+          const q = L && L.prev.get(body);
+          if (q) {
+            // Hidastettu uusinta: liike tasoitetaan kahden fysiikka-askeleen välillä
+            const k = L.alpha;
+            g.position.set(q.p.x + (p.x - q.p.x) * k, q.p.y + (p.y - q.p.y) * k, q.p.z + (p.z - q.p.z) * k);
+            g.quaternion.slerpQuaternions(_qa.set(q.q.x, q.q.y, q.q.z, q.q.w), _qb.set(r.x, r.y, r.z, r.w), k);
+          } else {
+            g.position.set(p.x, p.y, p.z);
+            g.quaternion.set(r.x, r.y, r.z, r.w);
+          }
         });
       });
+      (this.raceMarks || []).forEach((m, i) => {
+        const a = ep.agents[i];
+        m.visible = !!a && a.robot.parts.length > 0;
+        if (!m.visible) return;
+        let top = -Infinity;
+        for (const part of a.robot.parts) top = Math.max(top, part.body.translation().y);
+        const p = ep.positionOf(a);
+        m.position.set(p.x, top + 0.75, p.z);
+      });
+      this.drawWaypoints(opts.showTarget && opts.waypoints?.length ? ep.targets : null);
+      this.drawScan(opts.scan);
 
       if (focus >= 0) {
         const fa = ep.agents[focus];
@@ -209,6 +293,13 @@ export class View3D {
           this.controls.target.x += dx; this.controls.target.y += dy; this.controls.target.z += dz;
           this.camera.position.x += dx; this.camera.position.y += dy; this.camera.position.z += dz;
         }
+        // Kiertävä kamera: hidas kierros robotin ympäri (uusinnassa), käyttäjän veto keskeyttää
+        if (opts.orbit && !this.userMoving) {
+          const t = this.controls.target, cp = this.camera.position;
+          const dx = cp.x - t.x, dz = cp.z - t.z, c = Math.cos(0.004), s = Math.sin(0.004);
+          cp.x = t.x + dx * c - dz * s;
+          cp.z = t.z + dx * s + dz * c;
+        }
         this.sun.position.set(p.x + 6, p.y + 12, p.z + 4);
         this.sun.target.position.set(p.x, p.y, p.z);
         const tg = ep.targetOf(fa);
@@ -224,6 +315,8 @@ export class View3D {
   dispose() {
     this.clearGroup(this.terrainGroup);
     this.clearGroup(this.robotGroup);
+    this.clearGroup(this.scanGroup);
+    this.clearGroup(this.wpGroup);
     for (const m of this.materials.values()) m.dispose();
     this.controls.dispose();
     this.renderer.dispose();
