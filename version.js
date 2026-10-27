@@ -3,6 +3,23 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.6.0", date: "2026-10-27",
+    fi: ["Robotinrakentaja: valitse useita osia Ctrl+klikkauksella tai vetämällä valintalaatikko (2D: veto tyhjästä kohdasta, 3D: Shift+veto tai ⬚-nappi), ja siirrä, käännä tai skaalaa ne yhdessä.",
+      "Kiinnitykset ovat selvempiä: osaa siirrettäessä siihen kiinnitetyt osat tulevat mukana (Alt + veto siirtää vain sen), katkoviivat näyttävät, mitkä osat ovat kiinni toisissaan, ja irralliset osat saavat punaisen kehyksen.",
+      "Uusi skaalaus (S): venytä osaa yhteen suuntaan tai skaalaa monta osaa kerralla. Koko robotin voi skaalata prosentteina.",
+      "Roottorit toimivat nyt fysiikkatestissä: lentoavustin pitää robotin vaakatasossa, ja liukusäätimillä ohjataan nousua ja suuntaa. Lavat pyörivät tehon mukaan.",
+      "Uusia valmisosia: pyöräpari, tukipyörä, käsivarsi, tarttuja, häntä, lidar ja kamera.",
+      "Kurssit huomaavat nyt kaikki tehtävät itse, eikä Tein sen -nappia enää ole.",
+      "Opettajille-sivu kuuluu vain Teacher-tasoon."],
+    en: ["Robot builder: select several parts with Ctrl+click or by dragging a selection box (2D: drag from empty space, 3D: Shift+drag or the ⬚ button), then move, rotate or scale them together.",
+      "Clearer attachments: when you move a part, the parts attached to it come along (Alt + drag moves it alone), dashed lines show which parts are joined, and loose parts get a red frame.",
+      "New scaling (S): stretch a part in one direction or scale several parts at once. You can scale the whole robot by a percentage.",
+      "Rotors now work in the physics test: flight assist keeps the robot level, and the sliders control climbing and direction. The blades spin with the power.",
+      "New ready-made parts: wheel pair, caster, arm, gripper, tail, lidar and camera.",
+      "Courses now notice every task by themselves, so there is no more I did it button.",
+      "The For teachers page is part of the Teacher plan only."],
+  },
+  {
     version: "2.5.0", date: "2026-10-27",
     fi: ["Kehittäjille: Tasot-sivun kehittäjätilassa voi antaa lisenssin (Education, Teacher tai Pro) kenelle tahansa pilvitilin käyttäjälle sähköpostin perusteella, asettaa Teacher-lisäpaikat ja voimassaolon sekä poistaa lisenssin. Voimassa olevat lisenssit näkyvät listana."],
     en: ["For developers: in developer mode on the Plans page you can give a licence (Education, Teacher or Pro) to any cloud account user by email, set Teacher extra seats and an end date, and remove a licence. Active licences are shown in a list."],
