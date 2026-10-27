@@ -760,7 +760,7 @@ async function test(name, fn) {
     w.Courses.start("nav");
     await sleep(600);
     const nav = C.find((c) => c.id === "nav"), i = nav.steps.findIndex((s) => s.id === "grid");
-    w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`).click();
+    (await waitFor(() => w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`), 6000, "vaihepiste")).click();
     await waitFor(() => w.location.hash === "#/path" && w.document.querySelector("#pt-play"), 4000, "reitinhaku");
     ok(!w.document.querySelector('#lesson [data-l="manual-done"]'), "Tein sen -nappi näkyy");
     w.document.querySelector("#pt-play").click();
@@ -776,9 +776,9 @@ async function test(name, fn) {
     const progress = () => JSON.parse(ls().get("robolab-courses-v1") || "{}").c || {};
     for (const course of C) {
       w.Courses.start(course.id);
-      await sleep(300);
+      await waitFor(() => w.document.querySelector("#lesson:not([hidden]) .lesson-dots"), 6000, `${course.id}: oppituntipaneeli`);
       for (const [i, step] of course.steps.entries()) {
-        w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`).click();
+        (await waitFor(() => w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`), 6000, `${course.id}/${step.id}: vaihepiste`)).click();
         await waitFor(() => w.location.hash === "#/" + step.tool && w.document.querySelector("#content .page-head"), 6000, `${course.id}/${step.id}: työkalu`);
         await sleep(["nn2d", "nn3d", "build2d", "build3d"].includes(step.tool) ? 1500 : 900);
         const done = Object.keys(progress()[course.id]?.steps?.[step.id]?.tasks || {}).filter((id) => !step.tasks.find((t) => t.id === id)?.auto);
@@ -821,7 +821,7 @@ async function test(name, fn) {
     w.document.querySelector('[data-tab="check"]').click();
     await waitFor(() => tasks().check, 3000, "Tarkistus-välilehti");
     const turn = w.Courses._courses.find((c) => c.id === "start").steps.findIndex((s) => s.id === "turn");
-    w.document.querySelector(`#lesson [data-l="go"][data-i="${turn}"]`).click();
+    (await waitFor(() => w.document.querySelector(`#lesson [data-l="go"][data-i="${turn}"]`), 6000, "vaihepiste")).click();
     await waitFor(() => w.location.hash === "#/sim2d" && w.document.querySelector("#mb-stats"), 4000, "mobiilirobotti");
     await sleep(500);
     ok(/Vasen pyörä|Left wheel/.test(w.document.querySelector("#mb-stats").textContent), "pyörien nopeudet puuttuvat");
