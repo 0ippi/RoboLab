@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.5.0", date: "2026-10-27",
+    fi: ["Kehittäjille: Tasot-sivun kehittäjätilassa voi antaa lisenssin (Education, Teacher tai Pro) kenelle tahansa pilvitilin käyttäjälle sähköpostin perusteella, asettaa Teacher-lisäpaikat ja voimassaolon sekä poistaa lisenssin. Voimassa olevat lisenssit näkyvät listana."],
+    en: ["For developers: in developer mode on the Plans page you can give a licence (Education, Teacher or Pro) to any cloud account user by email, set Teacher extra seats and an end date, and remove a licence. Active licences are shown in a list."],
+  },
+  {
     version: "2.4.2", date: "2026-10-27",
     fi: ["Korjattu pilvitilin salasanan vaihto: sähköpostin linkki avaa nyt RoboLabin lomakkeen, jossa asetat uuden salasanan. Linkki toimii millä tahansa selaimella ja laitteella. Vanhentuneesta tai jo käytetystä linkistä kerrotaan selvästi."],
     en: ["Fixed cloud account password reset: the email link now opens a RoboLab form where you set a new password. The link works in any browser and on any device. An expired or already used link is clearly reported."],
