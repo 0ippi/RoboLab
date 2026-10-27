@@ -76,8 +76,18 @@ function makeSupabaseMock() {
       },
       async getSession() { return { data: { session: sess() } }; },
       async signOut() { S().delete("rlcloud-auth"); return { error: null }; },
-      async resetPasswordForEmail() { return { error: null }; },
-      async updateUser() { return { error: null }; },
+      async resetPasswordForEmail(email, o) { server.lastReset = { email, redirectTo: o?.redirectTo }; return { error: null }; },
+      // Vaihtolinkin testitunnus: access_token = "tok-" + käyttäjän id
+      async setSession({ access_token }) {
+        const u = [...server.users.values()].find((x) => "tok-" + x.user.id === access_token);
+        if (!u) return { data: { session: null }, error: { message: "invalid JWT" } };
+        server.recovering = u;
+        return { data: { session: { user: u.user } }, error: null };
+      },
+      async updateUser({ password } = {}) {
+        if (password && server.recovering) { server.recovering.password = password; server.recovering = null; }
+        return { error: null };
+      },
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
     },
     from: () => query(),
@@ -585,6 +595,30 @@ async function test(name, fn) {
     try { await w.Cloud.signUp({ email: "aino@example.com", password: "salasana123", name: "X" }); } catch (e) { e2 = e.message; }
     ok(e1 && !/invalid login/i.test(e1) && /salasana|password/i.test(e1), "väärä salasana: " + e1);
     ok(e2 && /jo pilvitili|already/i.test(e2), "olemassa oleva tili: " + e2);
+  });
+
+  await test("Salasanan vaihtolinkki: uusi salasana kysytään, vanhentunut linkki kerrotaan", async () => {
+    await w.Cloud.resetPassword("aino@example.com");
+    eq(mock.server.lastReset.redirectTo, "https://0ippi.github.io/RoboLab/", "paluuosoite");
+    const aino = mock.server.users.get("aino@example.com");
+    await boot(`#access_token=tok-${aino.user.id}&refresh_token=r&expires_in=3600&token_type=bearer&type=recovery`);
+    eq(w.location.hash, "#/dashboard", "tunnus jäi osoitteeseen");
+    const d = w.document;
+    await waitFor(() => d.querySelector("#acc-recover"), 4000, "uuden salasanan lomake");
+    d.querySelector("#rc-pw").value = "uusisalasana1"; d.querySelector("#rc-pw2").value = "eri";
+    d.querySelector("#acc-recover").requestSubmit();
+    ok(!d.querySelector("#rc-err").hidden, "eri salasanat hyväksyttiin");
+    d.querySelector("#rc-pw2").value = "uusisalasana1";
+    d.querySelector("#acc-recover").requestSubmit();
+    await waitFor(() => d.querySelector("#acc-cloud"), 3000, "kirjautumislomake");
+    eq(d.querySelector("#cl-email").value, "aino@example.com", "sähköposti");
+    eq(aino.password, "uusisalasana1", "salasana ei vaihtunut");
+    await w.Cloud.signIn({ email: "aino@example.com", password: "uusisalasana1" });
+    await boot("#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+    await waitFor(() => w.document.querySelector("#acc-cloud #cl-err:not([hidden])"), 4000, "vanhentuneen linkin ilmoitus");
+    ok(/vanhentunut|expired/i.test(w.document.querySelector("#cl-err").textContent), "ilmoitus");
+    w.document.querySelector(".acc-gate").remove(); w.document.body.classList.remove("acc-locked");
+    [...w.document.body.children].forEach((c) => (c.inert = false));
   });
 
   await test("Sähköpostivahvistus: tili luodaan vasta kirjautumalla, vieraan työ siirtyy silloin", async () => {

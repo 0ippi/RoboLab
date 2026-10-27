@@ -136,10 +136,39 @@ const Cloud = (() => {
     Accounts.logout();
   }
 
+  // Salasanan vaihto käyttää erillistä, tallentamatonta asiakasta implisiittisellä virralla: linkki toimii
+  // millä tahansa selaimella ja laitteella (PKCE vaatisi saman selaimen) eikä koske laitteen kirjautumiseen.
+  async function tempClient() {
+    if (MOCK) return MOCK;
+    if (!configured) throw new Error("not-configured");
+    let m;
+    try { m = await import(LIB); } catch { throw new Error("network"); }
+    return m.createClient(CFG.url, CFG.anonKey, { auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "rlcloud-reset" } });
+  }
+
   async function resetPassword(email) {
-    const c = await lib();
-    const { error } = await c.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    const c = await tempClient();
+    const { error } = await c.auth.resetPasswordForEmail(email, { redirectTo: CFG.siteUrl || location.origin + location.pathname });
     if (error) fail(error);
+  }
+
+  // Vaihtolinkistä palattu (index.html otti #access_token=…&type=recovery talteen)
+  let recovery = null;
+  function readRecovery() {
+    const h = window.__robolabAuthHash;
+    if (!h) return null;
+    const p = new URLSearchParams(h);
+    if (p.get("type") === "recovery" && p.get("access_token")) return { access_token: p.get("access_token"), refresh_token: p.get("refresh_token") || "" };
+    if (p.get("error_code")) return { error: p.get("error_code") };
+    return null;
+  }
+  async function finishRecovery(password) {
+    if (!recovery?.client) fail(new Error(tr("Vaihtolinkki ei ole enää voimassa. Pyydä uusi linkki.", "The reset link is no longer valid. Ask for a new link.")));
+    const { error } = await recovery.client.auth.updateUser({ password });
+    if (error) fail(error);
+    const email = recovery.email;
+    recovery = null;
+    return { email };
   }
 
   // Pilvitilin ja kaikkien pilvessä olevien tietojen poisto; tämän laitteen tiedot poistetaan myös
@@ -247,21 +276,26 @@ const Cloud = (() => {
     } catch {}
   }
 
-  // Salasanan vaihto sähköpostilinkin kautta (PKCE: linkki avataan samalla laitteella)
+  // Salasanan vaihto sähköpostilinkin kautta: uusi salasana kysytään kirjautumisnäkymässä (account-ui.js)
   async function handleRecovery() {
-    if (!/[?&]code=/.test(location.search)) return;
+    const r = readRecovery();
+    if (!r) return;
+    const show = (mode, opts) => window.AccountsUI?.showLogin(mode, opts);
+    if (r.error) {
+      setTimeout(() => show("cloud", { notice: /expired|invalid/i.test(r.error)
+        ? tr("Salasanan vaihtolinkki on vanhentunut tai jo käytetty. Pyydä uusi linkki: kirjoita sähköpostisi ja valitse Unohtuiko salasana?", "The password reset link has expired or was already used. Ask for a new one: type your email and choose Forgot your password?")
+        : tr("Salasanan vaihtolinkki ei toiminut. Pyydä uusi linkki.", "The password reset link didn't work. Ask for a new link.") }), 300);
+      return;
+    }
     try {
-      const c = await lib();
-      c.auth.onAuthStateChange(async (event) => {
-        if (event !== "PASSWORD_RECOVERY") return;
-        const pw = prompt(tr("Anna uusi salasana pilvitilillesi (vähintään 8 merkkiä):", "Enter a new password for your cloud account (at least 8 characters):"));
-        if (!pw) return;
-        const { error } = await c.auth.updateUser({ password: pw });
-        toast(error ? friendly(error) : tr("Salasana vaihdettu. Kirjaudu sisään uudella salasanalla.", "Password changed. Sign in with the new password."));
-      });
-      await c.auth.getSession();
-    } catch {}
-    history.replaceState(null, "", location.pathname + location.hash);
+      const c = await tempClient();
+      const { data, error } = await c.auth.setSession(r);
+      if (error || !data?.session) throw error || new Error("no session");
+      recovery = { client: c, email: data.session.user?.email || "" };
+      setTimeout(() => show("recover", { email: recovery.email }), 300);
+    } catch {
+      setTimeout(() => show("cloud", { notice: tr("Salasanan vaihtolinkki on vanhentunut tai jo käytetty. Pyydä uusi linkki.", "The password reset link has expired or was already used. Ask for a new link.") }), 300);
+    }
   }
 
   function start() {
@@ -276,7 +310,7 @@ const Cloud = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else setTimeout(start);
 
   return {
-    configured, status, signUp, signIn, signOut, hasSession, resetPassword, deleteAccount, sync, resolve, tick, friendly, rpc,
+    configured, status, signUp, signIn, signOut, hasSession, resetPassword, finishRecovery, deleteAccount, sync, resolve, tick, friendly, rpc,
     onStatus: (f) => { listeners.add(f); return () => listeners.delete(f); },
     _hash: hash, _collect: collect, _meta: metaOf,
   };

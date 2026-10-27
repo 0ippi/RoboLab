@@ -57,7 +57,7 @@
         const email = gate.querySelector("#cl-email").value.trim();
         if (b.dataset.cl === "reset") {
           if (!email) { err(tr("Kirjoita ensin sähköpostiosoitteesi.", "Type your email address first.")); return; }
-          try { await Cloud.resetPassword(email); err(""); toast(tr("Lähetimme salasanan vaihtolinkin sähköpostiisi. Avaa se tällä laitteella.", "We sent a password reset link to your email. Open it on this device.")); }
+          try { await Cloud.resetPassword(email); err(""); toast(tr("Lähetimme salasanan vaihtolinkin sähköpostiisi. Linkki avaa RoboLabin, jossa voit asettaa uuden salasanan.", "We sent a password reset link to your email. The link opens RoboLab, where you can set a new password.")); }
           catch (e) { err(e.message); }
           return;
         }
@@ -84,7 +84,37 @@
       };
     };
     const draw = (view) => {
-      if (view === "cloud") { drawCloud(opts.cloudMode || "signin"); return; }
+      if (view === "cloud") { drawCloud(opts.cloudMode || "signin", opts.notice || ""); opts.notice = ""; return; }
+      if (view === "recover") {
+        // Sähköpostin vaihtolinkistä palattu (cloud.js): uusi salasana pilvitilille
+        gate.innerHTML = `<form class="acc-card" id="acc-recover" novalidate>
+          <div class="acc-hero">${avatarSvg("zippy", 72)}</div>
+          <h2>${tr("Uusi salasana", "New password")}</h2>
+          <p class="note">${opts.email ? tr(`Pilvitili: ${esc(opts.email)}`, `Cloud account: ${esc(opts.email)}`) : ""}</p>
+          <label class="field"><span>${tr("Uusi salasana (vähintään 8 merkkiä)", "New password (at least 8 characters)")}</span><input id="rc-pw" type="password" autocomplete="new-password"></label>
+          <label class="field"><span>${tr("Uusi salasana uudelleen", "New password again")}</span><input id="rc-pw2" type="password" autocomplete="new-password"></label>
+          <p class="acc-err" id="rc-err" role="alert" hidden></p>
+          <div class="acc-actions"><button type="button" class="btn" data-back>${tr("Peruuta", "Cancel")}</button><button class="btn primary" id="rc-go">${tr("Vaihda salasana", "Change password")}</button></div>
+        </form>`;
+        const err = (m) => { const e = gate.querySelector("#rc-err"); e.textContent = m; e.hidden = !m; };
+        gate.querySelector("[data-back]").onclick = () => (Accounts.needsLogin() ? draw("list") : close());
+        gate.querySelector("#rc-pw").focus();
+        gate.querySelector("#acc-recover").onsubmit = async (e) => {
+          e.preventDefault();
+          const pw = gate.querySelector("#rc-pw").value;
+          if (pw.length < 8) { err(tr("Salasanassa pitää olla vähintään 8 merkkiä.", "The password needs at least 8 characters.")); return; }
+          if (pw !== gate.querySelector("#rc-pw2").value) { err(tr("Salasanat eivät täsmää.", "The passwords don't match.")); return; }
+          const btn = gate.querySelector("#rc-go");
+          btn.disabled = true; err("");
+          try {
+            const r = await Cloud.finishRecovery(pw);
+            opts.email = r.email || opts.email;
+            drawCloud("signin", "");
+            toast(tr("Salasana vaihdettu. Kirjaudu sisään uudella salasanalla.", "Password changed. Sign in with your new password."));
+          } catch (e2) { err(e2.message); btn.disabled = false; }
+        };
+        return;
+      }
       if (view === "create") {
         gate.innerHTML = `<form class="acc-card" id="acc-create">
           <div class="acc-hero">${avatarSvg(av, 72)}</div>
@@ -179,7 +209,7 @@
     const close = () => { gate.remove(); others.forEach((c) => (c.inert = false)); document.body.classList.remove("acc-locked"); renderUserChip(); };
     others.forEach((c) => (c.inert = true));
     document.body.classList.add("acc-locked");
-    draw(mode === "create" ? "create" : mode === "cloud" ? "cloud" : "list");
+    draw(["create", "cloud", "recover"].includes(mode) ? mode : "list");
   }
 
   /* Käyttäjä sivupalkin alaosassa */
@@ -320,7 +350,7 @@
         $q("#pf-logout").onclick = signOut;
         $q("#pf-sync")?.addEventListener("click", () => Cloud.tick());
         $q("#pf-cloudpw")?.addEventListener("click", async () => {
-          try { await Cloud.resetPassword(a.email); toast(tr("Lähetimme salasanan vaihtolinkin sähköpostiisi. Avaa se tällä laitteella.", "We sent a password reset link to your email. Open it on this device.")); }
+          try { await Cloud.resetPassword(a.email); toast(tr("Lähetimme salasanan vaihtolinkin sähköpostiisi. Linkki avaa RoboLabin, jossa voit asettaa uuden salasanan.", "We sent a password reset link to your email. The link opens RoboLab, where you can set a new password.")); }
           catch (e) { toast(e.message); }
         });
         if (!a.cloud) $q("#pf-pw").onclick = async () => {

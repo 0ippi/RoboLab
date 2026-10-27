@@ -11,6 +11,12 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="styles.css">
 <script>
+// Salasanan vaihtolinkki palaa osoitteella #access_token=…&type=recovery (tai #error=…). Otetaan talteen cloud.js:lle
+// ennen kuin sovelluksen reititin tulkitsee #-osan sivun nimeksi.
+if (/(^#|&)(access_token=|error_code=)/.test(location.hash)) {
+  window.__robolabAuthHash = location.hash.slice(1);
+  history.replaceState(null, "", location.pathname + location.search + "#/dashboard");
+}
 // Automaattitestit (tests-app.html) avaavat sovelluksen osoitteella ?memstore: tallennus menee muistiin
 // (testisivun omaan Map-olioon), joten testit eivät koske selaimen oikeisiin projekteihin. Muuten ei vaikutusta.
 if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window.parent.__robolabStores) {
