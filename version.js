@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.8.1", date: "2026-10-27",
+    fi: ["Mobiilirobotti 2D näyttää tulosruudut, kuten pyörien nopeudet, heti kun työkalu avataan."],
+    en: ["Mobile robot 2D shows its result tiles, such as the wheel speeds, as soon as the tool opens."],
+  },
+  {
     version: "2.8.0", date: "2026-10-27",
     fi: ["Kaikki kurssit tarkistettiin ja korjattiin. Tehtävät kertovat tarkasti, mitä nappia painetaan, eikä mikään tehtävä enää kuittaudu väärin tai jää mahdottomaksi. Myös vihjeiden luvut on testattu.",
       "Aloita tästä -kurssi uudistettiin. Rakennat robotin, jossa on oikeasti kaksi pyörää, ja ajat sillä eteen ja taakse. Kääntymistä harjoitellaan Mobiilirobotti 2D:ssä ylhäältä päin, missä se onnistuu. Mobiilirobotti näyttää nyt kummankin pyörän nopeuden.",
