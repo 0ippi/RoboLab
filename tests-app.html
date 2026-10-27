@@ -124,6 +124,17 @@ function makeSupabaseMock() {
         server.subs.set(uid, { plan: args.p_plan, seats: args.p_seats || 0, valid_until: null });
         return { data: { plan: args.p_plan, valid_until: null, seats: args.p_seats || 0 }, error: null };
       }
+      if (name === "dev_grant_plan") {
+        if (!server.devs.has(uid)) return err("not-developer");
+        const u = server.users.get(String(args.p_email || "").trim().toLowerCase());
+        if (!u) return err("no-user");
+        server.subs.set(u.user.id, { plan: args.p_plan, seats: args.p_seats || 0, valid_until: args.p_until || null, email: u.user.email });
+        return { data: { email: u.user.email, plan: args.p_plan, seats: args.p_seats || 0, valid_until: args.p_until || null }, error: null };
+      }
+      if (name === "dev_list_plans") {
+        if (!server.devs.has(uid)) return err("not-developer");
+        return { data: [...server.subs.values()].filter((x) => x.plan !== "free" && x.email).map((x) => ({ email: x.email, plan: x.plan, seats: x.seats, valid_until: x.valid_until, source: "manual" })), error: null };
+      }
       if (name === "my_classes") return { data: [...server.classes.values()].filter((c) => c.teacher === uid).map((c) => ({ code: c.code, name: c.name, seats: c.seats, valid_until: c.valid_until, used: c.devices.size })), error: null };
       if (name === "delete_class") { const c = server.classes.get(args.p_code); if (c?.teacher === uid) server.classes.delete(args.p_code); return { data: null, error: null }; }
       if (name !== "delete_my_account" || !s) return { error: { message: "not allowed" } };
@@ -817,6 +828,21 @@ async function test(name, fn) {
     w.document.querySelector('[data-dev-plan="pro"]').click();
     await waitFor(() => w.Plans.current().plan === "pro", 3000, "Pro");
     ok(!w.document.querySelector("#upgrade-btn").hidden, "kehittäjä ei pääse Tasot-sivulle Pro-tasolla");
+    // Lisenssin anto toiselle käyttäjälle ja poisto
+    pm.server.users.set("ope@example.com", { user: { id: "u-ope", email: "ope@example.com", user_metadata: {} }, password: "x" });
+    await go("#/dashboard", 100); await go("#/plans", 400);
+    const d = w.document;
+    d.querySelector("#dg-email").value = "eiole@example.com"; d.querySelector("#dg-plan").value = "teacher";
+    d.querySelector('[data-plans-form="grant"]').requestSubmit();
+    await waitFor(() => /pilvitiliä|cloud account/i.test(lastToast()), 2000, "tuntematon käyttäjä");
+    d.querySelector("#dg-email").value = "OPE@example.com"; d.querySelector("#dg-plan").value = "teacher"; d.querySelector("#dg-seats").value = "20";
+    d.querySelector('[data-plans-form="grant"]').requestSubmit();
+    await waitFor(() => pm.server.subs.get("u-ope")?.plan === "teacher", 2000, "lisenssin anto");
+    eq(pm.server.subs.get("u-ope").seats, 20, "lisäpaikat");
+    await waitFor(() => d.querySelector('[data-dev-revoke="ope@example.com"]'), 2000, "lisenssilista");
+    w.confirm = () => true;
+    d.querySelector('[data-dev-revoke="ope@example.com"]').click();
+    await waitFor(() => pm.server.subs.get("u-ope")?.plan === "free", 2000, "lisenssin poisto");
     window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro"; useDevice("A");
   });
 

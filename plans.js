@@ -167,7 +167,56 @@ const Plans = (() => {
       <p class="note">${tr("Vaihda oman tilisi tasoa testausta varten. Muutos tallentuu pilvitilillesi ja näkyy kaikilla laitteillasi. Vain kehittäjäksi merkityt tilit näkevät tämän.", "Switch your own account's plan for testing. The change is saved to your cloud account and shows on all your devices. Only accounts marked as developers see this.")}</p>
       <div class="row-actions dev-plans">${Object.keys(FEATURES).map((p) => `<button class="btn ${cur.plan === p ? "primary" : ""}" data-dev-plan="${p}" ${cur.plan === p ? 'aria-pressed="true"' : ""}>${NAMES[p]}</button>`).join("")}</div>
       <label class="dev-seats">${tr("Teacher-lisäpaikat", "Teacher extra seats")} <input type="number" id="dev-seats" min="0" max="995" value="${seats}"></label>
+      <h4 class="dev-sub">${tr("Anna lisenssi käyttäjälle", "Give a licence to a user")}</h4>
+      <form class="dev-grant" data-plans-form="grant">
+        <label>${tr("Pilvitilin sähköposti", "Cloud account email")}<input type="email" id="dg-email" maxlength="200" autocomplete="off" required></label>
+        <label>${tr("Taso", "Plan")}<select id="dg-plan">${["education", "teacher", "pro"].map((p) => `<option value="${p}">${NAMES[p]}</option>`).join("")}</select></label>
+        <label>${tr("Lisäpaikat", "Extra seats")}<input type="number" id="dg-seats" min="0" max="995" value="0"></label>
+        <label>${tr("Voimassa asti", "Valid until")}<input type="date" id="dg-until"></label>
+        <button class="btn primary">${tr("Anna lisenssi", "Give licence")}</button>
+      </form>
+      <p class="note small">${tr("Tyhjä päivämäärä = voimassa toistaiseksi. Lisäpaikat koskevat Teacher-tasoa (5 sisältyy aina). Käyttäjällä pitää olla pilvitili; taso päivittyy hänelle minuutin kuluessa.", "Empty date = valid until further notice. Extra seats apply to the Teacher plan (5 always included). The user needs a cloud account; the plan updates for them within a minute.")}</p>
+      <div id="dev-grants" aria-live="polite"><p class="note">${tr("Ladataan lisenssejä…", "Loading licences…")}</p></div>
     </div>`;
+  }
+
+  // Kehittäjän lisenssilista (Supabase: dev_list_plans, dev_grant_plan)
+  const devError = (err) => {
+    const m = String(err.raw || err.message || "");
+    return /no-user/.test(m) ? tr("Tällä sähköpostilla ei ole pilvitiliä. Pyydä käyttäjää luomaan pilvitili ensin.", "There is no cloud account with this email. Ask the user to create a cloud account first.")
+      : /bad-date/.test(m) ? tr("Päivämäärä on jo mennyt.", "The date has already passed.")
+      : /not-developer/.test(m) ? tr("Tililläsi ei ole kehittäjän oikeuksia.", "Your account doesn't have developer rights.") : err.message;
+  };
+  async function loadGrants(el) {
+    const box = el.querySelector("#dev-grants");
+    if (!box) return;
+    let list;
+    try { list = (await Cloud.rpc("dev_list_plans")) || []; } catch (e) { box.innerHTML = `<p class="note">${esc(devError(e))}</p>`; return; }
+    const date = (d) => (d ? new Date(d).toLocaleDateString(tr("fi-FI", "en-GB")) : tr("toistaiseksi", "ongoing"));
+    box.innerHTML = list.length ? `<div class="edu-table-wrap"><table class="ws-table"><thead><tr><th>${tr("Sähköposti", "Email")}</th><th>${tr("Taso", "Plan")}</th><th>${tr("Lisäpaikat", "Seats")}</th><th>${tr("Voimassa", "Valid until")}</th><th></th></tr></thead>
+      <tbody>${list.map((r) => `<tr><td>${esc(r.email)}</td><td>${badge(FEATURES[r.plan] ? r.plan : "free")}${r.source === "dev" ? " <small>dev</small>" : ""}</td><td>${Number(r.seats) || 0}</td><td>${date(r.valid_until)}</td>
+        <td><button class="link-btn" data-dev-revoke="${esc(r.email)}">${tr("Poista", "Remove")}</button></td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="note">${tr("Ei voimassa olevia maksullisia tasoja.", "No active paid plans.")}</p>`;
+  }
+  function bindGrants(el) {
+    const f = el.querySelector('[data-plans-form="grant"]');
+    if (!f) return;
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = f.querySelector("button");
+      const until = f.querySelector("#dg-until").value;
+      btn.disabled = true;
+      try {
+        const r = await Cloud.rpc("dev_grant_plan", { p_email: f.querySelector("#dg-email").value.trim(), p_plan: f.querySelector("#dg-plan").value,
+          p_seats: Math.max(0, Math.round(+f.querySelector("#dg-seats").value || 0)), p_until: until ? new Date(until + "T23:59:59").toISOString() : null });
+        toast(tr(`Lisenssi annettu: ${r.email} → ${NAMES[r.plan]}`, `Licence given: ${r.email} → ${NAMES[r.plan]}`));
+        f.querySelector("#dg-email").value = "";
+        if (r.email === String(Accounts.current()?.email || "").toLowerCase()) await refresh({ force: true });
+        loadGrants(el);
+      } catch (err) { toast(devError(err)); }
+      btn.disabled = false;
+    };
+    loadGrants(el);
   }
 
   /* ===== Osto ===== */
@@ -272,8 +321,18 @@ const Plans = (() => {
           </ul></div>
       </div></div>`;
     el.onclick = async (e) => {
-      const b = e.target.closest("[data-buy],[data-plans],[data-dev-plan]");
+      const b = e.target.closest("[data-buy],[data-plans],[data-dev-plan],[data-dev-revoke]");
       if (!b) return;
+      if (b.dataset.devRevoke) {
+        if (!confirm(tr(`Poistetaanko käyttäjän ${b.dataset.devRevoke} maksullinen taso? Hän palaa Free-tasolle.`, `Remove the paid plan of ${b.dataset.devRevoke}? They go back to Free.`))) return;
+        try {
+          await Cloud.rpc("dev_grant_plan", { p_email: b.dataset.devRevoke, p_plan: "free", p_seats: 0, p_until: null });
+          toast(tr("Taso poistettu", "Plan removed"));
+          if (b.dataset.devRevoke === String(Accounts.current()?.email || "").toLowerCase()) { await refresh({ force: true }); router(); return; }
+        } catch (err) { toast(devError(err)); }
+        loadGrants(el);
+        return;
+      }
       if (b.dataset.devPlan) {
         el.querySelectorAll("[data-dev-plan]").forEach((x) => (x.disabled = true));
         try {
@@ -288,6 +347,7 @@ const Plans = (() => {
       if (b.dataset.plans === "remove-class") { if (confirm(tr("Poistetaanko luokkakoodi tältä laitteelta? Education-taso poistuu käytöstä.", "Remove the class code from this device? The Education plan will be turned off."))) { removeClass(); router(); } }
     };
     bindClassForm(el);
+    if (isDeveloper()) bindGrants(el);
     if (location.hash.includes("class") || sessionStorage.getItem("rl-focus-class")) { try { sessionStorage.removeItem("rl-focus-class"); } catch {} el.querySelector("#pl-class")?.focus(); }
   }
 

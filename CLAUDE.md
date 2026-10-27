@@ -38,7 +38,7 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Taso tulee pilvitilin `subscriptions`-rivistä (`my_plan`) tai laitteen luokkakoodista (`activate_class_code`). Laiteavaimet: `rlplan`, `rlclass`, `rldevice`. SQL: `docs/supabase-plans.sql`, ohje: `docs/maksut-ohje.md`, maksujen webhook: `supabase/functions/stripe-webhook`.
 - Lukitus on sovelluksessa (`Plans.canTool` routerissa, `canCourse` kursseissa). Aktiivinen kurssi avaa sen omat työkalut. Testeissä `__robolabPlanOverride` (oletus "pro").
 - Opettajille (`teach`) näkyy valikossa, kojelaudalla ja haussa vain, kun `Plans.canTeach()` (`toolListed` app.js:ssä); opettajalla on kojelaudalla `.teach-banner`.
-- Kehittäjätila: `docs/supabase-dev.sql` (taulu `developers` UID:llä, RPC:t `am_developer`, `dev_set_plan`). Tasot-sivulla `.dev-card`. Kehittäjä lisätään SQL Editorissa UID:llä, ei koskaan sähköpostilla sovelluksesta.
+- Kehittäjätila: `docs/supabase-dev.sql` (taulu `developers` UID:llä, RPC:t `am_developer`, `dev_set_plan`, `dev_grant_plan` (lisenssi muulle sähköpostilla, "free" = poisto), `dev_list_plans`). Tasot-sivulla `.dev-card`. Kehittäjä lisätään SQL Editorissa UID:llä, ei koskaan sähköpostilla sovelluksesta.
 - Tietosuojaseloste: `tietosuoja.html` (päivitä, jos tallennettavat tiedot tai palveluntarjoajat muuttuvat). Sähköpostit (SMTP): `docs/sahkoposti-ohje.md`.
 
 ## Opettajille ja tietoturva

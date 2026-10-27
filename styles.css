@@ -1259,4 +1259,10 @@ body.acc-locked .ai-fab { display: none; }
 .dev-card { border: 1px dashed var(--accent); margin-bottom: var(--pad); }
 .dev-plans { flex-wrap: wrap; }
 .dev-seats { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; color: var(--text-2); }
+.dev-sub { margin: 16px 0 8px; font-size: .95rem; }
+.dev-grant { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.dev-grant label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--text-2); }
+.dev-grant input, .dev-grant select { min-height: 34px; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; }
+.dev-grant #dg-email { width: 240px; max-width: 100%; }
+.dev-grant #dg-seats { width: 80px; }
 .dev-seats input { width: 80px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; }
