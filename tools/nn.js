@@ -927,9 +927,11 @@
     }
 
     /* ----- Aivot toiminnassa: neuroverkon kerrokset, painot ja aktivaatiot seurattavalle robotille ----- */
-    function drawBrainViz() {
+    // force: piirretään, vaikka kaavio ei olisi näkyvissä (testit)
+    function drawBrainViz(force) {
       const c = el.querySelector("#nn-brain");
-      if (!c || !S.vizBrain || document.hidden || !c.clientWidth) return;
+      // Ei piirretä, kun kaavio ei ole näkyvissä (vieritetty pois tai välilehti taustalla): säästää suoritinta koulutuksen aikana
+      if (!c || !S.vizBrain || !c.clientWidth || (!force && (document.hidden || S.vizVisible === false))) return;
       const ep = S.episode, L = S.layers;
       const focus = ep ? ep.leader() : -1, a = focus >= 0 ? ep.agents[focus] : null;
       const params = a?.params || currentBest();
@@ -1286,6 +1288,10 @@
       });
       // Aivonäkymän vihjeteksti: lähin neuroni hiiren kohdalla
       const brain = el.querySelector("#nn-brain"), tip = el.querySelector("#nn-brain-tip");
+      if (typeof IntersectionObserver !== "undefined") {
+        S.vizObserver = new IntersectionObserver(([e]) => { S.vizVisible = e.isIntersecting; if (e.isIntersecting) drawBrainViz(); });
+        S.vizObserver.observe(brain);
+      }
       brain.addEventListener("mousemove", (e) => {
         const r = brain.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
         let best = null, bd = 12;
@@ -1873,6 +1879,7 @@
       flushBrain();
       if (S?.fsKey) document.removeEventListener("keydown", S.fsKey);
       S?.fsOff?.();
+      S?.vizObserver?.disconnect();
       dead = true;
       cancelAnimationFrame(raf);
       pool?.terminate();
