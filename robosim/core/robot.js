@@ -123,6 +123,7 @@ RS.Robot = class {
 
     this.motors = [];
     this.sensedJoints = [];
+    this.springs = []; // jouset: ei moottoria, nivel joustaa takaisin lepoasentoon (act() laskee väännön)
     for (const j of model.joints) {
       const limited = j.lower != null && j.upper != null;
       const joint = world.createJoint(new planck.RevoluteJoint({
@@ -135,6 +136,14 @@ RS.Robot = class {
       }, this.byId[j.a], this.byId[j.b], RS.V(j.x + offX, j.y + lift)));
       const entry = { joint, spec: j, limited, lo: RS.deg(j.lower ?? 0), hi: RS.deg(j.upper ?? 0), speed: j.speed ?? 6 };
       if (j.motor !== false) this.motors.push(entry);
+      else if (j.spring > 0) {
+        // Jousen vääntö lasketaan joka askeleella itse. Liian jäykkä jousi kevyelle osalle värähtelisi hallitsemattomasti,
+        // joten jäykkyys ja vaimennus rajataan liikkuvan osan hitausmomentin (nivelen ympäri) mukaan.
+        const B = this.byId[j.b], m = B.getMass(), lc = B.getLocalCenter(), c = B.getWorldCenter();
+        const I = Math.max(1e-6, B.getInertia() - m * (lc.x * lc.x + lc.y * lc.y) + m * ((j.x + offX - c.x) ** 2 + (j.y + lift - c.y) ** 2));
+        const dt = RS.DT || 1 / 60;
+        this.springs.push({ joint, k: Math.min(j.spring, (0.3 * I) / (dt * dt)), d: Math.min(j.springDamping ?? 1, (0.5 * I) / dt) });
+      }
     }
 
     this.root = this.byId[model.root];
@@ -211,6 +220,12 @@ RS.Robot = class {
       const m = this.motors[i];
       m.joint.setMotorSpeed(RS.clamp(actions[i], -1, 1) * m.speed);
     }
+    // Jouset: vääntö kohti lepoasentoa (jousi) ja liikettä vastaan (vaimennus), vastakkaisina molempiin osiin
+    for (const s of this.springs) {
+      const t = -s.k * s.joint.getJointAngle() - s.d * s.joint.getJointSpeed();
+      s.joint.getBodyB().applyTorque(t, true);
+      s.joint.getBodyA().applyTorque(-t, true);
+    }
     const n = this.motors.length;
     this.thrusters.forEach((t, i) => {
       t.level = (RS.clamp(actions[n + i] ?? 0, -1, 1) + 1) / 2; // −1…1 → 0…1
@@ -223,6 +238,7 @@ RS.Robot = class {
     for (const p of this.parts) this.world.destroyBody(p.body);
     this.parts = [];
     this.motors = [];
+    this.springs = [];
     this.thrusters = [];
   }
 };

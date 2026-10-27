@@ -415,3 +415,94 @@ RS.deployCode = function (target, o) {
   ];
   return { filename: `${base}_aivot.py`, lang: 'python', code: py.join('\n') };
 };
+
+// Kytkentäohje: ehdotus osista ja Raspberry Pi Picon nastoista juuri tälle robotille (moottorit ja anturit
+// deployInfo-järjestyksessä). Ohje on suuntaa antava: sitä ei ole kokeiltu oikealla laitteella.
+// opts kuten deployCode. Palauttaa { filename, code, lang }.
+RS.wiringGuide = function (o) {
+  const info = RS.deployInfo(o.dim, o.model), is3d = o.dim === '3d';
+  const name = RS.commentSafe(o.name || tr('Oma robotti', 'Custom robot'));
+  // Vapaat nastat: ulostulot PWM-kykyisistä GP6…GP22, sisääntulot GP26–28 ja GP0–3; I2C0 = GP4 (SDA) ja GP5 (SCL)
+  const outPins = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22], inPins = [26, 27, 28, 0, 1, 2, 3];
+  let short = false;
+  const take = (pool, n) => { if (pool.length >= n) return pool.splice(0, n).map((p) => 'GP' + p); short = true; return null; };
+  const pinText = (p) => (p ? p.join(', ') : '*');
+  const motorJoints = o.model.joints.filter((j) => j.motor !== false);
+  const L = [];
+  L.push(`# ${tr('Kytkentäohje', 'Wiring guide')}: ${name} (Raspberry Pi Pico)`, '');
+  L.push(tr(`Ehdotus osista ja nastoista, joilla simulaation robotti rakennetaan oikeaksi. Järjestys on sama kuin aivojen sisään- ja ulostuloissa. Ohje on suuntaa antava eikä sitä ole kokeiltu oikealla laitteella: tarkista oman levysi nastat ja osien datalehdet. ESP32:lla valitse vastaavat PWM-kykyiset nastat.`,
+    `A suggestion of parts and pins for building the simulated robot for real. The order is the same as the brain's inputs and outputs. The guide is indicative and has not been tried on real hardware: check your own board's pins and the parts' datasheets. On an ESP32 pick equivalent PWM-capable pins.`), '');
+
+  // ----- Moottorit -----
+  L.push(`## ${tr('Moottorit', 'Motors')} (${info.outputs.length})`, '');
+  L.push(`| # | ${tr('Nivel', 'Joint')} | ${tr('Osa', 'Part')} | ${tr('Nastat', 'Pins')} |`, '|---|---|---|---|');
+  let dc = 0;
+  const wheels = [];
+  info.outputs.forEach((x, i) => {
+    let part, pins;
+    const j = motorJoints[i], limited = j && j.lower != null && j.upper != null && j.upper > j.lower;
+    if (x.mode === 'velocity' && !limited) {
+      // Pyörä: pyörii ympäri, joten DC-moottori ja moottoriohjain
+      pins = take(outPins, 2);
+      part = tr(`DC-vaihdemoottori + moottoriohjain (DRV8833 tai TB6612FNG, kanava ${'AB'[dc % 2]} piirissä ${Math.floor(dc / 2) + 1}). Nopeus ${x.speed} rad/s ≈ ${Math.round(x.speed * 60 / (2 * Math.PI))} rpm`, `DC gear motor + motor driver (DRV8833 or TB6612FNG, channel ${'AB'[dc % 2]} on chip ${Math.floor(dc / 2) + 1}). Speed ${x.speed} rad/s ≈ ${Math.round(x.speed * 60 / (2 * Math.PI))} rpm`);
+      wheels.push(i);
+      dc++;
+    } else if (x.mode !== 'thrust') {
+      // Rajoitettu nivel (jalka, käsi): servo. 2D-simulaatiossa aivot antavat nopeuden: koodi muuttaa kulmaa sen mukaan.
+      pins = take(outPins, 1);
+      const lo = x.mode === 'position' ? Math.round(x.lo * 180 / Math.PI) : j?.lower, hi = x.mode === 'position' ? Math.round(x.hi * 180 / Math.PI) : j?.upper;
+      part = tr(`Servo (pieni nivel: SG90/MG90S, raskas: MG996R). Liikealue ${lo}°…${hi}°${x.mode === 'velocity' ? ', kulmaa muutetaan aivojen nopeuskäskyn mukaan' : ''}`, `Servo (light joint: SG90/MG90S, heavy: MG996R). Range ${lo}°…${hi}°${x.mode === 'velocity' ? ', the angle is changed by the brain’s speed command' : ''}`);
+    } else {
+      pins = take(outPins, 1);
+      part = tr('Harjaton moottori + ESC (ohjaus 1000–2000 µs pulssilla, kuten servo). ⚠ Potkurit ovat vaarallisia', 'Brushless motor + ESC (driven with a 1000–2000 µs pulse like a servo). ⚠ Propellers are dangerous');
+    }
+    L.push(`| ${x.id} | ${x.name} | ${part} | ${pinText(pins)} |`);
+  });
+  L.push('');
+
+  // ----- Anturit: sisääntulot ryhmiteltyinä -----
+  L.push(`## ${tr('Anturit', 'Sensors')} (${info.inputs.length} ${tr('sisääntuloa', 'inputs')})`, '');
+  L.push(`| ${tr('Sisääntulot', 'Inputs')} | ${tr('Osa', 'Part')} | ${tr('Kytkentä', 'Wiring')} |`, '|---|---|---|');
+  const ids = info.inputs.map((x) => x.id), has = (re) => ids.filter((id) => re.test(id));
+  const row = (list, part, wire) => { if (list.length) L.push(`| ${list.length > 3 ? `${list[0]} … ${list.at(-1)}` : list.join(', ')} | ${part} | ${wire} |`); };
+  const i2c = tr('I2C: SDA GP4, SCL GP5, 3V3, GND', 'I2C: SDA GP4, SCL GP5, 3V3, GND');
+  if (is3d) {
+    row(has(/^(UP|GYRO)_/), tr('Kiihtyvyys- ja gyroanturi (MPU-6050 tai ICM-20948)', 'Accelerometer and gyro (MPU-6050 or ICM-20948)'), i2c);
+    row(has(/^FWD_/), tr('Suunta: 9-akselinen anturi asentoarviolla (BNO055) tai pelkkä (1, 0, 0), jos suuntaa ei mitata', 'Heading: a 9-axis sensor with orientation output (BNO055), or just (1, 0, 0) without a heading'), i2c);
+  } else {
+    row(has(/^(TILT|GYRO)/), tr('Kiihtyvyys- ja gyroanturi (MPU-6050)', 'Accelerometer and gyro (MPU-6050)'), i2c);
+  }
+  // Kosketusanturit ensin (niitä ei voi korvata laskennalla), sitten pyörien enkooderit vapaisiin nastoihin.
+  // Maata koskeva pyörä ei tarvitse kytkintä: sen arvo on käytännössä aina 1.
+  const wheelIds = new Set(motorJoints.filter((j) => !(j.lower != null && j.upper != null && j.upper > j.lower)).map((j) => j.b));
+  const footBodies = o.model.bodies.filter((b) => b.foot);
+  const allFeet = has(/^FOOT\d+$/), feet = allFeet.filter((id) => !wheelIds.has(footBodies[+id.slice(4)]?.id));
+  const wheelFeet = allFeet.filter((id) => !feet.includes(id)), footPins = feet.map(() => take(inPins, 1));
+  row(wheelFeet, tr('Pyörä koskee maata: ei anturia, arvo 1 (pyörä on maassa)', 'Wheel touches the ground: no sensor, value 1 (the wheel is on the ground)'), '–');
+  const enc = wheels.map((m) => ({ m, pin: take(inPins, 1) }));
+  row(has(/^VEL_/), tr('Nopeus: pyöräenkooderit (laskenta koodissa) tai optinen virtaus (PMW3901). Pysty- ja sivunopeus voi olla 0', 'Speed: wheel encoders (counted in code) or optical flow (PMW3901). Vertical and sideways speed can be 0'),
+    enc.length ? enc.map((e) => `${info.outputs[e.m].id}: ${pinText(e.pin)}`).join(', ') : tr('optinen virtaus I2C/SPI tai IMU:n kiihtyvyydestä', 'optical flow over I2C/SPI or from the IMU’s acceleration'));
+  row(has(/^HEIGHT$/), tr('Korkeuden muutos: tasaisella 0, tarvittaessa etäisyysanturi alas', 'Height change: 0 on flat ground, a distance sensor pointing down if needed'), '–');
+  row(has(/^M\d+_(ANGLE|SPEED)$/), tr('Nivelten kulma ja nopeus: servon käskykulma (ei anturia), servo, jossa on asentotieto, tai enkooderi', 'Joint angle and speed: the servo’s commanded angle (no sensor), a servo with position feedback, or an encoder'), tr('koodissa', 'in code'));
+  if (feet.length) {
+    L.push(`| ${feet.join(', ')} | ${tr('Kosketuskytkin (mikrokytkin) tai voima-anturi (FSR). Puskurissa kytkin painuu esteeseen osuessa', 'Touch switch (microswitch) or force sensor (FSR). On a bumper the switch closes when it hits an obstacle')} | ${footPins.map((p, k) => `${feet[k]}: ${pinText(p)}`).join(', ')}; ${tr('kytkimen toinen napa GND, sisäinen ylösveto', 'the switch’s other leg to GND, internal pull-up')} |`);
+  }
+  row(has(/^(LIDAR|SCAN)\d+$/), is3d ? tr('Maaston korkeus edessä: etäisyysanturit viistosti alas (VL53L0X)', 'Terrain height ahead: distance sensors angled down (VL53L0X)') : tr('Etäisyysanturit eri kulmiin (VL53L0X, enintään 2 m; tai HC-SR04 5 V:lla ja jännitteenjakajalla kaikuun)', 'Distance sensors at different angles (VL53L0X, up to 2 m; or HC-SR04 at 5 V with a voltage divider on echo)'),
+    tr('I2C (sama väylä); jokaiselle oma XSHUT-nasta, jotta osoitteet voi vaihtaa käynnistyksessä', 'I2C (same bus); each one needs its own XSHUT pin so the addresses can be changed at start-up'));
+  row(has(/^PHASE_/), tr('Rytmi: ei anturia, koodi laskee ajasta', 'Rhythm: no sensor, the code computes it from time'), '–');
+  row(has(/^TARGET_/), tr('Kohteen suunta: kamera (esim. OpenMV tai Pixy2) tai tunnettu sijainti. 0, jos tehtävässä ei ole kohdetta', 'Direction to the target: a camera (e.g. OpenMV or Pixy2) or a known position. 0 if the task has no target'), tr('UART tai I2C kameran mukaan', 'UART or I2C depending on the camera'));
+  L.push('');
+  if (short) L.push(tr('\\* Picon nastat loppuivat: käytä laajennusta I2C-väylässä (servoille PCA9685, 16 kanavaa; kytkimille ja enkoodereille MCP23017).', '\\* The Pico ran out of pins: use an expander on the I2C bus (PCA9685 for servos, 16 channels; MCP23017 for switches and encoders).'), '');
+
+  // ----- Virta ja turvallisuus -----
+  L.push(`## ${tr('Virta', 'Power')}`, '');
+  L.push(`- ${tr('Moottoreille ja servoille oma virtalähde (esim. 4 × AA tai 2S LiPo ja 5–6 V:n säädin servoille). Älä syötä niitä Picon 3V3-nastasta.', 'A separate supply for motors and servos (e.g. 4 × AA or a 2S LiPo with a 5–6 V regulator for servos). Never power them from the Pico’s 3V3 pin.')}`);
+  L.push(`- ${tr('Kaikki maat (GND) yhteen: Pico, moottoriohjain, servot ja anturit.', 'Tie every ground (GND) together: the Pico, motor driver, servos and sensors.')}`);
+  L.push(`- ${tr('Pico saa virran USB:stä tai VSYS-nastasta (1,8–5,5 V).', 'The Pico is powered from USB or the VSYS pin (1.8–5.5 V).')}`, '');
+  L.push(`## ${tr('Ennen ensimmäistä ajoa', 'Before the first run')}`, '');
+  L.push(`- ${tr('Nosta robotti pukille, niin pyörät ja jalat eivät koske maahan, ja kokeile jokainen moottori erikseen: kääntyykö se oikeaan suuntaan?', 'Put the robot on a stand so the wheels and legs don’t touch the ground, and try each motor separately: does it turn the right way?')}`);
+  L.push(`- ${tr('Tarkista anturien suunnat simulaation kuvauksia vasten (Vie omalle robotille → Sisääntulot).', 'Check the sensor directions against the simulation’s descriptions (Put on a real robot → Inputs).')}`);
+  L.push(`- ${tr('Varaa helppo virtakatkaisin, jolla robotin saa pysäytettyä heti.', 'Have an easy power switch that stops the robot at once.')}`, '');
+  const base = String(o.name || 'robotti').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'robotti';
+  return { filename: `${base}_kytkennat.md`, lang: 'md', code: L.join('\n') };
+};
