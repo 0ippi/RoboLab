@@ -3,6 +3,19 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.7.0", date: "2026-10-27",
+    fi: ["Luokkahuoneet: opettaja luo luokan, jakaa koodin ja näkee jokaisen oppilaan etenemisen ja loppukokeen pisteet yhdessä taulukossa, joka päivittyy itsestään. Taulukon saa myös CSV-tiedostona.",
+      "Opettaja valitsee luokalle suoritettavat kurssit ja määräpäivät. Oppilaat näkevät ne Kurssit-sivun alussa.",
+      "Oppilas liittyy luokkaan koodilla ja nimimerkillä, eikä tarvitse tiliä. Opettajalle lähtee vain eteneminen ja pisteet.",
+      "Jokaisen kurssin lopussa on lyhyt loppukoe.",
+      "Opettajille-sivulla on uusi pikaopas, usein kysytyt kysymykset ja selkeämmät kurssikuvaukset opetukseen."],
+    en: ["Classrooms: a teacher creates a class, shares the code and sees every student's progress and final quiz score in one table that updates by itself. The table can also be downloaded as CSV.",
+      "Teachers choose the courses a class must complete and their due dates. Students see them at the top of the Courses page.",
+      "Students join with the class code and a nickname, no account needed. Only progress and scores are sent to the teacher.",
+      "Every course now ends with a short final quiz.",
+      "The For teachers page has a new quick guide, FAQ and clearer course descriptions for teaching."],
+  },
+  {
     version: "2.6.1", date: "2026-10-27",
     fi: ["Mobiilirobotti 2D kulkee reitit paljon varmemmin: reitti pysyy käytävän keskellä eikä kulje seinien kulmien vierestä, ja jos robotti jää jumiin, se peruuttaa ja etsii uuden reitin itse. Testissä robotti pääsi 100 satunnaiseen maaliin 100:sta (ennen noin 3/4).",
       "RC-auto osaa nyt peruuttaa ja tehdä kolmen pisteen käännöksen, kun kohde on sen takana. Seinän viereen asetettu maali siirretään lähimpään kohtaan, johon robotti mahtuu."],
