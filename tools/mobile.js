@@ -193,6 +193,7 @@
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
     updatePause();
+    stats(); // tulosruudut näkyvät heti, ei vasta ensimmäisen ruudunpäivityksen jälkeen
     lastT = performance.now();
     raf = requestAnimationFrame(loop);
   }
