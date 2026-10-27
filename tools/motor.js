@@ -186,8 +186,10 @@
     const T = (v) => fmt(v / tq(), 3), A = (w) => fmt(w / angF(), 0), aU = () => `${angLabel()}/s`;
     const pct = (x) => fmt(x * 100, 0);
     const alerts = [];
-    const suggest = tr(` Kokeile välityssuhdetta noin ${fmt(Math.max(r.ratioFor30, state.ratio * 1.1), 1)}, lyhyempää vartta tai kevyempää kuormaa.`,
-      ` Try a gear ratio of about ${fmt(Math.max(r.ratioFor30, state.ratio * 1.1), 1)}, a shorter arm or a lighter payload.`);
+    // Ehdotus pyöristetään ylöspäin, jotta se varmasti alittaa 30 %:n rajan
+    const up = (x) => Math.ceil(x * 10 - 1e-9) / 10;
+    const suggest = tr(` Kokeile välityssuhdetta noin ${fmt(up(Math.max(r.ratioFor30, state.ratio * 1.1)), 1)}, lyhyempää vartta tai kevyempää kuormaa.`,
+      ` Try a gear ratio of about ${fmt(up(Math.max(r.ratioFor30, state.ratio * 1.1)), 1)}, a shorter arm or a lighter payload.`);
     if (!r.canHold) alerts.push({ level: "err", text: tr(`Moottori ei jaksa pitää vartta vaakasuorassa: tarvitaan ${T(r.tGrav)} ${tqLabel()}, moottori antaa nivelelle enintään ${T(r.tStallJoint)} ${tqLabel()}.`, `The motor cannot hold the arm horizontal: it needs ${T(r.tGrav)} ${tqLabel()}, the motor gives the joint at most ${T(r.tStallJoint)} ${tqLabel()}.`) + suggest });
     else if (r.holdLoad > 0.5) alerts.push({ level: "err", text: tr(`Pelkkä varren pitäminen kuormittaa moottoria ${pct(r.holdLoad)} % jumimomentista — se ylikuumenee jatkuvassa käytössä.`, `Just holding the arm loads the motor to ${pct(r.holdLoad)} % of stall torque — it will overheat in continuous use.`) + suggest });
     else if (r.holdLoad > 0.3) alerts.push({ level: "warn", text: tr(`Pitokuorma ${pct(r.holdLoad)} % jumimomentista. Jatkuvaan käyttöön suositellaan alle ~30 %.`, `Holding load is ${pct(r.holdLoad)} % of stall torque. Below ~30 % is recommended for continuous use.`) + suggest });
@@ -211,7 +213,7 @@
     el.querySelector("#m-theory").innerHTML = resultTiles([
       { label: tr("Jumimomentti nivelellä", "Stall torque at joint"), value: T(r.tStallJoint), unit: tqLabel(), sub: tr("välityksen jälkeen", "after gearing") },
       { label: tr("Tyhjäkäyntinopeus nivelellä", "No-load speed at joint"), value: A(r.w0), unit: aU() },
-      { label: tr("Välitys 30 %:n pitoon", "Gear ratio for 30 % holding"), value: fmt(r.ratioFor30, 1), sub: r.ratioFor30 > 0 ? tr(`nopeus silloin ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`, `speed then ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`) : tr("ei kuormaa", "no load") },
+      { label: tr("Välitys 30 %:n pitoon", "Gear ratio for 30 % holding"), value: fmt(Math.ceil(r.ratioFor30 * 10 - 1e-9) / 10, 1), sub: r.ratioFor30 > 0 ? tr(`nopeus silloin ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`, `speed then ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`) : tr("ei kuormaa", "no load") },
       { label: tr("Jumivirta", "Stall current"), value: fmt(r.iStall, 2), unit: "A", sub: tr("käynnistyspiikki", "start-up spike") },
     ]);
   }

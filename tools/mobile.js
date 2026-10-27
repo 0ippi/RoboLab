@@ -15,6 +15,8 @@
 
   let el, st, map, gv, raf = 0, lastT = 0, acc = 0, sim = null, keys = {}, paused = false, plotAt = 0;
   let arrivals = 0, offGoalArrivals = 0; // kaikki maaliin pääsyt (säilyvät Nollaa-napin yli; kurssit lukevat nämä)
+  // Näppäinohjauksella käännytty kulma radiaaneina: paikallaan ja kaarella ajaen (kurssit lukevat nämä)
+  let spinTotal = 0, arcTotal = 0;
 
   const mapKey = (m) => m.w + "x" + m.h + ":" + m.cell + ":" + m.grid.occ.join("");
 
@@ -481,6 +483,10 @@
       sim.pose = next;
       sim.v = contact ? moved / dt : v; sim.w = w;
       odometry(v, w, dt);
+      if (diff && st.control === "keys") {
+        if (Math.abs(v) < 0.02) spinTotal += Math.abs(w) * dt;
+        else if (v >= 0.05) arcTotal += Math.abs(w) * dt;
+      }
     }
 
     // Jumiutumisen tunnistus reitinseurannassa: jos jäljellä oleva matka ei lyhene 2,5 sekuntiin tai hätäjarru
@@ -550,9 +556,16 @@
   function stats() {
     const diff = st.model === "diff";
     const err = Math.hypot(sim.pose[0] - sim.odom[0], sim.pose[1] - sim.odom[1]);
+    // Differentiaaliohjaus: pyörien kehänopeudet (eteen +, taakse −) näyttävät, miten nopeusero kääntää robottia
+    const wheel = (side) => {
+      const u = sim.v + side * sim.w * st.wheelBase / 2, x = Math.abs(u) < 0.005 ? 0 : u;
+      return { label: side < 0 ? tr("Vasen pyörä", "Left wheel") : tr("Oikea pyörä", "Right wheel"), value: fmt(x, 2), unit: "m/s",
+        sub: x > 0 ? tr("eteen", "forward") : x < 0 ? tr("taakse", "backward") : tr("paikallaan", "still") };
+    };
     el.querySelector("#mb-stats").innerHTML = resultTiles([
       { label: tr("Nopeus", "Speed"), value: fmt(sim.v, 2), unit: "m/s" },
       diff ? { label: tr("Kulmanopeus", "Angular velocity"), value: fmt(sim.w, 2), unit: "rad/s" } : { label: tr("Ohjauskulma", "Steering angle"), value: fmtAng(sim.delta, 1), unit: angLabel() },
+      ...(diff ? [wheel(-1), wheel(1)] : []),
       { label: tr("Ajettu matka", "Distance driven"), value: fmtLen(sim.dist, 2), unit: lenLabel() },
       { label: tr("Odometrian virhe", "Odometry error"), value: fmtLen(err, 3), unit: lenLabel(), level: err > 0.1 ? "warn" : "" },
       { label: tr("Törmäykset", "Collisions"), value: String(sim.collisions), level: sim.collisions ? "err" : "" },
@@ -710,7 +723,7 @@
 
   TOOL_IMPL.sim2d = { render, unmount, examples };
   // Kurssit lukevat simulaation tilan tästä (maaliin pääsyt, törmäykset)
-  window.sim2dStatus = () => ({ arrivals, offGoalArrivals, collisions: sim?.collisions || 0 });
+  window.sim2dStatus = () => ({ arrivals, offGoalArrivals, collisions: sim?.collisions || 0, spin: spinTotal, arc: arcTotal });
   window.mobileSim = () => sim;
   // Automaattitestit (?memstore): simulaatiota voi ajaa askel kerrallaan ilman animaatiota
   if (/[?&]memstore\b/.test(location.search)) window.__sim2d = { step: (dt) => step(dt), planTo: (g) => planTo(g), reset: () => resetSim(), get st() { return st; }, get map() { return map; } };

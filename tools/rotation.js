@@ -68,6 +68,11 @@
     el.querySelector("#r-adv").onclick = () => { state._adv = !adv; save(); view.destroy(); render(root, tool); };
     el.querySelector("#r-reset").onclick = () => { state.q = [0, 0, 0, 1]; save(); refresh(null); };
     el.querySelector(".tool").addEventListener("input", onInput);
+    // Normalisoitu kvaternio näytetään, kun kohdistin lähtee kvaterniokortista (ei kesken lukujen kirjoittamista)
+    el.querySelector(".tool").addEventListener("focusout", (e) => {
+      if (e.target.dataset?.card !== "quat" || e.relatedTarget?.dataset?.card === "quat") return;
+      refresh(null, el.querySelector("#r-qnote").textContent);
+    });
     refresh(null);
   }
 

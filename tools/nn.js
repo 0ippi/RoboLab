@@ -353,7 +353,7 @@
       const adv = st._adv ?? settings.advanced;
       el.innerHTML = `
         ${toolHead(tool)}
-        <div class="tool nn-tool">
+        <div class="tool nn-tool viz-first">
           <div class="col">
             <div class="card"><h3 class="card-title">${tr("Robotti", "Robot")}</h3>
               <div class="field"><label>${tr("Robotti", "Robot")} <small>${tr("mallin vaihto nollaa aivot", "changing the model resets the brain")}</small></label><div id="nn-pick"></div></div>
@@ -552,6 +552,14 @@
       if (h) h.onchange = onHidden;
     }
 
+    // Uusi tehtävä tai palkkio: vanhan tehtävän ennätys ei ole vertailukelpoinen (Näytä paras ja Paras ikinä).
+    // Aivot säilyvät, joten oppiminen jatkuu nykyisistä painoista.
+    function forgetBest() {
+      if (!S.trainer) return;
+      S.trainer.best = null;
+      S.trainer.bestFitness = -Infinity;
+    }
+
     async function onField(k) {
       if (k === "modelKey") {
         const prev = getToolState(key, B.defaults).modelKey;
@@ -568,6 +576,7 @@
         if (st.taskKey === "custom") return;
         delete st.taskCode;
         S.taskFn = RS.compileTask(taskCode());
+        forgetBest();
         save(); if (S.mode === "idle") preview();
         status(tr("Tehtävä vaihdettu. Aivot säilyvät, joten robotti jatkaa oppimista uudesta tehtävästä.", "Task changed. The brain is kept, so the robot continues learning the new task."));
         return;
@@ -613,6 +622,7 @@
           apply: (text) => {
             S.taskFn = RS.compileTask(text); // heittää syntaksivirheen
             st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; trustNote();
+            forgetBest();
             save(); drawFields(); if (S.mode === "idle") preview();
             status(tr("Oma palkkiofunktio otettu käyttöön.", "Custom reward function in use."));
           } });
@@ -653,7 +663,6 @@
 
     // Vie aivot omalle robotille: koodi mikrokontrollerille tai tietokoneelle + sensorien ja moottorien kytkentäohje
     function openDeploy() {
-      window.rsDeployOpened = (window.rsDeployOpened || 0) + 1; // kurssi seuraa avauskertoja
       const TARGETS = {
         arduino: { label: "Arduino (.ino)", hint: tr("Valmis luonnos Arduino IDE:hen. Avaa tiedosto, täytä TODO-kohdat robottisi antureilla ja moottoreilla ja lataa levylle. Sarjamonitorin itsetesti kertoo, laskeeko levy verkon samoin kuin simulaatio. Toimii Arduino Unolla, Nanolla, Megalla, ESP32:lla, Picolla, Teensyllä…", "A ready sketch for the Arduino IDE. Open the file, fill the TODO lines with your robot’s sensors and motors and upload it. The self-test in the serial monitor tells whether the board computes the network like the simulation. Works on Arduino Uno, Nano, Mega, ESP32, Pico, Teensy…") },
         c: { label: "C/C++ (.h)", hint: tr("Otsaketiedosto mihin tahansa C/C++-projektiin (ESP-IDF, PlatformIO, STM32CubeIDE, Pico SDK). #include \"robolab_brain.h\" ja kutsu robolab_brain(in, out) 60 kertaa sekunnissa.", "A header for any C/C++ project (ESP-IDF, PlatformIO, STM32CubeIDE, Pico SDK). #include \"robolab_brain.h\" and call robolab_brain(in, out) 60 times per second.") },
@@ -661,10 +670,11 @@
         link: { label: tr("Live-linkki (USB)", "Live link (USB)"), hint: tr("Testaa aivoja oikealla robotilla ilman latausta: lataa tämä luonnos robotille, täytä anturit ja moottorit, ja paina \"Yhdistä ja aja\". Robotti lähettää anturit USB:llä, RoboLab laskee aivot ja lähettää moottorikomennot takaisin. Kun koulutat lisää, robotti saa heti uudet aivot.", "Test the brain on the real robot without uploading it: put this sketch on the robot, fill in sensors and motors, and press \"Connect and run\". The robot sends its sensors over USB, RoboLab runs the brain and sends the motor commands back. Train more and the robot gets the new brain right away.") },
         json: { label: "JSON", hint: tr("Painot ja sensorien kuvaus koneluettavana muihin ympäristöihin (ROS, Unity, C#, Rust…). Laskenta: jokaiselle kerrokselle out = tanh(W·in + b).", "Weights and the sensor description in machine-readable form for other environments (ROS, Unity, C#, Rust…). Computation: for each layer out = tanh(W·in + b).") },
       };
-      const t = S.trainer, p = t.best || t.mean;
+      // Kouluttamattomilla aivoilla (ei vielä yhtään sukupolvea) viedään satunnaiset painot: dialogi aukeaa silti
+      const t = S.trainer, p = currentBest();
       const raw = modelRaw();
       const base = { dim, model: S.model, layers: S.layers, params: p, name: raw.name || tr("Oma robotti", "Custom robot"), gen: S.gen,
-        fitness: isFinite(t.bestFitness) ? t.bestFitness : null, task: st.taskKey === "custom" ? tr("oma", "custom") : be.TASKS[st.taskKey].name };
+        fitness: t && isFinite(t.bestFitness) ? t.bestFitness : null, task: st.taskKey === "custom" ? tr("oma", "custom") : be.TASKS[st.taskKey].name };
       const info = RS.deployInfo(dim, S.model);
       const kb = (p.length * 4 / 1024).toFixed(1);
       let target = TARGETS[st.deployTarget] ? st.deployTarget : "arduino", out = null, liveLink = null;
@@ -735,7 +745,7 @@
           liveLink = await RS.USB.link({
             inputs: S.layers[0],
             // Aina uusimmat aivot: koulutus voi jatkua samaan aikaan
-            step: (v) => { const tt = S.trainer, pp = tt.best || tt.mean; return linkBrain.forward(Float32Array.from(pp), v); },
+            step: (v) => linkBrain.forward(Float32Array.from(currentBest()), v),
             onStatus: (s) => {
               if (s.hz) usbStatus(tr(`Yhdistetty · ${s.hz.toFixed(0)} kertaa/s · moottorit: `, `Connected · ${s.hz.toFixed(0)} per second · motors: `) + s.output.map((x) => x.toFixed(2)).join(", "));
               else if (s.bad) usbStatus(tr(`Robotti lähetti ${s.got} arvoa, aivot tarvitsevat ${s.expected}.`, `The robot sent ${s.got} values, the brain needs ${s.expected}.`));
@@ -760,6 +770,7 @@
       dlg.querySelector("[data-dl]").onclick = () => { if (out) RS.download(out.filename, out.code); };
       show();
       dlg.showModal();
+      window.rsDeployOpened = (window.rsDeployOpened || 0) + 1; // kurssi seuraa avauskertoja (vasta kun dialogi oikeasti aukesi)
     }
 
     function importBrain(d, name) {
@@ -796,6 +807,7 @@
       const cur = getToolState(key, B.defaults);
       saveToolState(key, { ...B.defaults, ...cfg, speed: cur.speed ?? MAX_SPEED, showAll: cur.showAll ?? true, follow: cur.follow ?? true, _adv: cur._adv });
       saveToolState(brainKey, {}, { undo: false });
+      saveToolState(statsKey, {}, { undo: false }); // uudet aivot aloittavat sukupolvesta 0
     } });
     const examples = dim === "2d" ? [
       ex(tr("Pyöräauto oppii ajamaan", "A car learns to drive"), tr("Nopein alku: oppii alle minuutissa", "The fastest start: learns in under a minute"), { modelKey: "car", taskKey: "forward", duration: 10 }),
