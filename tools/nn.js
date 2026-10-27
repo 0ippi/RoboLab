@@ -1485,7 +1485,7 @@
 
     /* ----- Haasteet (achievements.js): opitut aivot kiinteällä radalla, tulos RoboLabin omalla mittarilla ----- */
     const challenges = () => (window.Achievements?.CHALLENGES || []).filter((c) => c.dim === dim);
-    const fmtMetric = (c, v) => (c.metric === "targets" ? String(Math.round(v)) : `${fmt(v, 1)} ${c.unit}`.trim());
+    const fmtMetric = (c, v) => Achievements.fmtScore(c, v);
     function drawChallenges() {
       const box = el.querySelector("#nn-ch");
       if (!box || !be) return;
@@ -1513,6 +1513,7 @@
         score = ep.agents[0].fitness;
       } finally { be.free(ep); }
       const res = Achievements.challengeResult(c.id, score);
+      window.rsChallenges = (window.rsChallenges || 0) + 1; // kurssi seuraa haasteyrityksiä (lista piirretään uudelleen)
       drawChallenges();
       // Yritys näytetään uusintana samoilla ehdoilla (sama rata ja kohteet)
       startReplay({ seed: c.seed, terrain: c.terrain, duration: c.duration, taskFn, targets: undefined });
@@ -1899,6 +1900,8 @@
       ex(tr("Neura oppii kävelemään", "Neura learns to walk"), tr("Kävelypalkkio: askeleet pystyssä, ei ryömimistä", "Gait reward: steps while upright, no crawling"), { modelKey: "neura", taskKey: "walk", duration: 15, hidden: "48,48" }),
       ex(tr("Kaksijalkainen kävelijä (vaikea)", "Biped walker (hard)"), tr("Kävelypalkkiolla, vaatii satoja sukupolvia", "With the gait reward, takes hundreds of generations"), { modelKey: "biped", taskKey: "walk", duration: 15 }),
       ex(tr("Mato portailla", "A worm on stairs"), tr("Ryömii eteenpäin epätasaisessa maastossa", "Crawls forward on uneven terrain"), { modelKey: "worm", taskKey: "forward", terrain: "stairs" }),
+      ex(tr("Pyöräauto: helposta vaikeaan", "Car: from easy to hard"), tr("Maasto vaikeutuu itsestään, kun oppiminen tasaantuu", "The terrain gets harder by itself when learning levels off"), { modelKey: "car", taskKey: "forward", terrain: "flat", autoTerrain: true, duration: 12 }),
+      ex(tr("Grip kulkee oman reitin", "Grip follows its own route"), tr("Käsi oppii käymään kolmessa omassa pisteessä järjestyksessä", "The arm learns to visit three points of your own in order"), { modelKey: "grip", taskKey: "target", duration: 12, waypoints: [{ x: 1, y: 1.5 }, { x: -1, y: 1.2 }, { x: 0.4, y: 2 }] }),
     ] : [
       ex(tr("Pyöräauto ajaa eteenpäin", "A car drives forward"), tr("Oppii noin 30 sekunnissa", "Learns in about 30 seconds"), { modelKey: "car", taskKey: "forward" }),
       ex(tr("Dusty etsii kohteita", "Dusty finds targets"), tr("Robotti-imuri kääntyy pyörien nopeuserolla", "The robot vacuum turns using the wheel speed difference"), { modelKey: "dusty", taskKey: "target" }),
@@ -1908,6 +1911,8 @@
       ex(tr("Hämähäkki kävelee", "Spider walks"), tr("Kahdeksan jalkaa ja kävelypalkkio — oppii askeltamaan", "Eight legs and the gait reward — learns to step"), { modelKey: "spider", taskKey: "walk", duration: 12, hidden: "48,48" }),
       ex(tr("Kuusijalkainen kävelee", "Hexapod walks"), tr("Vakaa alusta: helpoin kävelijä", "A stable base: the easiest walker"), { modelKey: "hexapod", taskKey: "walk", duration: 12 }),
       ex(tr("Neura kävelee 3D:ssä", "Neura walks in 3D"), tr("Neljä jalkaa, lonkka ja polvi", "Four legs, hip and knee"), { modelKey: "neura", taskKey: "walk", duration: 12 }),
+      ex(tr("Pyöräauto: helposta vaikeaan", "Car: from easy to hard"), tr("Maasto vaikeutuu itsestään, kun oppiminen tasaantuu", "The terrain gets harder by itself when learning levels off"), { modelKey: "car", taskKey: "forward", terrain: "flat", autoTerrain: true }),
+      ex(tr("Dusty imuroi oman reitin", "Dusty vacuums its own route"), tr("Imuri oppii kiertämään neljä omaa pistettä järjestyksessä", "The vacuum learns to go round four points of your own in order"), { modelKey: "dusty", taskKey: "target", duration: 20, waypoints: [{ x: 3, z: 0 }, { x: 3, z: 3 }, { x: 0, z: 3 }, { x: 0, z: 0 }] }),
     ];
 
     return { render, unmount, examples };
