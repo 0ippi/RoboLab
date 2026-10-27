@@ -29,8 +29,10 @@ export function mount(root, dim, tool) {
     errors: 0
   };
   let view, raf = 0, testRaf = 0, dead = false;
-  // Kurssien tarkistukset (courses.js): onko fysiikkatesti käynnissä ja mitä moottoreille on annettu
-  window.builderStatus = () => ({ dim, testing: !!S.test, actions: S.test ? [...S.test.actions] : [], kinds: S.test ? S.test.motors.map((m) => m.kind) : [] });
+  // Kurssien tarkistukset (courses.js): onko fysiikkatesti käynnissä, mitä moottoreille on annettu, kuinka pitkälle
+  // robotti on ajanut testin alusta (run vaihtuu, kun testi aloitetaan uudelleen) ja onko Tarkistus-välilehti vihreä
+  window.builderStatus = () => ({ dim, testing: !!S.test, actions: S.test ? [...S.test.actions] : [], kinds: S.test ? S.test.motors.map((m) => m.kind) : [],
+    x: S.test ? S.test.rootX() : null, x0: S.test ? S.test.x0 : null, run: S.runs || 0, check: S.checkLevel || null });
 
   root.innerHTML = `
     ${toolHead(tool, `
@@ -626,6 +628,7 @@ export function mount(root, dim, tool) {
     const warns = items.filter((x) => x.level === 'warn').length;
     q('checkBadge').textContent = errors ? `⛔${errors}` : warns ? `⚠${warns}` : '✓';
     S.errors = errors;
+    S.checkLevel = errors ? 'err' : warns ? 'warn' : 'ok';
   }
 
   function renderJson() {
@@ -784,6 +787,8 @@ export function mount(root, dim, tool) {
     catch (e) { setHint(tr('Testi ei käynnistynyt: ', 'The test did not start: ') + e.message); return; }
     stopTest(true);
     S.test = test;
+    test.x0 = test.rootX();
+    S.runs = (S.runs || 0) + 1;
     view.showPhysics(true);
     view.buildPhysics(test.bodies);
     q('phys').hidden = false;

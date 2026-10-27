@@ -134,9 +134,11 @@ export function addJoint(model, a, b, type, dim) {
 // Kiinnitetään valitun osan (emo) reunaan. Palauttaa luodut osat.
 export function addWheel(model, parent, dim) {
   const box = bodyBox(parent);
-  const r = 0.3, h = 0.15;
+  // 2D (sivukuva): pyörä mitoitetaan rungon pituuden mukaan ja sijoitetaan rungon päähän, jotta pyöräparin
+  // etu- ja takapyörä eivät mene päällekkäin. 3D:ssä pyörä tulee rungon kylkeen.
+  const r = dim === '2d' ? round(Math.min(0.3, Math.max(0.08, (box.max.x - box.min.x) * 0.22))) : 0.3, h = 0.15;
   const id = uniqueId(model, tr('pyora', 'wheel'));
-  const pos = [round(box.max.x - r * 0.6), round(box.min.y), dim === '2d' ? 0 : round(box.max.z + h / 2 + 0.02)];
+  const pos = [round(box.max.x - (dim === '2d' ? r : r * 0.6)), round(box.min.y), dim === '2d' ? 0 : round(box.max.z + h / 2 + 0.02)];
   const body = {
     id, pos, rot: [0, 0, 0], foot: true, friction: 1.5, density: dim === '2d' ? 1 : 3, color: '#3d4a5c',
     shapes: [dim === '2d' ? { type: 'sphere', r, pos: [0, 0, 0], rot: [0, 0, 0] } : { type: 'cylinder', r, h, pos: [0, 0, 0], rot: [90, 0, 0] }]

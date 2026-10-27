@@ -184,6 +184,12 @@ export class PhysicsTest {
     return this.dim === '2d' ? r.getPosition().y : r.translation().y;
   }
 
+  // Päärungon paikka vaakasuunnassa: kurssit mittaavat tästä, kuinka pitkälle robotti on ajanut
+  rootX() {
+    const r = this.robot.root;
+    return this.dim === '2d' ? r.getPosition().x : r.translation().x;
+  }
+
   free() {
     if (this.dim === '3d') this.world.free();
   }
