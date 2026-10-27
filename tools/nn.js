@@ -148,7 +148,8 @@
 
     const hiddenOf = () => { try { return RS.parseHidden(st.hidden); } catch { return [32, 32]; } };
     const modelRaw = () => (st.modelKey === "custom" ? st.modelRaw : be.MODELS[st.modelKey]);
-    const taskCode = () => (st.taskKey === "custom" ? st.taskCode : be.TASKS[st.taskKey].code);
+    // Tuodun tiedoston oma palkkiofunktio (koodia) ajetaan vasta, kun käyttäjä on tarkistanut sen editorissa
+    const taskCode = () => (st.taskKey === "custom" ? (st.taskCodeUntrusted ? be.TASKS[B.defaults.taskKey].code : st.taskCode) : be.TASKS[st.taskKey].code);
     const opts = () => ({ popSize: Math.round(st.popSize), sigma: st.sigma, lr: st.lr });
     const save = () => saveToolState(key, st);
 
@@ -220,6 +221,12 @@
       tb.innerHTML = mode === "train" ? `❚❚ ${tr("Tauko", "Pause")}` : `▶ ${tr("Kouluta", "Train")}`;
       tb.classList.toggle("primary", mode !== "train");
       rb.textContent = mode === "replay" ? tr("Lopeta", "Stop") : tr("Näytä paras", "Show best");
+    }
+
+    // Tuodun palkkiofunktion varoitus omassa laatikossaan, jottei koulutuksen tilaviesti peitä sitä
+    function trustNote() {
+      const box = el.querySelector("#nn-trust");
+      if (box) box.innerHTML = st.taskKey === "custom" && st.taskCodeUntrusted ? alertsHtml([{ level: "warn", text: tr("Tuodussa tiedostossa on oma palkkiofunktio (JavaScript-koodia). Sitä ei ajeta ennen kuin tarkistat sen: Muokkaa palkkiofunktiota → Käytä. Siihen asti käytetään oletustehtävää.", "The imported file contains a custom reward function (JavaScript code). It won't run until you review it: Edit reward function → Apply. Until then the default task is used.") }]) : "";
     }
 
     function status(text, level) {
@@ -404,6 +411,7 @@
                 <label class="mini-toggle"><input type="checkbox" id="nn-all" ${st.showAll ? "checked" : ""}> ${tr("Koko populaatio", "Whole population")}</label>
                 <label class="mini-toggle"><input type="checkbox" id="nn-follow" ${st.follow ? "checked" : ""}> ${tr("Kamera seuraa parasta", "Camera follows the best")}</label>
               </div>
+              <div id="nn-trust" style="margin-top:8px"></div>
               <div id="nn-status" style="margin-top:8px"></div>
             </div>
             <div class="card"><h3 class="card-title">${tr("Oppimiskäyrä", "Learning curve")}</h3>
@@ -424,8 +432,8 @@
       }
       if (dead || my !== token || !root.querySelector("#nn-view")) return; // käyttäjä ehti vaihtaa sivua
       el.querySelector("#nn-loading").remove();
-      if (!(st.modelKey in be.MODELS) && st.modelKey !== "custom") st.modelKey = B.defaults.modelKey;
-      if (!(st.taskKey in be.TASKS) && st.taskKey !== "custom") st.taskKey = B.defaults.taskKey;
+      if (!Object.hasOwn(be.MODELS, st.modelKey) && st.modelKey !== "custom") st.modelKey = B.defaults.modelKey;
+      if (!Object.hasOwn(be.TASKS, st.taskKey) && st.taskKey !== "custom") st.taskKey = B.defaults.taskKey;
 
       S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true };
       try { setupBrain(true); }
@@ -434,6 +442,7 @@
         st.modelKey = B.defaults.modelKey; st.taskKey = B.defaults.taskKey;
         setupBrain(false);
       }
+      trustNote();
       view = be.view(el.querySelector("#nn-view"));
       el.querySelector("#nn-view").addEventListener("dblclick", () => { st.follow = true; el.querySelector("#nn-follow").checked = true; view.resumeFollow(); S.snap = true; });
       drawFields();
@@ -600,10 +609,10 @@
             await applyModel(raw);
           } });
       } else if (a === "editTask") {
-        editDialog({ title: tr("Muokkaa palkkiofunktiota (JavaScript)", "Edit reward function (JavaScript)"), help: be.HELP, text: taskCode(),
+        editDialog({ title: tr("Muokkaa palkkiofunktiota (JavaScript)", "Edit reward function (JavaScript)"), help: be.HELP, text: st.taskKey === "custom" && st.taskCodeUntrusted ? st.taskCode : taskCode(),
           apply: (text) => {
             S.taskFn = RS.compileTask(text); // heittää syntaksivirheen
-            st.taskKey = "custom"; st.taskCode = text;
+            st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; trustNote();
             save(); drawFields(); if (S.mode === "idle") preview();
             status(tr("Oma palkkiofunktio otettu käyttöön.", "Custom reward function in use."));
           } });
@@ -759,8 +768,9 @@
       be.normalize(raw);
       delete st.libId;
       Object.assign(st, {
-        modelKey: d.modelKey in be.MODELS ? d.modelKey : "custom", modelRaw: d.modelKey in be.MODELS ? undefined : raw,
-        taskKey: d.taskKey in be.TASKS ? d.taskKey : "custom", taskCode: d.taskKey in be.TASKS ? undefined : d.taskCode,
+        modelKey: Object.hasOwn(be.MODELS, d.modelKey) ? d.modelKey : "custom", modelRaw: Object.hasOwn(be.MODELS, d.modelKey) ? undefined : raw,
+        taskKey: Object.hasOwn(be.TASKS, d.taskKey) ? d.taskKey : "custom", taskCode: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : String(d.taskCode ?? ""),
+        taskCodeUntrusted: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : true,
         terrain: d.terrain in be.TERRAINS ? d.terrain : "flat", algo: d.algo === "ga" ? "ga" : "es",
         popSize: d.opts?.popSize ?? st.popSize, sigma: d.opts?.sigma ?? st.sigma, lr: d.opts?.lr ?? st.lr,
         duration: d.duration || st.duration, hidden: (d.hidden || [32, 32]).join(","),
@@ -768,8 +778,8 @@
       save();
       saveToolState(brainKey, { layers: d.layers, params: d.params, bestFitness: d.bestFitness, gen: d.generation || 0, history: d.history || [] }, { undo: false });
       setMode("idle");
-      setupBrain(true); drawFields(); preview(); drawChart();
-      status(tr(`Aivot ladattu tiedostosta ${name} (sukupolvi ${S.gen}).`, `Brain loaded from ${name} (generation ${S.gen}).`), "ok");
+      setupBrain(true); drawFields(); preview(); drawChart(); trustNote();
+      status(tr(`Aivot ladattu tiedostosta ${name} (sukupolvi ${S.gen}).`, `Brain loaded from ${name} (generation ${S.gen}).`) + (st.taskCodeUntrusted ? tr(" Tiedoston oma palkkiofunktio on pois käytöstä, kunnes tarkistat sen (Muokkaa palkkiofunktiota).", " The file's own reward function is off until you review it (Edit reward function).") : ""), st.taskCodeUntrusted ? "warn" : "ok");
     }
 
     function unmount() {

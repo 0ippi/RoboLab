@@ -211,7 +211,7 @@
     el.querySelector("#m-theory").innerHTML = resultTiles([
       { label: tr("Jumimomentti nivelellä", "Stall torque at joint"), value: T(r.tStallJoint), unit: tqLabel(), sub: tr("välityksen jälkeen", "after gearing") },
       { label: tr("Tyhjäkäyntinopeus nivelellä", "No-load speed at joint"), value: A(r.w0), unit: aU() },
-      { label: tr("Välitys 30 %:n pitoon", "Gear ratio for 30 % holding"), value: fmt(r.ratioFor30, 1), sub: tr(`nopeus silloin ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`, `speed then ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`) },
+      { label: tr("Välitys 30 %:n pitoon", "Gear ratio for 30 % holding"), value: fmt(r.ratioFor30, 1), sub: r.ratioFor30 > 0 ? tr(`nopeus silloin ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`, `speed then ${A(r.w0 * state.ratio / r.ratioFor30)} ${aU()}`) : tr("ei kuormaa", "no load") },
       { label: tr("Jumivirta", "Stall current"), value: fmt(r.iStall, 2), unit: "A", sub: tr("käynnistyspiikki", "start-up spike") },
     ]);
   }
@@ -240,16 +240,16 @@
       { label: tr("Aika 90 % nopeuteen", "Time to 90 % speed"), value: fmt(r.t90, 2), unit: "s" },
       { label: tr("Virta yhteensä", "Total current"), value: fmt(r.iTotal, 2), unit: "A", sub: fmt(r.iMotor, 2) + tr(" A / moottori", " A / motor") },
       { label: tr("Sähköteho", "Electrical power"), value: fmt(r.pEl, 1), unit: "W", sub: tr("mekaaninen ", "mechanical ") + fmt(r.pMech, 1) + " W" },
-      { label: tr("Momentti pyörällä", "Torque at wheel"), value: fmt(r.torqueWheelOp / tq(), 3), unit: tqLabel(), sub: tr("/ pyörä", "/ wheel") },
+      { label: tr("Momentti pyörällä", "Torque at wheel"), value: fmt(r.torqueWheelOp / tq(), 3), unit: tqLabel(), sub: tr("/ moottori", "/ motor") },
       { label: tr("Jatkuvaan ajoon sopiva mäki", "Slope for continuous driving"), value: fmt(r.contSlope, 0), unit: "°", sub: tr("≤ 30 % kuorma", "≤ 30 % load") },
     ]);
 
     el.querySelector("#m-theory").innerHTML = resultTiles([
       { label: tr("Huippunopeus (ei kuormaa)", "Top speed (no load)"), value: fmt(r.v0, 2), unit: "m/s", sub: kmh(r.v0) + " km/h" },
-      { label: tr("Jumimomentti pyörällä", "Stall torque at wheel"), value: fmt(r.tStallWheel / tq(), 3), unit: tqLabel(), sub: tr("/ pyörä", "/ wheel") },
+      { label: tr("Jumimomentti pyörällä", "Stall torque at wheel"), value: fmt(r.tStallWheel / tq(), 3), unit: tqLabel(), sub: tr("/ moottori", "/ motor") },
       { label: tr("Suurin vetovoima", "Maximum tractive force"), value: fmt(r.Fs, 1), unit: "N", sub: tr("moottorien raja", "motor limit") },
       { label: tr("Pidon raja", "Traction limit"), value: fmt(r.Ftrac, 1), unit: "N", sub: tr("renkaat alkavat luistaa", "tires start to slip") },
-      { label: tr("Jyrkin mäki", "Steepest slope"), value: fmt(r.maxSlope, 0), unit: "°", sub: tr("moottorit jumissa", "motors stalled") },
+      { label: tr("Jyrkin mäki", "Steepest slope"), value: fmt(r.maxSlope, 0), unit: "°", sub: r.tractionLimited ? tr("pyörät alkavat sutia", "wheels start to slip") : tr("moottorit jumissa", "motors stalled") },
       { label: tr("Jumivirta yhteensä", "Total stall current"), value: fmt(r.iStallTotal, 2), unit: "A", sub: tr("käynnistyspiikki", "start-up spike") },
     ]);
   }

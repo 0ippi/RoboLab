@@ -4,7 +4,8 @@
    kvaternion, ja muut kortit sekä 3D-näkymä seuraavat. */
 (() => {
   const ORDERS = ["ZYX", "XYZ", "ZXY", "YXZ", "ZYZ", "ZXZ"];
-  const RPY = { ZYX: ["yaw", "pitch", "roll"], XYZ: ["roll", "pitch", "yaw"] };
+  // Nimet roll/pitch/yaw kuuluvat vain kiertoon R = Rz(yaw)·Ry(pitch)·Rx(roll) (ROS): sisäinen ZYX tai ulkoinen XYZ
+  const rpyNames = (order, frame) => (order === "ZYX" && frame !== "extrinsic" ? ["yaw", "pitch", "roll"] : order === "XYZ" && frame === "extrinsic" ? ["roll", "pitch", "yaw"] : []);
   let state, el, view;
 
   const quatIdx = () => (settings.quatOrder === "wxyz" ? [3, 0, 1, 2] : [0, 1, 2, 3]);
@@ -63,7 +64,7 @@
     view = new View3(el.querySelector("#r-view"), { up: settings.upAxis, extent: 1.15, az: -55, el: 22, draw: drawView });
 
     el.querySelector("#r-order").onchange = (e) => { state.order = e.target.value; save(); drawEulerFields(); refresh(null); };
-    el.querySelector("#r-frame")?.addEventListener("change", (e) => { state.frame = e.target.value; save(); refresh(null); });
+    el.querySelector("#r-frame")?.addEventListener("change", (e) => { state.frame = e.target.value; save(); drawEulerFields(); refresh(null); });
     el.querySelector("#r-adv").onclick = () => { state._adv = !adv; save(); view.destroy(); render(root, tool); };
     el.querySelector("#r-reset").onclick = () => { state.q = [0, 0, 0, 1]; save(); refresh(null); };
     el.querySelector(".tool").addEventListener("input", onInput);
@@ -71,7 +72,7 @@
   }
 
   function drawEulerFields() {
-    const names = RPY[state.order] || [];
+    const names = rpyNames(state.order, state.frame);
     el.querySelector("#r-euler-fields").innerHTML = [0, 1, 2].map((i) => {
       const label = `${i + 1}. ${state.order[i]}${names[i] ? ` (${names[i]})` : ""}`;
       return `<div class="field"><label>${label}</label><div class="field-ctl"><span class="num">

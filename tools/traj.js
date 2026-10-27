@@ -162,11 +162,11 @@
 
   const save = () => saveToolState("traj", st);
 
-  function profileFor(q0, q1, T) {
-    if (st.profile === "cubic") return Motion.cubic(q0, q1, T, st.mode === "axis" ? st.v0 : 0, st.mode === "axis" ? st.v1 : 0);
-    if (st.profile === "quintic") return Motion.quintic(q0, q1, T, st.mode === "axis" ? st.v0 : 0, st.mode === "axis" ? st.v1 : 0);
-    if (st.profile === "trap") return Motion.trapezoid(q0, q1, st.vmax, st.amax);
-    return Motion.scurve(q0, q1, st.vmax, st.amax, st.jmax);
+  function profileFor(q0, q1, T, s = st) {
+    if (s.profile === "cubic") return Motion.cubic(q0, q1, T, s.mode === "axis" ? s.v0 : 0, s.mode === "axis" ? s.v1 : 0);
+    if (s.profile === "quintic") return Motion.quintic(q0, q1, T, s.mode === "axis" ? s.v0 : 0, s.mode === "axis" ? s.v1 : 0);
+    if (s.profile === "trap") return Motion.trapezoid(q0, q1, s.vmax, s.amax);
+    return Motion.scurve(q0, q1, s.vmax, s.amax, s.jmax);
   }
 
   function compute() {
@@ -345,8 +345,21 @@
 
   TOOL_IMPL.traj = { render, unmount, examples };
   // Moottorityökalu lukee liikkeen nopeus- ja kiihtyvyysrajat tästä (SI-yksiköt; kulmaliike rad/s)
+  // Polynomiprofiileissa vmax/amax ovat vain tarkistusrajoja, joten annetaan liikkeen todelliset huiput
+  // (käsivarsitilassa eniten liikkuvan nivelen, joka määrää keston)
   window.trajLimits = () => {
     const s = getToolState("traj", DEFAULTS);
-    return { vmax: s.vmax, amax: s.amax, angular: s.mode === "arm" || s.quantity !== "length" };
+    const angular = s.mode === "arm" || s.quantity !== "length";
+    try {
+      let q0 = s.q0, q1 = s.q1;
+      if (s.mode === "arm") {
+        const d = s.armEnd.map((e, i) => e - s.armStart[i]);
+        const k = d.reduce((m, v, i) => (Math.abs(v) > Math.abs(d[m]) ? i : m), 0);
+        q0 = s.armStart[k]; q1 = s.armEnd[k];
+      }
+      const p = Motion.sampleProfile(profileFor(q0, q1, s.T, s), 400);
+      if (Number.isFinite(p.vMax) && Number.isFinite(p.aMax) && p.vMax > 0) return { vmax: p.vMax, amax: p.aMax, angular };
+    } catch {}
+    return { vmax: s.vmax, amax: s.amax, angular };
   };
 })();
