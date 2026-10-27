@@ -229,6 +229,77 @@ const Education = (() => {
         [tr("Pysyvä virhe", "Steady-state error"), tr("Virhe, joka jää jäljelle, kun vaste on asettunut.", "The error left once the response has settled.")],
       ],
     },
+    // Oppitunti ilman kurssia: työkalu (nn2d sisältyy Education-tasoon) ja luokan haasteet (achievements.js)
+    {
+      id: "D", course: null, tool: "nn2d", challenges: ["sprint", "obstacles"], icon: "brain", guide: "neura",
+      title: tr("Tekoälyhaaste: kouluta robotti", "AI challenge: train a robot"),
+      level: tr("Noin 12–18-vuotiaat. Ei ohjelmointia eikä esitietoja.", "About age 12–18. No programming or prior knowledge."),
+      minutes: tr("45 min (laajennettuna 75 min)", "45 min (75 min extended)"),
+      summary: tr("Oppilaat kouluttavat pyöräauton neuroverkon evoluutiolla, huomaavat palkkion vaikutuksen Oma tavoite -ikkunassa ja kilpailevat luokan haasteissa (Pikajuoksu ja Esterata). Opettaja näyttää haasteiden tulostaulun luokkahuoneesta.", "Students train a wheeled car's neural network with evolution, see the effect of the reward in the Custom goal window and compete in the class challenges (Sprint and Obstacle course). The teacher shows the challenge leaderboard from the classroom."),
+      goals: [
+        tr("Oppilas kertoo, miten neuroverkko ohjaa robottia: anturit sisään, moottorikomennot ulos.", "Students tell how a neural network drives a robot: sensors in, motor commands out."),
+        tr("Oppilas selittää, miten evoluutio ja palkkio opettavat robottia ilman valmiita esimerkkejä.", "Students explain how evolution and a reward teach a robot without ready examples."),
+        tr("Oppilas huomaa, että robotti oppii juuri sen, mistä palkitaan (palkkion huijaus).", "Students notice that a robot learns exactly what is rewarded (reward hacking)."),
+        tr("Oppilas parantaa robottiaan ja mittaa tuloksen samalla radalla kuin muut.", "Students improve their robot and measure the result on the same track as everyone else."),
+      ],
+      materials: [
+        tr("Tietokone 1–2 oppilasta kohden. Koulutus käyttää kaikkia prosessoriytimiä: tavallinen kannettava riittää.", "A computer per 1–2 students. Training uses every processor core: an ordinary laptop is enough."),
+        tr("Oppilaan moniste.", "The student worksheet."),
+        tr("Heijastin tulostaulua varten (luokkahuone vaatii Teacher-tason ja pilvitilin).", "A projector for the leaderboard (the classroom needs the Teacher plan and a cloud account)."),
+      ],
+      prep: [
+        tr("Kokeile itse: avaa Neuroverkkosimulaatio 2D, paina Kouluta noin 30 sekuntia ja kokeile Haasteet-kortin Pikajuoksua (noin 10 min).", "Try it yourself: open Neural network sim 2D, press Train for about 30 seconds and try Sprint in the Challenges card (about 10 min)."),
+        tr("Luo luokkahuone ja valitse sen haasteiksi Pikajuoksu ja Esterata (Luokan kurssit ja haasteet).", "Create a classroom and pick Sprint and Obstacle course as its challenges (Class courses and challenges)."),
+      ],
+      plan: [
+        { t: "0–5", title: tr("Mikä on neuroverkko?", "What is a neural network?"),
+          do: tr("Näytä heijastimella Aivot toiminnassa -kaavio: vasemmalla anturit, oikealla moottorit ja välissä piilokerrokset. Kysy: mitä robotti tietää maailmasta?", "Show the Brain in action diagram on the projector: sensors on the left, motors on the right and hidden layers in between. Ask: what does the robot know about the world?") },
+        { t: "5–15", title: tr("Ensimmäinen koulutus", "The first training"),
+          do: tr("Oppilaat liittyvät luokkaan, avaavat Neuroverkkosimulaatio 2D:n (valmiiksi pyöräauto ja Liiku eteenpäin) ja painavat Kouluta. Monisteen tehtävä 1: sukupolvi ja paras pistemäärä 30 sekunnin välein.", "Students join the class, open Neural network sim 2D (the wheeled car and Move forward are preselected) and press Train. Worksheet task 1: the generation and best score every 30 seconds.") },
+        { t: "15–25", title: tr("Palkkio ratkaisee", "The reward decides"),
+          do: tr("Tehtävä 2: Oma tavoite → jätä rasti vain kohtaan Ole nopea. Kouluta ja katso Näytä paras -uusinta hidastettuna (0,25×). Mihin suuntaan auto ajaa? Pura yhdessä: robotti oppii sen, mistä palkitaan.", "Task 2: Custom goal → leave only Be fast ticked. Train and watch the Show best replay slowed down (0.25×). Which way does the car drive? Discuss: the robot learns what is rewarded.") },
+        { t: "25–40", title: tr("Luokan haaste", "The class challenge"),
+          do: tr("Tehtävä 3: tehtäväksi taas Liiku eteenpäin, kouluta ja kokeile Pikajuoksua (40 m 12 sekunnissa). Nopeat jatkavat Esterataan: kouluta Esteet-maastossa tai kytke Vaikeuta maastoa automaattisesti. Näytä tulostaulu heijastimella.", "Task 3: back to Move forward, train and try Sprint (40 m in 12 seconds). Fast finishers go on to the Obstacle course: train on the Obstacles terrain or switch on Make the terrain harder automatically. Show the leaderboard on the projector.") },
+        { t: "40–45", title: tr("Kooste", "Wrap-up"),
+          do: tr("Kysy: miksi haasteen tulos mitataan samalla radalla kaikille? Mitä tapahtuisi, jos jokainen mittaisi omalla palkkiollaan? Poistumislippu: tehtävä 4.", "Ask: why is the challenge result measured on the same track for everyone? What would happen if everyone measured with their own reward? Exit ticket: task 4.") },
+      ],
+      tasks: [
+        { q: tr("Koulutuksen eteneminen: kirjaa sukupolvi ja Paras ikinä -pisteet 30 sekunnin välein.", "Training progress: record the generation and the Best ever score every 30 seconds."),
+          table: [[tr("Aika", "Time"), tr("Sukupolvi", "Generation"), tr("Paras ikinä", "Best ever")], ["30 s", "", ""], ["60 s", "", ""], ["90 s", "", ""], ["120 s", "", ""]] },
+        { q: tr("Oma tavoite: palkitse vain vauhdista (Ole nopea). Mihin suuntaan robotti oppi ajamaan? Miksi?", "Custom goal: reward speed only (Be fast). Which way did the robot learn to drive? Why?"), lines: 3 },
+        { q: tr("Luokan haasteet: kirjaa tulos ja montako sukupolvea koulutit.", "Class challenges: record the result and how many generations you trained."),
+          table: [[tr("Haaste", "Challenge"), tr("Tulos", "Result"), tr("Sukupolvia", "Generations"), tr("Läpäisty?", "Passed?")], [tr("Pikajuoksu (40 m)", "Sprint (40 m)"), "", "", ""], [tr("Esterata (40 m)", "Obstacle course (40 m)"), "", "", ""]] },
+        { q: tr("Poistumislippu: miksi haasteen tulos mitataan RoboLabin omalla mittarilla eikä omalla palkkiofunktiollasi?", "Exit ticket: why is a challenge result measured with RoboLab's own meter and not your own reward function?"), lines: 2 },
+      ],
+      solutions: [
+        tr("1. Paras pistemäärä nousee nopeasti ensimmäisen minuutin aikana ja tasaantuu. Pyöräauto oppii ajamaan eteenpäin yleensä alle minuutissa (koneen nopeudesta riippuen noin 50–300 sukupolvea).", "1. The best score rises quickly during the first minute and then levels off. The wheeled car usually learns to drive forward in under a minute (about 50–300 generations depending on the computer)."),
+        tr("2. Auto voi oppia ajamaan yhtä hyvin taaksepäin tai vaihtelemaan suuntaa: palkkio kertoi vain vauhdin, ei suuntaa. Robotti oppii juuri sen, mistä palkitaan.", "2. The car may just as well learn to drive backwards or switch direction: the reward only said speed, not direction. A robot learns exactly what is rewarded."),
+        tr("3. Tasaisella koulutettu pyöräauto ajaa Pikajuoksussa tyypillisesti 50–55 m. Esteradalla se jää usein esteeseen (noin 10–15 m); Esteet-maastossa koulutettuna se pääsee yli 50 m:iin.", "3. A car trained on flat ground typically drives 50–55 m in Sprint. On the Obstacle course it often gets stuck at an obstacle (about 10–15 m); trained on the Obstacles terrain it gets past 50 m."),
+        tr("4. Jotta tulokset ovat vertailukelpoisia: oman palkkion voi kirjoittaa antamaan pisteitä mistä tahansa. Haasteen mittari ja rata ovat kaikille samat.", "4. So the results are comparable: your own reward could be written to give points for anything. The challenge's meter and track are the same for everyone."),
+      ],
+      rubric: [
+        [tr("Perustaso", "Basic"), tr("Kouluttaa robotin ja kirjaa koulutuksen etenemisen.", "Trains the robot and records the training progress.")],
+        [tr("Hyvä", "Good"), tr("Selittää omin sanoin, miksi pelkästä vauhdista palkittu auto voi ajaa väärään suuntaan, ja läpäisee Pikajuoksun.", "Explains in their own words why a car rewarded only for speed may drive the wrong way, and passes Sprint.")],
+        [tr("Erinomainen", "Excellent"), tr("Parantaa robottiaan suunnitelmallisesti (maasto, maaston vaikeutus tai tavoitteiden painot), läpäisee Esteradan ja perustelee, miksi mittari on kaikille sama.", "Improves the robot systematically (terrain, automatic terrain difficulty or goal weights), passes the Obstacle course and justifies why the meter is the same for everyone.")],
+      ],
+      extension: [
+        tr("Kytke Vaikeuta maastoa automaattisesti ja seuraa oppimiskäyrän pystyviivoja: missä sukupolvessa maasto vaihtui?", "Switch on Make the terrain harder automatically and watch the vertical lines in the learning curve: at which generation did the terrain change?"),
+        tr("Tallenna kaksi koulutusajoa eri tavoitteilla ja laita ne kisaamaan (🏁 Kisa). Kumpi voitti ja miksi?", "Save two training runs with different goals and race them (🏁 Race). Which one won and why?"),
+        tr("Avaa Vie omalle robotille → Kytkentäohje: mitä osia oikea robotti tarvitsisi?", "Open Put on a real robot → Wiring guide: which parts would a real robot need?"),
+      ],
+      offline: [
+        tr("Evoluutio paperilla: jokainen piirtää ruudukkoon reitin lähdöstä maaliin satunnaisilla käännöksillä. Lähimmäs maalia päässeet saavat \"jälkeläisiä\": kopio reitistä pienellä muutoksella. Toistakaa kolme kierrosta: paraneeko paras reitti?", "Evolution on paper: everyone draws a route on a grid from the start toward a goal with random turns. Those closest to the goal get \"children\": a copy of the route with a small change. Play three rounds: does the best route improve?"),
+        tr("Palkkiopeli: yksi oppilas on \"robotti\" ja saa pisteitä vain siitä, mitä luokka on päättänyt palkita. Huomatkaa, miten robotti löytää tavan saada pisteitä, jota kukaan ei tarkoittanut.", "The reward game: one student is the \"robot\" and only gets points for what the class decided to reward. Notice how the robot finds a way to score that nobody intended."),
+      ],
+      words: [
+        [tr("Neuroverkko", "Neural network"), tr("Laskentamalli, joka muuttaa anturien arvot moottorikomennoiksi painojen avulla.", "A computation that turns sensor values into motor commands using weights.")],
+        [tr("Evoluutio", "Evolution"), tr("Koulutustapa, jossa kokeillaan pieniä muutoksia ja jatketaan paremmin pärjänneistä.", "A way of training that tries small changes and carries on from the ones that did better.")],
+        [tr("Sukupolvi", "Generation"), tr("Yksi kierros: koko populaatio kokeilee, ja parhaiden suuntaan siirrytään.", "One round: the whole population tries, and the search moves toward the best.")],
+        [tr("Palkkio", "Reward"), tr("Pisteet, jotka kertovat robotille, mikä on hyvää käytöstä.", "Points that tell the robot what good behaviour is.")],
+        [tr("Palkkion huijaus", "Reward hacking"), tr("Robotti löytää tavan saada pisteitä, jota kukaan ei tarkoittanut.", "The robot finds a way to score that nobody intended.")],
+        [tr("Haaste", "Challenge"), tr("Kaikille sama mittaus samalla radalla.", "The same measurement on the same track for everyone.")],
+      ],
+    },
   ];
 
   /* ===== Oppilaan edistymistiedosto ===== */
@@ -298,7 +369,9 @@ const Education = (() => {
     setTimeout(done, 1500);
   }
 
-  const studentLink = (L) => location.origin + location.pathname + "#/course/" + L.course;
+  // Oppilaslinkki: kurssi, tai kurssiton oppitunti (D) avaa suoraan työkalun
+  const studentLink = (L) => location.origin + location.pathname + (L.course ? "#/course/" + L.course : "#/" + L.tool);
+  const lessonChallenges = (L) => (L.challenges || []).map((id) => window.Achievements?.CHALLENGES.find((c) => c.id === id)?.name).filter(Boolean);
   const list = (items) => `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   const tableHtml = (rows, blank) => `<table class="ws-table"><thead><tr>${rows[0].map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
     <tbody>${rows.slice(1).map((r) => `<tr>${r.map((c) => `<td>${esc(c)}${blank && !c ? "&nbsp;" : ""}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
@@ -309,10 +382,13 @@ const Education = (() => {
         <b>${tr("Oppilaslinkki", "Student link")}:</b> ${esc(studentLink(L))}</p>
       <p>${esc(L.summary)}</p>
       <div class="doc-box"><b>${tr("Tunti lyhyesti", "The lesson in brief")}</b><ol>
-        <li>${tr(`Ennen tuntia: luo luokkahuone, valitse sille kurssi ”${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” ja tulosta monisteet.`, `Before the lesson: create a classroom, assign the course “${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” and print the worksheets.`)}</li>
+        <li>${L.course
+          ? tr(`Ennen tuntia: luo luokkahuone, valitse sille kurssi ”${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” ja tulosta monisteet.`, `Before the lesson: create a classroom, assign the course “${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” and print the worksheets.`)
+          : tr(`Ennen tuntia: luo luokkahuone, valitse sen haasteiksi ${lessonChallenges(L).map((n) => `”${esc(n)}”`).join(" ja ")} ja tulosta monisteet.`, `Before the lesson: create a classroom, pick ${lessonChallenges(L).map((n) => `“${esc(n)}”`).join(" and ")} as its challenges and print the worksheets.`)}</li>
         <li>${tr("Tunnin alussa: näytä luokkakoodi isona. Oppilaat liittyvät Kurssit-sivulla koodilla ja nimimerkillä.", "At the start: show the class code large. Students join on the Courses page with the code and an alias.")}</li>
         <li>${tr("Tunnin aikana: seuraa tunnin kulkua alla ja luokkahuoneen taulukkoa. Auta oppilaita, joiden eteneminen on pysähtynyt.", "During the lesson: follow the plan below and the classroom table. Help students whose progress has stalled.")}</li>
-        <li>${tr("Lopuksi: käy poistumislippu läpi. Arvioi kriteerien ja loppukokeen pisteiden avulla.", "At the end: go through the exit ticket. Assess with the criteria and the final quiz scores.")}</li>
+        <li>${L.course ? tr("Lopuksi: käy poistumislippu läpi. Arvioi kriteerien ja loppukokeen pisteiden avulla.", "At the end: go through the exit ticket. Assess with the criteria and the final quiz scores.")
+          : tr("Lopuksi: käy poistumislippu läpi. Arvioi kriteerien ja haasteiden tulostaulun avulla.", "At the end: go through the exit ticket. Assess with the criteria and the challenge leaderboard.")}</li>
       </ol></div>
       <h2>${tr("Oppimistavoitteet", "Learning goals")}</h2>${list(L.goals)}
       <h2>${tr("Tarvittavat välineet", "Materials")}</h2>${list(L.materials)}
@@ -331,7 +407,7 @@ const Education = (() => {
   function worksheetDoc(L) {
     return `<h1>${esc(L.title)} — ${tr("tehtävämoniste", "worksheet")}</h1>
       <p class="doc-meta">${tr("Nimi tai nimimerkki", "Name or alias")}: ____________________ &nbsp; ${tr("Pari", "Partner")}: ____________________</p>
-      <p>${tr("Avaa RoboLab ja kurssi osoitteesta", "Open RoboLab and the course at")} <b>${esc(studentLink(L))}</b></p>
+      <p>${L.course ? tr("Avaa RoboLab ja kurssi osoitteesta", "Open RoboLab and the course at") : tr("Avaa RoboLab osoitteesta", "Open RoboLab at")} <b>${esc(studentLink(L))}</b></p>
       ${L.tasks.map((t, i) => `<section class="ws-task"><h3>${i + 1}. ${esc(t.q)}</h3>
         ${t.table ? tableHtml(t.table, true) : ""}
         ${t.checks ? `<ul class="ws-checks">${t.checks.map((c) => `<li>☐ ${esc(c)}</li>`).join("")}</ul>` : ""}
@@ -371,7 +447,7 @@ const Education = (() => {
           <li><b>${tr("Seuraa edistymistä", "Follow progress")}</b>
             <span>${tr("Luokkahuone päivittyy itsestään. ✓ tarkoittaa suoritettua kurssia, ja luku sen vieressä on loppukokeen pisteet. Oppilaiden kurssit avautuvat Education-tasolla.", "The classroom updates by itself. ✓ means a completed course, and the number beside it is the final quiz score. Students' courses unlock at the Education level.")}</span></li>
           <li><b>${tr("Valmis tuntisuunnitelma (valinnainen)", "A ready lesson plan (optional)")}</b>
-            <span>${tr("Oppitunneissa A–C on tunnin kulku minuutteineen, tulostettava moniste, ratkaisut ja arviointikriteerit.", "Lessons A–C include a minute-by-minute plan, a printable worksheet, solutions and assessment criteria.")}</span>
+            <span>${tr("Oppitunneissa A–D on tunnin kulku minuutteineen, tulostettava moniste, ratkaisut ja arviointikriteerit.", "Lessons A–D include a minute-by-minute plan, a printable worksheet, solutions and assessment criteria.")}</span>
             <button class="link-btn" data-edu="jump" data-to="edu-sec-lessons">${tr("Oppitunnit ↓", "Lessons ↓")}</button></li>
         </ol>
         <details class="edu-faq"><summary>${tr("Usein kysyttyä", "Frequently asked questions")}</summary>
@@ -687,11 +763,11 @@ const Education = (() => {
     const act = b.dataset.edu;
     if (act === "jump") { document.getElementById(b.dataset.to)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     if (act === "open" && L) { showDetail(L); return; }
-    if (act === "start" && L) { Courses.start(L.course); return; }
+    if (act === "start" && L) { if (L.course) Courses.start(L.course); else location.hash = "#/" + L.tool; return; }
     if (act === "print-teacher" && L) { printHtml(L.title, teacherDoc(L)); return; }
     if (act === "print-sheet" && L) { printHtml(L.title, worksheetDoc(L)); return; }
     if (act === "print-sol" && L) { printHtml(L.title, solutionsDoc(L)); return; }
-    if (act === "copy") { copyLink(location.origin + location.pathname + "#/course/" + (L ? L.course : b.dataset.c)); return; }
+    if (act === "copy") { copyLink(L ? studentLink(L) : location.origin + location.pathname + "#/course/" + b.dataset.c); return; }
     if (act === "cloud-login") { AccountsUI.showLogin("cloud"); return; }
     if (act === "copy-code") { copyLink(b.dataset.c); return; }
     if (act === "open-room") { openRoom(b.dataset.c); return; }

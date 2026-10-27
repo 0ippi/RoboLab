@@ -743,11 +743,20 @@ async function test(name, fn) {
 
   await test("Opettajille-sivu: oppitunnit, materiaalit ja tulostus", async () => {
     await go("#/teach");
-    eq(w.document.querySelectorAll(".edu-lesson").length, 3, "oppitunteja");
+    eq(w.document.querySelectorAll(".edu-lesson").length, w.Education.LESSONS.length, "oppitunteja");
+    ok(w.Education.LESSONS.length >= 4, "oppitunti D puuttuu");
     for (const L of w.Education.LESSONS) {
       for (const k of ["goals", "materials", "plan", "tasks", "solutions", "rubric", "extension", "offline"]) ok(L[k]?.length, `${L.id}: ${k} puuttuu`);
-      ok(w.Courses._courses.some((c) => c.id === L.course), `${L.id}: kurssi ${L.course} puuttuu`);
+      // Kurssi tai (kurssittomalla oppitunnilla) työkalu ja haasteet
+      if (L.course) ok(w.Courses._courses.some((c) => c.id === L.course), `${L.id}: kurssi ${L.course} puuttuu`);
+      else {
+        ok(G("TOOLS").some((t) => t.id === L.tool), `${L.id}: työkalu ${L.tool} puuttuu`);
+        ok((L.challenges || []).every((id) => w.Achievements.CHALLENGES.some((c) => c.id === id)), `${L.id}: tuntematon haaste`);
+      }
     }
+    // Kurssiton oppitunti: oppilaslinkki avaa työkalun ja opettajan ohje nimeää luokan haasteet
+    const D = w.Education.LESSONS.find((L) => !L.course);
+    ok(w.Education.teacherDoc(D).includes("#/" + D.tool) && w.Education.teacherDoc(D).includes(w.Achievements.CHALLENGES.find((c) => c.id === D.challenges[0]).name), "oppitunnin D ohje");
     w.document.querySelector('[data-edu="open"][data-id="A"]').click();
     let printed = "";
     w.print = () => (printed = w.document.querySelector("#print-area").textContent);

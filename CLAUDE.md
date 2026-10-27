@@ -85,7 +85,7 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Tietosuojaseloste: `tietosuoja.html` (päivitä, jos tallennettavat tiedot tai palveluntarjoajat muuttuvat). Sähköpostit (SMTP): `docs/sahkoposti-ohje.md`.
 
 ## Opettajille ja tietoturva
-- `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–C (`LESSONS`), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
+- `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–D (`LESSONS`; D on kurssiton: `course: null`, `tool`, `challenges`, oppilaslinkki avaa työkalun), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
 - Luokkahuone (2.7.0): opettaja luo luokan (`create_class`), antaa kurssit ja määräpäivät (`set_class_courses`) ja seuraa oppilaita (`class_overview`, päivittyy 20 s välein, CSV). Oppilas liittyy koodilla + nimimerkillä ilman tiliä (`Plans.activateClass` → `join_class`); eteneminen lähtee `Plans.queueSync` → `report_progress` (vain luvut, ei koodia). SQL: `docs/supabase-classroom.sql`.
 - Kurssien loppukokeet: `EXAMS` courses.js:ssä, oikea vastaus aina indeksissä 0 (järjestys sekoitetaan oppilaskohtaisesti).
 - Tuotu koodi (nn2d/nn3d `taskCode`) merkitään `taskCodeUntrusted`: sitä ei ajeta ennen kuin käyttäjä hyväksyy sen editorissa. Kaikki tuodut tai tallennetut arvot `esc()`:llä HTML:ään; `getToolState` pakottaa numero-oletusten kentät luvuiksi.

@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.13.0", date: "2026-10-28",
+    fi: ["Opettajille uusi valmis oppitunti D: Tekoälyhaaste. Oppilaat kouluttavat pyöräauton neuroverkon, huomaavat palkkion vaikutuksen ja kilpailevat luokan haasteissa. Mukana tunnin kulku, tulostettava moniste, ratkaisut ja arviointikriteerit. Toimii oppilaiden Education-tasolla (2D-neuroverkko)."],
+    en: ["A new ready-made lesson D for teachers: AI challenge. Students train a wheeled car's neural network, see the effect of the reward and compete in the class challenges. Includes a lesson plan, a printable worksheet, solutions and assessment criteria. Works on the students' Education plan (2D neural network)."],
+  },
+  {
     version: "2.12.2", date: "2026-10-28",
     fi: ["Korjaus: sovelluksen automaattitestit eivät enää keskeydy, jos uusi versio julkaistaan kesken testiajon."],
     en: ["Fix: the app's automatic tests no longer break off if a new version is published during a test run."],
