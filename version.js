@@ -3,6 +3,13 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.4.1", date: "2026-10-27",
+    fi: ["Kirjaudu ulos -nappi on nyt sivupalkin alaosassa nimesi alla.",
+      "Profiilin Käyttäjät tällä koneella -listasta voi poistaa muita käyttäjiä, myös jos niiden salasana on unohtunut. Kirjautumisessa on Unohtuiko salasana? -linkki. Pilvitilin poisto laitteelta ei poista sen tietoja pilvestä."],
+    en: ["The Sign out button is now at the bottom of the sidebar, under your name.",
+      "You can remove other users from the Users on this computer list in your profile, even if their password is forgotten. Sign-in has a Forgot your password? link. Removing a cloud account from a device does not delete its data from the cloud."],
+  },
+  {
     version: "2.4.0", date: "2026-10-27",
     fi: ["Opettajille-sivu näkyy nyt vain opettajille (Teacher- ja Pro-taso). Opettajalla on kojelaudan alussa oma aloituskohta, ja Opettajille-sivun alussa kerrotaan kolmella askeleella, miten tunti otetaan käyttöön.",
       "Uusi tietosuojaseloste: mitä tietoja pilvitili tallentaa, missä ne ovat (EU) ja miten ne poistetaan. Linkki löytyy kojelaudan alareunasta ja pilvitilin luonnista.",
