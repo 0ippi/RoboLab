@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.7.1", date: "2026-10-27",
+    fi: ["Luokkakoodin voi nyt syöttää Kurssit-sivun alussa myös silloin, kun käytössä on jo Education- tai Pro-taso, jotta opettaja näkee etenemisesi."],
+    en: ["You can now enter a class code at the top of the Courses page even when you already have the Education or Pro plan, so your teacher can see your progress."],
+  },
+  {
     version: "2.7.0", date: "2026-10-27",
     fi: ["Luokkahuoneet: opettaja luo luokan, jakaa koodin ja näkee jokaisen oppilaan etenemisen ja loppukokeen pisteet yhdessä taulukossa, joka päivittyy itsestään. Taulukon saa myös CSV-tiedostona.",
       "Opettaja valitsee luokalle suoritettavat kurssit ja määräpäivät. Oppilaat näkevät ne Kurssit-sivun alussa.",
