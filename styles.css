@@ -1050,6 +1050,10 @@ body.lesson-open.lesson-collapsed .ai-fab { right: calc(64px + 18px); }
 .rsb-slider { margin: 8px 0; font-size: .78rem; color: var(--text-3); }
 .rsb-slider .lab { display: flex; justify-content: space-between; gap: 8px; }
 .rsb-slider input { width: 100%; }
+.rsb-assist { display: flex; margin: 6px 0 2px; font-weight: 600; }
+.rsb-marquee { position: absolute; z-index: 6; pointer-events: none; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 2px; }
+.rsb-scale-all { display: flex; align-items: center; gap: 6px; }
+.rsb-scale-all input { width: 80px; }
 .rsb-hint {
   position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 8px 12px; pointer-events: none; font-size: .84rem; color: var(--text-2);
   border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border);

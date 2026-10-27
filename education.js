@@ -416,7 +416,7 @@ const Education = (() => {
   async function loadClasses(el) {
     const box = el.querySelector("#edu-classes");
     if (!box || !window.Cloud?.configured || !Accounts.current()?.cloud) return;
-    const src = Plans.current().sources.find((s) => s.from === "account" && (s.plan === "teacher" || s.plan === "pro") || s.from === "test");
+    const src = Plans.current().sources.find((s) => s.from === "account" && s.plan === "teacher" || s.from === "test");
     let classes = [];
     try { classes = (await Cloud.rpc("my_classes")) || []; }
     catch (e) { box.innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }

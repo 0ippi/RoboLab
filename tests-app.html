@@ -26,8 +26,8 @@
 window.__robolabStores = { local: new Map(), session: new Map() };
 window.__robolabErrors = [];
 window.__robolabQuota = 0;
-// Vanhat testit ajetaan Pro-tasolla (kaikki auki); tasotestit asettavat tämän tyhjäksi
-window.__robolabPlanOverride = "pro";
+// Vanhat testit ajetaan Pro- ja Teacher-tasolla (kaikki auki, myös Opettajille); tasotestit asettavat tämän tyhjäksi
+window.__robolabPlanOverride = "pro,teacher";
 
 // Pilvitilin testiversio: Supabase-asiakkaan pienin tarvittava osa muistissa. "Palvelin" on yhteinen,
 // istunto tallentuu laitteen (tallennus-Mapin) omaan avaimeen kuten oikeassa kirjastossa.
@@ -676,6 +676,96 @@ async function test(name, fn) {
     window.__robolabSupabaseMock = null; useDevice("A");
   });
 
+  /* ===== Kurssien automaattinen tarkistus ja robotinrakentaja ===== */
+  await test("Kurssit: ei Tein sen -nappeja; napin painallus huomataan automaattisesti", async () => {
+    useDevice("A"); fresh(); await boot();
+    const C = w.Courses._courses;
+    const passive = C.flatMap((c) => c.steps.flatMap((s) => s.tasks.filter((t) => !t.check).map((t) => `${c.id}/${s.id}/${t.id}`)));
+    ok(passive.length <= 10, "liikaa tehtäviä ilman tarkistusta: " + passive.join(", "));
+    w.Courses.start("nav");
+    await sleep(600);
+    const nav = C.find((c) => c.id === "nav"), i = nav.steps.findIndex((s) => s.id === "grid");
+    w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`).click();
+    await waitFor(() => w.location.hash === "#/path" && w.document.querySelector("#pt-play"), 4000, "reitinhaku");
+    ok(!w.document.querySelector('#lesson [data-l="manual-done"]'), "Tein sen -nappi näkyy");
+    w.document.querySelector("#pt-play").click();
+    await waitFor(() => JSON.parse(ls().get("robolab-courses-v1")).c.nav.steps.grid.tasks.anim === true, 3000, "Toista haku -tehtävä");
+    w.Courses.stop();
+  });
+
+  await test("Rakentaja: valmisosat, monivalinta, ryhmäsiirto, kiinnitetyt osat ja skaalaus", async () => {
+    await go("#/build3d", 2500);
+    const d = w.document, q = (id) => d.querySelector("#rb-" + id), B = w.__builder;
+    ok(B, "rakentajan testiliittymä puuttuu");
+    q("parts").querySelector('[data-type="box"]').click(); await sleep(150);
+    for (const id of ["addWheelPair", "addCaster", "addArm", "addGripper", "addTail", "addLidar", "addCamera"]) { B.select("body", B.S.model.root); await sleep(30); q(id).click(); await sleep(60); }
+    eq(B.S.model.bodies.length, 9, "osien määrä");
+    ok(/simulaatioon|simulation/i.test(q("tab-check").textContent), "tarkistus: " + q("tab-check").textContent.slice(0, 120));
+    // Ryhmä: kahva valinnan keskellä ja siirto vie molemmat osat ja niiden nivelet
+    const root = B.S.model.root;
+    B.onBoxSelect(B.S.model.joints.filter((j) => j.a === root && j.motor !== false && j.lower == null).map((j) => j.b), false);
+    const ids = B.S.sel.bodies.slice(), pv = B.view.gizmo.object;
+    eq(pv?.userData.kind, "group", "ryhmän kahva");
+    const x0 = ids.map((id) => B.S.model.bodies.find((b) => b.id === id).pos[0]);
+    B.onTransformStart(); pv.position.x += 0.5; B.onTransform("group", null, pv); B.onTransformEnd();
+    eq(ids.map((id, k) => +(B.S.model.bodies.find((b) => b.id === id).pos[0] - x0[k]).toFixed(3)), [0.5, 0.5], "ryhmäsiirto");
+    // Päärungon siirto: kaikki kiinnitetyt osat tulevat mukana
+    B.select("body", B.S.model.root);
+    const y0 = Object.fromEntries(B.S.model.bodies.map((b) => [b.id, b.pos[1]])), o = B.view.bodyObjects[B.S.model.root];
+    B.onTransformStart(); o.position.y += 0.3; B.onTransform("body", B.S.model.root, o); B.onTransformEnd();
+    ok(B.S.model.bodies.every((b) => Math.abs(b.pos[1] - y0[b.id] - 0.3) < 1e-6), "kiinnitetyt osat eivät seuranneet");
+    // Skaalaus: ryhmä tasaisesti, yksittäinen osa yhteen suuntaan
+    B.setGizmoMode("scale");
+    const sh = B.S.model.joints.find((j) => j.lower === -90 && j.upper === 90), arm = [sh.b, B.S.model.joints.find((j) => j.a === sh.b).b];
+    B.onBoxSelect(arm, false);
+    const s0 = B.S.model.bodies.find((b) => b.id === arm[0]).shapes[0].size.slice(), pv2 = B.view.gizmo.object;
+    B.onTransformStart(); pv2.scale.set(2, 2, 2); B.onTransform("group", null, pv2); B.onTransformEnd();
+    eq(B.S.model.bodies.find((b) => b.id === arm[0]).shapes[0].size.map((v, k) => +(v / s0[k]).toFixed(2)), [2, 2, 2], "ryhmän skaalaus");
+    B.select("body", B.S.model.root);
+    const r0 = B.S.model.bodies.find((b) => b.id === B.S.model.root).shapes[0].size.slice(), o2 = B.view.bodyObjects[B.S.model.root];
+    B.onTransformStart(); o2.scale.set(1.5, 1, 1); B.onTransform("body", B.S.model.root, o2); B.onTransformEnd();
+    eq(B.S.model.bodies.find((b) => b.id === B.S.model.root).shapes[0].size.map((v, k) => +(v / r0[k]).toFixed(2)), [1.5, 1, 1], "osan venytys");
+    B.setGizmoMode("translate");
+  });
+
+  await test("Rakentaja 2D: valintalaatikko valitsee osat vetämällä", async () => {
+    await go("#/build2d", 2500);
+    const d = w.document, q = (id) => d.querySelector("#rb-" + id), B = w.__builder;
+    q("parts").querySelector('[data-type="box"]').click(); await sleep(150);
+    B.select("body", B.S.model.root); q("addWheelPair").click(); await sleep(100);
+    B.select(null);
+    const cv = q("view"), r = cv.getBoundingClientRect();
+    const ev = (type, x, y) => cv.dispatchEvent(new w.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 1 }));
+    ev("pointerdown", r.left + 4, r.top + 4); ev("pointermove", r.left + 50, r.top + 50); ev("pointermove", r.right - 4, r.bottom - 4); ev("pointerup", r.right - 4, r.bottom - 4);
+    await sleep(80);
+    eq(B.S.sel.bodies.length, B.S.model.bodies.length, "kaikki osat valittu");
+  });
+
+  await test("Roottorit: lentoavustin nostaa, leijuttaa ja pitää robotin pystyssä", async () => {
+    const res = await w.eval(`(async () => {
+      const P = await import('./robosim/builder/physics.js'), M = await import('./robosim/builder/model.js');
+      await RS.loadPlanck(); await P.initPhysics();
+      const out = {};
+      for (const dim of ['2d', '3d']) {
+        const m = M.emptyModel(dim), b = M.addPart(m, 'box', dim, [0, 0.5, 0]);
+        for (let i = 0; i < 4; i++) M.addRotor(m, b, dim);
+        const t = new P.PhysicsTest(m, dim);
+        t.cmd.climb = 0.6; for (let i = 0; i < 90; i++) t.step();
+        const up = t.rootHeight(); t.cmd.climb = 0;
+        for (let i = 0; i < 120; i++) t.step();
+        const h1 = t.rootHeight(); for (let i = 0; i < 120; i++) t.step();
+        out[dim] = { up, drift: Math.abs(t.rootHeight() - h1), fallen: t.fallen() };
+        t.free();
+      }
+      return out;
+    })()`);
+    for (const dim of ["2d", "3d"]) {
+      ok(res[dim].up > 0.6, dim + " ei noussut: " + res[dim].up);
+      ok(res[dim].drift < 0.05, dim + " ei pysy korkeudessa: " + res[dim].drift);
+      ok(!res[dim].fallen, dim + " kaatui");
+    }
+  });
+
   await test("Uloskirjautuminen sivupalkista; unohtuneen salasanan käyttäjän voi poistaa", async () => {
     fresh(); await boot();
     await G("Accounts").create({ name: "Unohtaja", password: "salainen1", remember: true });
@@ -779,7 +869,9 @@ async function test(name, fn) {
     pm.server.subs.set(uid, { plan: "pro", seats: 0, valid_until: null });
     await w.Plans.refresh({ force: true });
     eq(w.Plans.current().plan, "pro", "taso");
-    ok(w.Plans.canTool("nn3d") && w.Plans.canTool("teach") && w.Plans.canCourse("ai"), "Pro ei avaa kaikkea");
+    ok(w.Plans.canTool("nn3d") && w.Plans.canCourse("ai"), "Pro ei avaa kaikkea");
+    eq(w.Plans.canTool("teach"), false, "Pro avasi Opettajille-sivun");
+    ok(!w.document.querySelector('.nav-item[data-route="teach"]'), "Opettajille näkyy Prolla");
     await boot();
     ok(w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi näkyy Prolla");
     ok(!w.document.querySelector(".upgrade-banner"), "mainos näkyy Prolla");
@@ -843,7 +935,7 @@ async function test(name, fn) {
     w.confirm = () => true;
     d.querySelector('[data-dev-revoke="ope@example.com"]').click();
     await waitFor(() => pm.server.subs.get("u-ope")?.plan === "free", 2000, "lisenssin poisto");
-    window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro"; useDevice("A");
+    window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro,teacher"; useDevice("A");
   });
 
   /* ===== Puhelin ja offline ===== */

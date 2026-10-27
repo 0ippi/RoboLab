@@ -855,7 +855,7 @@ document.addEventListener("click", (e) => {
 });
 
 /* ===== Navigaatio ===== */
-// Opettajille-sivu näkyy listoissa vain opettajille (Teacher- ja Pro-taso); suora linkki näyttää tasoesittelyn
+// Opettajille-sivu näkyy listoissa vain opettajille (Teacher-taso); suora linkki näyttää tasoesittelyn
 const toolListed = (t) => t.nav !== false && (t.id !== "teach" || !window.Plans || Plans.canTeach());
 
 function renderNav() {

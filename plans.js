@@ -25,7 +25,7 @@ const Plans = (() => {
     free: { tools: FREE_TOOLS, courses: FREE_COURSES, teach: false },
     education: { tools: EDU_TOOLS, courses: EDU_COURSES, teach: false },
     teacher: { tools: [...EDU_TOOLS, "teach"], courses: EDU_COURSES, teach: true },
-    pro: { tools: ALL, courses: ALL, teach: true },
+    pro: { tools: ALL, courses: ALL, teach: false }, // Opettajille-sivu kuuluu vain Teacher-tasoon
   };
   const NAMES = { free: "Free", education: "Education", teacher: "Teacher", pro: "Pro" };
   const RANK = { free: 0, education: 1, teacher: 2, pro: 3 };
@@ -49,7 +49,7 @@ const Plans = (() => {
   function sources() {
     const out = [];
     const override = window.__robolabPlanOverride; // automaattitestit
-    if (override) return [{ plan: override, from: "test" }];
+    if (override) return String(override).split(",").map((plan) => ({ plan, from: "test" })); // esim. "pro,teacher"
     const acc = typeof Accounts !== "undefined" ? Accounts.current() : null; // const-globaali, ei window-ominaisuus
     if (acc?.cloud) {
       const p = read(PLAN_KEY)?.[acc.cloudUid];
@@ -80,6 +80,7 @@ const Plans = (() => {
   // Työkalu on käytössä, jos taso sallii sen tai käynnissä oleva (sallittu) kurssi käyttää sitä
   function canTool(id) {
     const f = feats();
+    if (id === "teach") return f.teach;
     if (f.all || f.tools.has(id) || id === "settings") return true;
     const ac = window.Courses?.active?.();
     if (ac && canCourse(ac.id)) return !!Courses._courses.find((c) => c.id === ac.id)?.steps.some((s) => s.tool === id);
@@ -246,7 +247,7 @@ const Plans = (() => {
         <div class="locked-icon" aria-hidden="true">🔒</div>
         <h2>${esc(tool.name)} ${badge(tier)}</h2>
         <p>${esc(tool.desc)}</p>
-        <p class="note">${tier === "teacher" ? tr("Opettajille-sivu kuuluu Teacher- ja Pro-tasoon.", "The For teachers page is part of the Teacher and Pro plans.")
+        <p class="note">${tier === "teacher" ? tr("Opettajille-sivu kuuluu Teacher-tasoon.", "The For teachers page is part of the Teacher plan.")
           : tr(`Tämä työkalu kuuluu ${NAMES[tier]}-tasoon${tier === "education" ? " (myös Teacher ja Pro)" : ""}. Free-tasolla voit käyttää perustyökaluja ja kolmea ensimmäistä kurssia.`,
             `This tool is part of the ${NAMES[tier]} plan${tier === "education" ? " (also Teacher and Pro)" : ""}. On Free you can use the basic tools and the first three courses.`)}</p>
         <div class="row-actions">
@@ -305,7 +306,7 @@ const Plans = (() => {
         <article class="card plan-card tier-pro">
           <h2>Pro</h2>${per(P.pro.month, P.pro.year)}
           <ul><li>${tr("Kaikki työkalut ja kaikki kurssit", "All tools and all courses")}</li><li>${tr("Lisäksi", "Also")}: ${esc(proExtra.join(", "))}</li>
-            <li>${tr("Kurssit", "Courses")}: ${esc(courseNames(Courses._courses.map((c) => c.id).filter((c) => !EDU_COURSES.includes(c))).join(", "))}</li><li>${tr("Opettajille-sivu", "For teachers page")}</li></ul>
+            <li>${tr("Kurssit", "Courses")}: ${esc(courseNames(Courses._courses.map((c) => c.id).filter((c) => !EDU_COURSES.includes(c))).join(", "))}</li></ul>
           ${btn("pro", `<div class="row-actions"><button class="btn primary" data-buy="pro_month">${tr("Tilaa kuukausi", "Monthly")}</button><button class="btn" data-buy="pro_year">${tr("Tilaa vuosi", "Yearly")}</button></div>`)}
         </article>
       </div>

@@ -29,6 +29,18 @@ const Courses = (() => {
     if (n < ctx.base.arrivals) ctx.base.arrivals = n;
     return n > ctx.base.arrivals;
   };
+  // Käyttäjän toiminnot työkalussa (napit, valinnat, liukusäätimet, vedot) kirjataan muistiin, jotta myös
+  // tehtävät kuten "paina Toista" tai "käännä kuvaa vetämällä" huomataan ilman Tein sen -nappia.
+  const acts = [];
+  ["click", "input", "change", "pointerdown"].forEach((type) => document.addEventListener(type, (e) => {
+    const el = e.target instanceof Element ? e.target : null;
+    if (!el || !el.closest("#content")) return;
+    acts.push({ type, el, t: Date.now() });
+    if (acts.length > 500) acts.splice(0, 100);
+  }, true));
+  // Onko vaiheen alun jälkeen tehty toiminto, jonka kohde vastaa valitsinta (types: "click" tai lista)
+  const did = (ctx, types, sel) => acts.some((a) => a.t >= ctx.t0 && [].concat(types).includes(a.type) && !!a.el.closest(sel));
+  const builder = () => window.builderStatus?.();
   // Odometriatehtävässä myös "luuli olevansa perillä" -pysähdys kelpaa: virhe on juuri se, mitä tutkitaan
   const newArrivalAny = (ctx) => {
     const st = window.sim2dStatus?.() || {}, off = st.offGoalArrivals || 0;
@@ -67,7 +79,7 @@ const Courses = (() => {
           tasks: [
             { id: "three", text: tr("Lisää kolmas nivel", "Add a third joint"), check: () => arm().chain.joints.length >= 3 },
             { id: "spatial", text: tr("Tee kädestä kolmiulotteinen asettamalla ensimmäisen rivin α = 90°", "Make the arm three-dimensional by setting α = 90° on the first row"), check: () => !Kin.isPlanar(arm().chain) },
-            { id: "look", text: tr("Kokeile Varjostettu-näkymää ja käännä kuvaa vetämällä", "Try the Shaded view and rotate it by dragging") },
+            { id: "look", text: tr("Kokeile Varjostettu-näkymää ja käännä kuvaa vetämällä", "Try the Shaded view and rotate it by dragging"), check: (c) => did(c, "click", "[data-render='shaded']") && did(c, "pointerdown", "canvas") },
           ],
           hints: [tr("Paina taulukon alla '+ Kiertyvä nivel'.", "Press '+ Revolute joint' below the table."),
             tr("α kääntää seuraavan nivelen akselia. Hyvä alku: rivi 1: d = 0,1, a = 0, α = 90. Silloin seuraavan nivelen akseli kääntyy vaakatasoon: ensimmäinen nivel toimii kuin oikean robotin kanta, ja seuraavat nivelet nostavat ja laskevat kättä.", "α tilts the next joint's axis. A good start: row 1: d = 0.1, a = 0, α = 90. Then the next joint's axis becomes horizontal: the first joint acts like a real robot's base and the following joints raise and lower the arm.")],
@@ -104,7 +116,7 @@ const Courses = (() => {
           tasks: [
             { id: "arm", text: tr("Valitse 'Mitä liikutetaan': Robottikäsivarsi", "Choose 'What moves': Robot arm"), check: () => tools().traj?.mode === "arm" },
             { id: "s", text: tr("Vaihda profiiliksi S-käyrä ja vertaa kiihtyvyyskuvaajaa trapetsiin", "Switch the profile to S-curve and compare the acceleration plot with the trapezoid"), check: () => tools().traj?.profile === "scurve" },
-            { id: "play", text: tr("Paina ▶ Toista ja katso liike", "Press ▶ Play and watch the motion") },
+            { id: "play", text: tr("Paina ▶ Toista ja katso liike", "Press ▶ Play and watch the motion"), check: (c) => did(c, "click", "#tr-play") },
           ],
           hints: [tr("Alku- ja loppuasento täyttyvät valmiiksi käsivartesi nykyisestä asennosta. Loppuasentoa voi muuttaa kohdassa Nivelet: alku → loppu.", "The start and end poses are filled in from your arm's current pose. You can change the end pose under Joints: start → end.")],
           quiz: { q: tr("Miksi teollisuusrobotit käyttävät usein S-käyrää trapetsin sijaan?", "Why do industrial robots often use an S-curve instead of a trapezoid?"),
@@ -226,7 +238,7 @@ const Courses = (() => {
           tasks: [
             { id: "wall", text: tr("Piirrä hiirellä uusi seinä niin, että reitti joutuu kiertämään", "Draw a new wall with the mouse so that the path has to go around"), check: (c) => changed(c, "map", (m) => m?.occ, GridMap.defaultMap()) },
             { id: "goal", text: tr("Siirrä maali uuteen paikkaan Maali-työkalulla", "Move the goal to a new place with the Goal tool"), check: (c) => changed(c, "map", (m) => m?.goal, GridMap.defaultMap()) },
-            { id: "anim", text: tr("Paina ▶ Toista haku ja katso, miten A* etenee", "Press ▶ Replay search and watch A* expand") },
+            { id: "anim", text: tr("Paina ▶ Toista haku ja katso, miten A* etenee", "Press ▶ Replay search and watch A* expand"), check: (c) => did(c, "click", "#pt-play") },
           ],
           hints: [tr("Kartta-kortin yläosassa valitaan, mitä hiiri piirtää: Seinä, Pyyhi, Lähtö tai Maali.", "At the top of the Map card you choose what the mouse paints: Wall, Erase, Start or Goal.")],
           quiz: { q: tr("Miksi A* tutkii yleensä vähemmän soluja kuin Dijkstra?", "Why does A* usually explore fewer cells than Dijkstra?"),
@@ -239,7 +251,7 @@ const Courses = (() => {
             "Grid searches (A*, Dijkstra) are exact but slow down in large spaces. **RRT** grows a random tree in continuous space: it is fast in large and high-dimensional spaces (e.g. a robot arm's joint angles), but its path is not the shortest."),
           tasks: [
             { id: "rrt", text: tr("Valitse algoritmiksi RRT ja katso, miltä reitti näyttää", "Choose RRT as the algorithm and look at its path"), check: () => tools().path?.algo === "rrt" },
-            { id: "cmp", text: tr("Paina Vertaile kaikkia ja tutki taulukkoa", "Press Compare all and study the table") },
+            { id: "cmp", text: tr("Paina Vertaile kaikkia ja tutki taulukkoa", "Press Compare all and study the table"), check: (c) => did(c, "click", "#pt-compare") },
           ],
           hints: [tr("Vertailu-kortti on ruudukon alla. Katso sarakkeita Pituus ja Tutkittu.", "The Comparison card is below the grid. Look at the Length and Explored columns.")],
           quiz: { q: tr("Mikä on RRT:n suurin heikkous verrattuna A*:iin ruudukossa?", "What is RRT's main weakness compared to A* on a grid?"),
@@ -254,7 +266,7 @@ const Courses = (() => {
             "A path is only a plan: the robot must also **follow** it. The **Pure Pursuit** controller looks at a point one *lookahead distance* ahead on the path and steers towards it — like a driver looking a little ahead.\n\nWhen planning, obstacles are 'inflated' by the robot's radius so that the robot fits through."),
           tasks: [
             { id: "goal", text: tr("Paina Aja maaliin ja odota, että robotti on perillä", "Press Drive to goal and wait until the robot arrives"), check: newArrival },
-            { id: "la", text: tr("Kokeile katseluetäisyyksiä 0,1 m ja 0,6 m ja vertaa, miten robotti kääntyy mutkissa", "Try lookahead distances 0.1 m and 0.6 m and compare how the robot turns in corners") },
+            { id: "la", text: tr("Kokeile katseluetäisyyksiä 0,1 m ja 0,6 m ja vertaa, miten robotti kääntyy mutkissa", "Try lookahead distances 0.1 m and 0.6 m and compare how the robot turns in corners"), check: (c) => { const v = tools().sim2d?.lookahead; if (v <= 0.15) c.mem.lo = true; if (v >= 0.5) c.mem.hi = true; return !!(c.mem.lo && c.mem.hi); } },
           ],
           hints: [tr("Jos robotti ei pääse perille, Reittisuunnittelussa piirtämäsi seinät voivat tehdä käytävistä liian kapeita. Oletuskartta-nappi palauttaa kartan.", "If the robot cannot get there, the walls you drew in Path planning may make corridors too narrow. The Default map button restores the map.")],
           quiz: { q: tr("Mitä tapahtuu, jos katseluetäisyys on hyvin pitkä?", "What happens if the lookahead distance is very long?"),
@@ -280,7 +292,7 @@ const Courses = (() => {
             "What if there is no map? The robot can make one. A **lidar** measures distances in every direction: cells a beam passes through are free, hit points are obstacles.\n\nAn **occupancy grid** stores a probability (log-odds) for each cell. Each scan adds confidence, so even noisy data produces a clear map."),
           tasks: [
             { id: "explore", text: tr("Käynnistä 'Tutki automaattisesti' ja anna robotin kartoittaa vähintään 90 %", "Start 'Explore automatically' and let the robot map at least 90 %"), check: () => (window.occCoverage?.() || 0) >= 0.9 },
-            { id: "truth", text: tr("Laita 'Vertaa todellisiin seiniin' päälle ja etsi kohdat, joissa kartta on väärin", "Turn on 'Compare to true walls' and look for places where the map is wrong") },
+            { id: "truth", text: tr("Laita 'Vertaa todellisiin seiniin' päälle ja etsi kohdat, joissa kartta on väärin", "Turn on 'Compare to true walls' and look for places where the map is wrong"), check: () => !!tools().occ?.showTruth },
           ],
           hints: [tr("Kartoitus kestää noin minuutin. Robotti hakeutuu aina lähimpään tutkimattomaan reunaan (frontier exploration).", "Mapping takes about a minute. The robot always heads to the nearest unexplored edge (frontier exploration).")],
           quiz: { q: tr("Miksi kohinainenkin lidar tuottaa selkeän kartan?", "Why does even a noisy lidar produce a clear map?"),
@@ -314,7 +326,7 @@ const Courses = (() => {
             "Euler angles have a weakness: when the middle angle (pitch in ZYX order) is ±90°, the first and third rotation axes line up. One degree of freedom is lost — this is called **gimbal lock**. It even caused trouble in the Apollo spacecraft's navigation."),
           tasks: [
             { id: "lock", text: tr("Aseta pitch (Y) = 90°", "Set pitch (Y) = 90°"), check: () => Kin.gimbalLocked(rotEuler(), "ZYX") },
-            { id: "feel", text: tr("Muuta nyt yaw- ja roll-kulmaa: huomaa, että ne kiertävät samaa akselia", "Now change yaw and roll: notice that they turn about the same axis") },
+            { id: "feel", text: tr("Muuta nyt yaw- ja roll-kulmaa: huomaa, että ne kiertävät samaa akselia", "Now change yaw and roll: notice that they turn about the same axis"), after: "lock", check: (c) => did(c, ["input", "change"], "[data-card='euler'][data-i='0']") && did(c, ["input", "change"], "[data-card='euler'][data-i='2']") },
           ],
           hints: [tr("Toinen kenttä on Y (pitch). Esimerkit-valikossa on myös valmis kardaanilukkoesimerkki.", "The second field is Y (pitch). The Examples menu also has a ready gimbal lock example.")],
           quiz: { q: tr("Mitä kardaanilukossa tapahtuu?", "What happens in gimbal lock?"),
@@ -341,7 +353,7 @@ const Courses = (() => {
           tasks: [
             { id: "add", text: tr("Lisää uusi kehys (esim. gripper) ja anna sille vanhempi", "Add a new frame (e.g. gripper) and give it a parent"), check: (c) => (tools().sim3d?.frames?.length || 6) > (c.base.tools.sim3d?.frames?.length || 6) },
             { id: "arm", text: tr("Kiinnitä kinematiikkatyökalun käsivarsi johonkin kehykseen", "Attach the kinematics arm to a frame"), check: () => !!tools().sim3d?.armFrame },
-            { id: "tf", text: tr("Laske muunnos base_link → uusi kehyksesi Muunnos kehysten välillä -kortissa", "Compute the transform base_link → your new frame in the Transform between frames card") },
+            { id: "tf", text: tr("Laske muunnos base_link → uusi kehyksesi Muunnos kehysten välillä -kortissa", "Compute the transform base_link → your new frame in the Transform between frames card"), check: (c) => { const s = tools().sim3d; return did(c, "change", "#s3-from, #s3-to") && s?.from === "base_link" && !!s.to && s.to !== "base_link"; } },
           ],
           hints: [tr("'+ Lisää kehys' on taulukon alla. Vanhempi valitaan rivin toisesta sarakkeesta.", "'+ Add frame' is below the table. The parent is chosen in the row's second column.")],
           quiz: { q: tr("Mitä komento tf2_echo base_link camera_optical näyttää?", "What does tf2_echo base_link camera_optical show?"),
@@ -364,7 +376,7 @@ const Courses = (() => {
           tasks: [
             { id: "car", text: tr("Valitse robotiksi Pyöräauto ja tehtäväksi Liiku eteenpäin", "Choose the Wheeled car and the Move forward task"), check: () => (tools().nn2d?.modelKey ?? "car") === "car" && (tools().nn2d?.taskKey ?? "forward") === "forward" },
             { id: "train", text: tr("Kouluta vähintään 10 sukupolvea", "Train for at least 10 generations"), check: () => (tools().nn2d?.modelKey ?? "car") === "car" && (tools().nn2dStats?.generation || 0) >= 10 },
-            { id: "best", text: tr("Pysäytä ja katso Näytä paras -napilla, miten paras robotti ajaa", "Pause and use Show best to watch how the best robot drives") },
+            { id: "best", text: tr("Pysäytä ja katso Näytä paras -napilla, miten paras robotti ajaa", "Pause and use Show best to watch how the best robot drives"), check: (c) => did(c, "click", "#nn-replay") },
           ],
           hints: [tr("Paina Kouluta ja odota noin puoli minuuttia. Oppimiskäyrä näyttää, miten paras ja keskiarvo paranevat.", "Press Train and wait about half a minute. The learning curve shows how the best and the mean improve.")],
           quiz: { q: tr("Mitä evoluutiostrategia tekee joka sukupolvella?", "What does the evolution strategy do each generation?"),
@@ -377,7 +389,7 @@ const Courses = (() => {
             "The **reward function** gives the robot points every moment. The robot learns exactly what is rewarded — not necessarily what you meant! A walker rewarded only for speed may learn to throw itself forward.\n\nA good reward pays for the wanted behaviour in small steps every moment, not only at the end."),
           tasks: [
             { id: "edit", text: tr("Avaa Muokkaa palkkiofunktiota ja tee oma muutos (esim. palkitse taaksepäin ajamisesta: vaihda s.x - s.prevX → s.prevX - s.x)", "Open Edit reward function and make your own change (e.g. reward driving backwards: change s.x - s.prevX → s.prevX - s.x)"), check: () => tools().nn2d?.taskKey === "custom" },
-            { id: "see", text: tr("Kouluta muutama sukupolvi ja katso, muuttuuko käytös", "Train a few generations and see whether the behaviour changes") },
+            { id: "see", text: tr("Kouluta muutama sukupolvi ja katso, muuttuuko käytös", "Train a few generations and see whether the behaviour changes"), after: "edit", check: (c) => { const g = tools().nn2dStats?.generation || 0; c.mem.g0 = Math.min(c.mem.g0 ?? g, g); return tools().nn2d?.taskKey === "custom" && g >= c.mem.g0 + 3; } },
           ],
           hints: [tr("Palkkiofunktion ohjeessa on lista kaikista arvoista (s.x, s.vx, s.fallen…), joita voit käyttää.", "The reward function help lists all the values (s.x, s.vx, s.fallen…) you can use.")],
           quiz: { q: tr("Kävelijä oppi heittäytymään eteenpäin ja kaatumaan. Mikä korjaa tämän parhaiten?", "A walker learned to throw itself forward and fall. What fixes this best?"),
@@ -455,8 +467,8 @@ const Courses = (() => {
           teach: tr("Simulaatio laskee painovoiman, kitkan ja moottorien voiman. Näin näet ennen rakentamista, toimiiko idea: kaatuuko robotti, koskevatko pyörät maata ja liikkuuko se oikeaan suuntaan.",
             "The simulation computes gravity, friction and the motors' force. That way you see before building whether the idea works: does the robot tip over, do the wheels touch the ground, does it move the right way?"),
           tasks: [
-            { id: "run", text: tr("Paina Testaa fysiikka (T) ja aja robottia liukusäätimillä", "Press Test physics (T) and drive the robot with the sliders") },
-            { id: "turn", text: tr("Saa robotti kääntymään: anna pyörille eri nopeudet", "Make the robot turn: give the wheels different speeds") },
+            { id: "run", text: tr("Paina Testaa fysiikka (T) ja aja robottia liukusäätimillä", "Press Test physics (T) and drive the robot with the sliders"), check: () => { const b = builder(); return !!b?.testing && b.actions.some((a) => Math.abs(a) > 0.2); } },
+            { id: "turn", text: tr("Saa robotti kääntymään: anna pyörille eri nopeudet", "Make the robot turn: give the wheels different speeds"), check: () => { const b = builder(), v = b?.testing ? b.actions.filter((_, i) => b.kinds[i] === "speed") : []; return v.length >= 2 && Math.max(...v) - Math.min(...v) > 0.3; } },
             { id: "save", text: tr("Tallenna robotti ☆ Omiin robotteihin -napilla — tarvitset sitä myöhemmin Robotin tekoäly -kurssilla", "Save the robot with the ☆ To my robots button — you'll need it later on the Robot AI course"), check: () => Library.list("robot2d").length > 0 },
           ],
           hints: [tr("Liukusäätimet ilmestyvät Fysiikkatesti-paneeliin näkymän päälle. Esc tai Lopeta testi lopettaa.", "The sliders appear in the Physics test panel on top of the view. Esc or Stop test ends it.")],
@@ -484,7 +496,7 @@ const Courses = (() => {
             "Now all three parts work together: the robot **senses** its position, **decides** on a path and **drives** its wheels. Every robot repeats this sense–think–act loop dozens of times per second."),
           tasks: [
             { id: "goal", text: tr("Paina Aja maaliin ja odota, että robotti on perillä", "Press Drive to goal and wait until the robot arrives"), check: newArrival },
-            { id: "move", text: tr("Siirrä maalia klikkaamalla karttaa ja aja uudelleen", "Move the goal by clicking the map and drive again") },
+            { id: "move", text: tr("Siirrä maalia klikkaamalla karttaa ja aja uudelleen", "Move the goal by clicking the map and drive again"), after: "goal", check: (c) => { const n = window.sim2dStatus?.()?.arrivals || 0; c.mem.n0 ??= n; return did(c, "pointerdown", "canvas") && n > c.mem.n0; } },
           ],
           hints: [tr("Aja maaliin -nappi on Ohjaus-kortissa. Robotti suunnittelee reitin itse esteiden ohi.", "The Drive to goal button is in the Control card. The robot plans its own route around obstacles.")],
           quiz: { q: tr("Missä järjestyksessä robotin perussilmukka etenee?", "In which order does a robot's basic loop run?"),
@@ -622,7 +634,7 @@ const Courses = (() => {
             "A ROS system is made of **nodes**, small programs: one reads the lidar, another plans the path, a third drives the motors. They talk through **topics**: the lidar node publishes to `/scan` and others subscribe to it.\n\nThe **TF** system tells every node where the robot's parts are relative to each other. A lidar reading is in the lidar's frame, but the path planner needs it in the map frame — TF does the transform."),
           tasks: [
             { id: "add", text: tr("Lisää TF-puuhun IMU-anturin kehys imu_link, jonka vanhempi on base_link", "Add an IMU sensor frame imu_link to the TF tree with base_link as its parent"), check: () => (tools().sim3d?.frames || []).some((f) => /imu/i.test(f.name || "") && f.parent === "base_link") },
-            { id: "tf", text: tr("Laske muunnos base_link → imu_link Muunnos kehysten välillä -kortissa", "Compute the transform base_link → imu_link in the Transform between frames card") },
+            { id: "tf", text: tr("Laske muunnos base_link → imu_link Muunnos kehysten välillä -kortissa", "Compute the transform base_link → imu_link in the Transform between frames card"), check: (c) => { const s = tools().sim3d; return did(c, "change", "#s3-from, #s3-to") && s?.from === "base_link" && /imu/i.test(s?.to || ""); } },
           ],
           hints: [tr("'+ Lisää kehys' on taulukon alla. Kirjoita nimeksi imu_link ja valitse vanhemmaksi base_link.", "'+ Add frame' is below the table. Name it imu_link and pick base_link as the parent.")],
           quiz: { q: tr("Lidar-solmu julkaisee mittaukset ja reittisuunnittelija lukee ne. Mitä kautta?", "The lidar node publishes readings and the path planner reads them. Through what?"),
@@ -634,8 +646,8 @@ const Courses = (() => {
           teach: tr("**URDF** on XML-tiedosto, joka kuvaa robotin **linkkeinä** (jäykät osat: muoto, massa) ja **nivelinä** (joint: tyyppi, akseli, rajat). Nivelen tyyppi voi olla esim. `revolute` (kääntyy rajojen välillä), `continuous` (pyörä), `prismatic` (liukuu) tai `fixed` (kiinteä, esim. anturi).\n\nROS laskee URDF:stä ja nivelkulmista TF-puun automaattisesti (robot_state_publisher).",
             "**URDF** is an XML file that describes a robot as **links** (rigid parts: shape, mass) and **joints** (type, axis, limits). A joint type can be e.g. `revolute` (turns between limits), `continuous` (a wheel), `prismatic` (slides) or `fixed` (rigid, e.g. a sensor).\n\nROS computes the TF tree from the URDF and the joint angles automatically (robot_state_publisher)."),
           tasks: [
-            { id: "open", text: tr("Avaa työkalun URDF-osio ja lataa esimerkki tai oma URDF-tiedosto", "Open the tool's URDF section and load the example or your own URDF file") },
-            { id: "joints", text: tr("Liikuta nivelten liukusäätimiä ja katso, miten linkit liikkuvat", "Move the joint sliders and watch how the links move") },
+            { id: "open", text: tr("Avaa työkalun URDF-osio ja lataa esimerkki tai oma URDF-tiedosto", "Open the tool's URDF section and load the example or your own URDF file"), check: () => tools().sim3d?.mode === "urdf" },
+            { id: "joints", text: tr("Liikuta nivelten liukusäätimiä ja katso, miten linkit liikkuvat", "Move the joint sliders and watch how the links move"), check: (c) => did(c, ["input", "change"], "#s3-joints") },
           ],
           hints: [tr("URDF-osio on TF-puun alapuolella. Nivelten liukusäätimet ilmestyvät, kun malli on ladattu.", "The URDF section is below the TF tree. The joint sliders appear once a model is loaded.")],
           quiz: { q: tr("Minkä tyyppinen nivel sopii robotin pyörälle URDF:ssä?", "Which joint type suits a robot wheel in URDF?"),
@@ -660,8 +672,8 @@ const Courses = (() => {
           teach: tr("ROS:n navigointi (Nav2) käyttää **varauskarttaa**: PGM-kuva (valkoinen = vapaa, musta = este, harmaa = tuntematon) ja YAML-tiedosto, joka kertoo solun koon (`resolution`) ja kartan alkupisteen (`origin`). `map_server` julkaisee kartan `/map`-topiciin.\n\nKartta tehdään yleensä SLAMilla: robotti ajaa ympäriinsä ja piirtää kartan lidarilla — juuri kuten tässä työkalussa.",
             "ROS navigation (Nav2) uses an **occupancy grid** map: a PGM image (white = free, black = obstacle, gray = unknown) and a YAML file giving the cell size (`resolution`) and the map's origin (`origin`). `map_server` publishes the map on the `/map` topic.\n\nThe map is usually made with SLAM: the robot drives around and draws the map with its lidar — just like in this tool."),
           tasks: [
-            { id: "explore", text: tr("Paina Tutki ja anna robotin kartoittaa", "Press Explore and let the robot map the area") },
-            { id: "export", text: tr("Vie kartta PGM- ja YAML-tiedostoina", "Export the map as PGM and YAML files") },
+            { id: "explore", text: tr("Paina Tutki ja anna robotin kartoittaa", "Press Explore and let the robot map the area"), check: (c) => did(c, "click", "#oc-explore") },
+            { id: "export", text: tr("Vie kartta PGM- ja YAML-tiedostoina", "Export the map as PGM and YAML files"), check: (c) => did(c, "click", "#oc-pgm") && did(c, "click", "#oc-yaml") },
           ],
           hints: [tr("Vienti-napit ovat vasemman sarakkeen Vienti-kortissa.", "The export buttons are in the Export card in the left column.")],
           quiz: { q: tr("Mitä YAML-tiedoston resolution: 0.05 tarkoittaa?", "What does resolution: 0.05 in the YAML file mean?"),
@@ -837,17 +849,28 @@ const Courses = (() => {
   // Tarkistukset luetaan kurssin projektista; jos käyttäjä on vaihtanut projektia, niitä ei ajeta
   const onCourseProject = (course) => { const c = cp(course.id); return !c.project || !projects.projects[c.project] || projects.active === c.project; };
 
+  const stepLive = {};
+  const LOOK_S = 8; // katso/lue-tehtävän oletusaika sekunteina
   function evalStep(course, step) {
     const s = sp(course.id, step.id);
     if (!onCourseProject(course)) return { s, done: s.done };
     if (!s.base) { s.base = snapshotBase(); persist(); }
-    const ctx = { base: s.base };
+    // t0 = vaiheen aloitus tällä sivulatauksella (toimintoloki on vain muistissa), mem = tarkistusten välimuisti
+    const key = course.id + "/" + step.id;
+    const live = (stepLive[key] ||= { t0: Date.now(), mem: {}, look: {} });
+    const ctx = { base: s.base, t0: live.t0, mem: live.mem };
     let dirty = false;
-    for (const t of step.tasks) {
-      if (s.tasks[t.id] || !t.check) continue;
+    const onTool = currentRoute() === step.tool;
+    for (const [i, t] of step.tasks.entries()) {
+      if (s.tasks[t.id]) continue;
       if (t.after && !s.tasks[t.after]) continue;
       let ok = false;
-      try { ok = !!t.check(ctx); } catch {}
+      if (t.check) { try { ok = !!t.check(ctx); } catch {} }
+      else if (onTool && step.tasks.slice(0, i).every((x) => s.tasks[x.id])) {
+        // Katso/lue-tehtävä: kuitataan, kun työkalu on ollut auki hetken tämän tehtävän ollessa vuorossa
+        live.look[t.id] ||= Date.now();
+        ok = Date.now() - live.look[t.id] >= (t.look || LOOK_S) * 1000;
+      }
       if (ok) { s.tasks[t.id] = true; dirty = true; }
     }
     const tasksOk = step.tasks.every((t) => s.tasks[t.id]);
@@ -1031,8 +1054,8 @@ const Courses = (() => {
       ${cur ? `<div class="m-now">
           <span class="m-num">${doneN + 1}</span>
           <div><p>${esc(cur.text)}</p>
-            ${cur.check ? `<small>${tr("Huomaan automaattisesti, kun se on tehty.", "I'll notice automatically when it's done.")}</small>`
-              : `<button class="btn primary small" data-l="manual-done" data-t="${cur.id}">✓ ${tr("Tein sen", "I did it")}</button>`}
+            <small>${cur.check ? tr("Huomaan automaattisesti, kun se on tehty.", "I'll notice automatically when it's done.")
+              : tr("Katso rauhassa: merkitsen tämän tehdyksi, kun työkalu on ollut hetken auki.", "Take a look: I'll mark this done once the tool has been open for a moment.")}</small>
           </div></div>
         ${later ? `<div class="m-later">+ ${later} ${later === 1 ? tr("tehtävä vielä tämän jälkeen", "more task after this") : tr("tehtävää vielä tämän jälkeen", "more tasks after this")}</div>` : ""}`
         : `<div class="m-all">🎉 ${tr("Kaikki tehtävät tehty!", "All tasks done!")}</div>`}
@@ -1114,7 +1137,6 @@ const Courses = (() => {
     if (act === "chat") { Assistant.open(); return; }
     if (act === "size") { textSize = (textSize + 1) % 3; try { localStorage.setItem(SIZE_KEY, textSize); } catch {} drawPanel(); return; }
     if (act === "more") { s.more = !s.more; persist(); drawPanel(); return; }
-    if (act === "manual-done") { s.tasks[b.dataset.t] = true; persist(); evalStep(course, step); drawPanel(); return; }
     if (act === "proj") { ensureProject(course); router(); drawPanel(); return; }
     if (act === "go") { goStep(+b.dataset.i); return; }
     if (act === "tool") { location.hash = "#/" + step.tool; setTimeout(drawPanel, 50); return; }
@@ -1134,7 +1156,6 @@ const Courses = (() => {
     const course = byId(P.active);
     if (!course) return;
     const step = course.steps[cp(course.id).step], s = sp(course.id, step.id);
-    if (e.target.dataset.l === "manual") { s.tasks[e.target.dataset.t] = e.target.checked; persist(); setTimeout(tick, 0); }
     if (e.target.id === "lesson-refl") { s.refl = e.target.value; persist(); setTimeout(tick, 0); }
   }
 
