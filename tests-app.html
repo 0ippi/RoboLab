@@ -333,7 +333,6 @@ async function test(name, fn) {
     await boot();
     eq(G("activeProject")().name, "Bean projekti", "Bean projekti palasi");
   });
-
   await test("Salasana: väärä hylätään, oikea hyväksytään", async () => {
     const acc = { ...G("Accounts").current() };
     await G("Accounts").setPassword(acc, "kissa123");
@@ -630,6 +629,35 @@ async function test(name, fn) {
     d.querySelector(".acc-gate").remove(); d.body.classList.remove("acc-locked");
     [...d.body.children].forEach((c) => (c.inert = false));
     window.__robolabSupabaseMock = null; useDevice("A");
+  });
+
+  await test("Uloskirjautuminen sivupalkista; unohtuneen salasanan käyttäjän voi poistaa", async () => {
+    fresh(); await boot();
+    await G("Accounts").create({ name: "Unohtaja", password: "salainen1", remember: true });
+    const old = G("Accounts").current();
+    G("activeProject")().name = "Unohtajan projekti"; w.saveProjects();
+    await G("Accounts").create({ name: "Uusi", remember: true });
+    await boot();
+    ok(w.document.querySelector(".sidebar-footer [data-logout]"), "uloskirjautuminen puuttuu sivupalkista");
+    ok(Object.keys(Object.fromEntries(ls())).some((k) => k.startsWith("robolab-u:" + old.id + ":")), "Unohtajan tiedot puuttuvat jo");
+    await go("#/profile", 300);
+    const btn = w.document.querySelector(`[data-remove="${old.id}"]`);
+    ok(btn, "poistonappi puuttuu");
+    w.prompt = () => "väärä nimi";
+    btn.click(); await sleep(100);
+    ok(G("Accounts").get(old.id), "poistui väärällä nimellä");
+    w.prompt = () => "Unohtaja";
+    w.document.querySelector(`[data-remove="${old.id}"]`).click(); await sleep(300);
+    ok(!G("Accounts").get(old.id), "käyttäjä jäi");
+    ok(!Object.keys(Object.fromEntries(ls())).some((k) => k.startsWith("robolab-u:" + old.id + ":")), "tiedot jäivät");
+    eq(G("Accounts").current().name, "Uusi", "nykyinen käyttäjä vaihtui");
+    const loaded = new Promise((r) => (frame.onload = r));
+    w.document.querySelector(".sidebar-footer [data-logout]").click();
+    await loaded; w = frame.contentWindow;
+    await waitFor(() => w.document.querySelector("#content")?.children.length || w.document.querySelector(".acc-gate"), 8000, "uudelleenlataus");
+    eq(G("Accounts").active(), "guest", "ei kirjautunut ulos");
+    w.document.querySelector(".acc-gate")?.remove(); w.document.body.classList.remove("acc-locked");
+    [...w.document.body.children].forEach((c) => (c.inert = false));
   });
 
   /* ===== Tilaustasot ===== */

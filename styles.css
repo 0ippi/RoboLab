@@ -1114,6 +1114,10 @@ body.acc-locked .ai-fab { display: none; }
 .note.small { font-size: .74rem; }
 .user-chip .user-av { width: 22px; height: 22px; display: grid; place-items: center; flex: none; }
 .user-chip .user-av svg { width: 22px; height: 22px; }
+.logout-item { width: 100%; border: 0; background: none; font: inherit; text-align: left; }
+.acc-row { display: flex; gap: 6px; align-items: stretch; }
+.acc-row .acc-user { flex: 1; min-width: 0; }
+.acc-row .acc-remove { flex: none; }
 .profile-card { display: flex; flex-direction: column; gap: 12px; margin-bottom: var(--pad); }
 .profile-top { display: flex; gap: 16px; align-items: center; }
 .profile-top h2 { margin: 0 0 4px; }

@@ -127,8 +127,16 @@
           <label class="acc-check"><input type="checkbox" id="acc-remember"> ${tr("Pysy kirjautuneena tällä koneella", "Stay signed in on this computer")}</label>
           <p class="acc-err" id="acc-err" hidden>${tr("Väärä salasana", "Wrong password")}</p>
           <div class="acc-actions"><button type="button" class="btn" data-back>${tr("Takaisin", "Back")}</button><button class="btn primary">${tr("Kirjaudu", "Sign in")}</button></div>
+          <p class="note small"><button type="button" class="link-btn" data-forgot>${tr("Unohtuiko salasana?", "Forgot your password?")}</button></p>
         </form>`;
         gate.querySelector("[data-back]").onclick = () => draw("list");
+        // Paikallista salasanaa ei voi palauttaa: tarjotaan tilin poistoa tältä koneelta
+        gate.querySelector("[data-forgot]").onclick = () => {
+          if (!confirm(tr("Paikallisen tilin salasanaa ei voi palauttaa, koska tili on vain tällä koneella. Voit poistaa tilin ja luoda uuden, mutta tilin projektit, kurssit ja robotit katoavat. Jatketaanko poistoon?",
+            "A local account's password can't be recovered because the account only lives on this computer. You can delete the account and create a new one, but its projects, courses and robots are lost. Continue to delete?"))) return;
+          const wasActive = pick === Accounts.active();
+          removeOther(pick, () => (wasActive ? reload() : draw("list")), { allowActive: true });
+        };
         gate.querySelector("#acc-pw").focus();
         gate.querySelector("#acc-login").onsubmit = async (e) => {
           e.preventDefault();
@@ -142,7 +150,7 @@
       gate.innerHTML = `<div class="acc-card">
         <div class="acc-hero">${avatarSvg("volt", 72)}</div>
         <h2>${tr("Kuka käyttää RoboLabia?", "Who's using RoboLab?")}</h2>
-        <div class="acc-list">${accounts.map((a) => `<button class="acc-user" data-uid="${a.id}">${avatarSvg(a.avatar, 40)}<b>${esc(a.name)}</b>${a.hash ? `<span class="acc-lock" title="${tr("Salasana", "Password")}">🔒</span>` : ""}${a.cloud ? `<span class="acc-lock" title="${tr("Pilvitili", "Cloud account")}">☁</span>` : ""}</button>`).join("")}</div>
+        <div class="acc-list">${Accounts.list().map((a) => `<button class="acc-user" data-uid="${a.id}">${avatarSvg(a.avatar, 40)}<b>${esc(a.name)}</b>${a.hash ? `<span class="acc-lock" title="${tr("Salasana", "Password")}">🔒</span>` : ""}${a.cloud ? `<span class="acc-lock" title="${tr("Pilvitili", "Cloud account")}">☁</span>` : ""}</button>`).join("")}</div>
         <div class="acc-actions">
           ${window.Cloud?.configured ? `<button class="btn" data-cloud>☁ ${tr("Pilvitili", "Cloud account")}</button>` : ""}
           <button class="btn" data-guest>${tr("Jatka vieraana", "Continue as guest")}</button>
@@ -179,9 +187,39 @@
     const foot = document.querySelector(".sidebar-footer");
     if (!foot) return;
     foot.querySelector(".user-chip")?.remove();
+    foot.querySelector(".logout-item")?.remove();
     const a = Accounts.current();
     foot.insertAdjacentHTML("afterbegin", `<a href="#/profile" class="nav-item user-chip" data-route="profile" data-tip="${esc(a ? a.name : tr("Vieras", "Guest"))}">
-      <span class="user-av">${avatarSvg(a ? a.avatar : "volt", 22)}</span><span class="label">${a ? esc(a.name) : tr("Vieras — luo tili", "Guest — create account")}${a?.cloud ? ` <span class="cloud-mark" title="${esc(cloudText())}">${cloudIcon()}</span>` : ""}</span></a>`);
+      <span class="user-av">${avatarSvg(a ? a.avatar : "volt", 22)}</span><span class="label">${a ? esc(a.name) : tr("Vieras — luo tili", "Guest — create account")}${a?.cloud ? ` <span class="cloud-mark" title="${esc(cloudText())}">${cloudIcon()}</span>` : ""}</span></a>
+      ${a ? `<button type="button" class="nav-item logout-item" data-logout data-tip="${tr("Kirjaudu ulos", "Sign out")}">${icon("logout")}<span class="label">${tr("Kirjaudu ulos", "Sign out")}</span></button>` : ""}`);
+  }
+
+  // Uloskirjautuminen: pilvitililtä Supabasen kautta, paikalliselta tililtä vieraaksi
+  async function signOut() {
+    const a = Accounts.current();
+    if (!a) return;
+    if (a.cloud) { try { await Cloud.signOut(); } catch {} reload(); return; }
+    if (await guard(async () => (Accounts.logout(), true))) reload();
+  }
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-logout]")) signOut(); });
+
+  // Toisen käyttäjän poisto tältä laitteelta myös ilman salasanaa (salasana suojaa vain kirjautumista;
+  // tiedot eivät ole salattuja, joten unohtunut salasana ei saa jättää tiliä pysyvästi listaan)
+  async function removeOther(id, after, { allowActive = false } = {}) {
+    const x = Accounts.get(id);
+    if (!x || (id === Accounts.active() && !allowActive)) return;
+    const msg = x.cloud
+      ? tr(`Poistetaanko pilvitili ${x.email} tältä laitteelta? Pilvitili ja sen tiedot säilyvät pilvessä, ja voit kirjautua siihen myöhemmin uudelleen.\n\nKirjoita vahvistukseksi käyttäjän nimi: ${x.name}`,
+        `Remove the cloud account ${x.email} from this device? The cloud account and its data stay in the cloud, and you can sign in again later.\n\nType the user's name to confirm: ${x.name}`)
+      : tr(`Poistetaanko käyttäjä "${x.name}" ja kaikki sen projektit, kurssit ja robotit tältä koneelta pysyvästi?${x.hash ? " Salasanaa ei tarvita, mutta tietoja ei voi palauttaa." : ""}\n\nKirjoita vahvistukseksi käyttäjän nimi: ${x.name}`,
+        `Permanently delete the user "${x.name}" and all their projects, courses and robots from this computer?${x.hash ? " No password is needed, but the data cannot be recovered." : ""}\n\nType the user's name to confirm: ${x.name}`);
+    const typed = prompt(msg);
+    if (typed === null) return;
+    if (typed.trim() !== x.name) { toast(tr("Nimi ei täsmää — käyttäjää ei poistettu", "The name doesn't match — the user was not removed")); return; }
+    if (x.cloud && window.Cloud) { try { if (await Cloud.hasSession(x.cloudUid)) await Cloud.signOut(); } catch {} }
+    Accounts.remove(id);
+    toast(tr(`Käyttäjä ${x.name} poistettu tältä laitteelta`, `User ${x.name} removed from this device`));
+    after?.();
   }
   // Pilvisynkronoinnin tila käyttäjäpainikkeessa ja profiilissa
   const cloudIcon = () => ({ ok: "☁✓", syncing: "☁…", error: "☁!", conflict: "☁!", signedout: "☁?" }[window.Cloud?.status.state] || "☁");
@@ -260,7 +298,9 @@
             </div>
             <div class="card">
               <h3 class="card-title">${tr("Käyttäjät tällä koneella", "Users on this computer")}</h3>
-              ${others.length ? `<div class="acc-list">${others.map((x) => `<button class="acc-user" data-switch="${x.id}">${avatarSvg(x.avatar, 32)}<b>${esc(x.name)}</b>${x.hash ? "🔒" : ""}${x.cloud ? "☁" : ""}</button>`).join("")}</div>` : `<p class="note">${tr("Ei muita käyttäjiä.", "No other users.")}</p>`}
+              ${others.length ? `<div class="acc-list">${others.map((x) => `<div class="acc-row"><button class="acc-user" data-switch="${x.id}">${avatarSvg(x.avatar, 32)}<b>${esc(x.name)}</b>${x.hash ? "🔒" : ""}${x.cloud ? "☁" : ""}</button>
+                <button class="btn small acc-remove" data-remove="${x.id}" aria-label="${esc(tr(`Poista käyttäjä ${x.name}`, `Remove user ${x.name}`))}">${tr("Poista", "Remove")}</button></div>`).join("")}</div>
+                <p class="note small">${tr("Unohtuiko salasana? Voit poistaa käyttäjän tältä koneelta ilman salasanaa, mutta sen tiedot katoavat. Pilvitilin tiedot säilyvät pilvessä.", "Forgot a password? You can remove the user from this computer without it, but its data is lost. A cloud account's data stays in the cloud.")}</p>` : `<p class="note">${tr("Ei muita käyttäjiä.", "No other users.")}</p>`}
               <div class="row-actions"><button class="btn" id="pf-new">${tr("+ Uusi käyttäjä", "+ New user")}</button></div>
             </div>
             ${a ? `<div class="card">
@@ -277,10 +317,7 @@
         $q("#pf-name").onchange = (e) => { const v = e.target.value.trim(); if (v) { Accounts.update({ name: v }); renderUserChip(); toast(tr("Nimi tallennettu", "Name saved")); } };
         $q("#pf-bio").onchange = (e) => Accounts.update({ bio: e.target.value.slice(0, 300) });
         bindAvatars(el, (k) => { Accounts.update({ avatar: k }); $q(".profile-av").innerHTML = avatarSvg(k, 88); renderUserChip(); });
-        $q("#pf-logout").onclick = async () => {
-          if (a.cloud) { try { await Cloud.signOut(); } catch {} reload(); return; }
-          if (await guard(async () => (Accounts.logout(), true))) reload();
-        };
+        $q("#pf-logout").onclick = signOut;
         $q("#pf-sync")?.addEventListener("click", () => Cloud.tick());
         $q("#pf-cloudpw")?.addEventListener("click", async () => {
           try { await Cloud.resetPassword(a.email); toast(tr("Lähetimme salasanan vaihtolinkin sähköpostiisi. Avaa se tällä laitteella.", "We sent a password reset link to your email. Open it on this device.")); }
@@ -327,6 +364,7 @@
       $q("#pf-cloud")?.addEventListener("click", () => showLogin("cloud"));
 
       $q("#pf-new").onclick = () => showLogin("create");
+      el.querySelectorAll("[data-remove]").forEach((b) => (b.onclick = () => removeOther(b.dataset.remove, () => router())));
       el.querySelectorAll("[data-switch]").forEach((b) => (b.onclick = async () => {
         const target = Accounts.get(b.dataset.switch);
         if (target.cloud) {
