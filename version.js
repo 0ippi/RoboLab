@@ -3,6 +3,13 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.6.1", date: "2026-10-27",
+    fi: ["Mobiilirobotti 2D kulkee reitit paljon varmemmin: reitti pysyy käytävän keskellä eikä kulje seinien kulmien vierestä, ja jos robotti jää jumiin, se peruuttaa ja etsii uuden reitin itse. Testissä robotti pääsi 100 satunnaiseen maaliin 100:sta (ennen noin 3/4).",
+      "RC-auto osaa nyt peruuttaa ja tehdä kolmen pisteen käännöksen, kun kohde on sen takana. Seinän viereen asetettu maali siirretään lähimpään kohtaan, johon robotti mahtuu."],
+    en: ["The 2D mobile robot follows routes much more reliably: the route stays in the middle of corridors instead of brushing past wall corners, and if the robot gets stuck it backs up and finds a new route by itself. In testing the robot reached 100 of 100 random goals (about 3/4 before).",
+      "The RC car can now reverse and make a three-point turn when the target is behind it. A goal placed next to a wall is moved to the nearest spot where the robot fits."],
+  },
+  {
     version: "2.6.0", date: "2026-10-27",
     fi: ["Robotinrakentaja: valitse useita osia Ctrl+klikkauksella tai vetämällä valintalaatikko (2D: veto tyhjästä kohdasta, 3D: Shift+veto tai ⬚-nappi), ja siirrä, käännä tai skaalaa ne yhdessä.",
       "Kiinnitykset ovat selvempiä: osaa siirrettäessä siihen kiinnitetyt osat tulevat mukana (Alt + veto siirtää vain sen), katkoviivat näyttävät, mitkä osat ovat kiinni toisissaan, ja irralliset osat saavat punaisen kehyksen.",
