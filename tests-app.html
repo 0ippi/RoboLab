@@ -971,6 +971,8 @@ async function test(name, fn) {
     await boot();
     ok(w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi näkyy Prolla");
     ok(!w.document.querySelector(".upgrade-banner"), "mainos näkyy Prolla");
+    await go("#/learn");
+    ok(w.document.querySelector(".class-card[open] #pl-class") && w.document.querySelector("#pl-alias"), "Pro-oppilas ei näe luokkakoodin kenttää Kurssit-sivulla");
     pm.server.subs.set(uid, { plan: "pro", seats: 0, valid_until: new Date(Date.now() - 1000).toISOString() });
     await w.Plans.refresh({ force: true });
     eq(w.Plans.current().plan, "free", "vanhentunut");

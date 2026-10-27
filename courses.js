@@ -1399,11 +1399,10 @@ const Courses = (() => {
           <p class="note">${tr("Jokainen kurssi tehdään omaan projektiinsa, joten muut työsi pysyvät ennallaan.", "Each course runs in its own project, so your other work stays untouched.")}</p>`, { big: true })}
         <div class="cast-row">${Object.entries(Robots.CAST).map(([id, r]) => `<div class="cast" title="${esc(r.role)}">${Robots.svg(id, "idle", { size: 54 })}<b>${esc(r.name)}</b><small>${esc(r.role)}</small></div>`).join("")}</div>
       </div>
-      ${classCoursesHtml()}
+      ${classCoursesHtml() || classJoinHtml()}
       <h2 class="path-title">${tr("Oppimispolku", "Learning path")}</h2>
       <p class="note path-note">${tr("Kurssit on järjestetty niin, että jokainen rakentaa edellisten päälle. Voit silti aloittaa mistä tahansa.", "The courses are ordered so each one builds on the previous ones. You can still start anywhere.")}</p>
       ${COURSES.map((c, i) => { const st = STAGES.find((x) => x.from === c.id); return (st ? `${i ? "</div>" : ""}<h3 class="stage-title">${st.title}</h3><p class="note stage-note">${st.desc}</p><div class="course-grid">` : "") + courseCard(c, i); }).join("")}</div>
-      ${window.Plans && Plans.current().plan === "free" ? `<section class="card class-card"><h2>${tr("Onko sinulla opettajan luokkakoodi?", "Do you have a class code from your teacher?")}</h2>${Plans.classBoxHtml()}</section>` : ""}
       ${window.Education ? Education.studentCardHtml() : ""}`;
     window.Education?.bindStudentCard(root);
     window.Plans?.bindClassForm(root);
@@ -1416,6 +1415,15 @@ const Courses = (() => {
         start(id, { restart: true });
       } else start(id);
     };
+  }
+
+  // Luokkaan liittyminen näkyy kaikilla tasoilla (myös Education/Pro), jotta opettaja näkee oppilaan etenemisen.
+  // Opettajalle se on suljettuna, koska hän tuskin liittyy itse oppilaaksi.
+  function classJoinHtml() {
+    if (!window.Plans) return "";
+    return `<details class="card class-card"${Plans.canTeach() ? "" : " open"}>
+      <summary><h2>🏫 ${tr("Onko sinulla opettajan luokkakoodi?", "Do you have a class code from your teacher?")}</h2></summary>
+      ${Plans.classBoxHtml()}</details>`;
   }
 
   // Opettajan luokalle antamat kurssit (luokkakoodilla liittynyt oppilas): järjestys, määräpäivä ja tilanne

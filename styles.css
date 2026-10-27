@@ -1175,6 +1175,9 @@ body.acc-locked .ai-fab { display: none; }
 .edu-roster td:first-child, .edu-roster th:first-child { text-align: left; }
 .class-card { margin-top: calc(var(--pad) * 1.5); }
 .class-card h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.class-card summary { cursor: pointer; list-style-position: inside; }
+.class-card summary h2 { display: inline; }
+.class-card[open] summary { margin-bottom: 10px; }
 .class-fields { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 10px; }
 .class-fields label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--text-2); }
 .class-fields input { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; min-width: 180px; }
