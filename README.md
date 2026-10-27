@@ -14,7 +14,8 @@ RoboLab opettaa robotiikkaa tekemällä. Kurssien robottioppaat ohjaavat käytt�
 
 ## Mitä sillä voi tehdä?
 
-- **10 kurssia kolmella tasolla.** Perusteet (mikä robotti on, anturit, sähkö) → liike, ohjaus ja näkö (reitinhaku, PID, konenäkö) → edistyneet (koordinaatistot, robottikäsivarsi, ROS, tekoäly). Jokaisessa kurssissa on tavoitteet, lyhyt teoria, tehtävät oikeassa työkalussa, välitön palaute, porrastetut vihjeet, pikakysymys selityksineen ja seuraava askel.
+- **11 kurssia kolmella tasolla.** Perusteet (mikä robotti on, anturit, sähkö) → liike, ohjaus ja näkö (reitinhaku, PID, konenäkö) → edistyneet (koordinaatistot, robottikäsivarsi, ROS, tekoäly, palkkiot ja tavoitteet). Jokaisessa kurssissa on tavoitteet, lyhyt teoria, tehtävät oikeassa työkalussa, välitön palaute, porrastetut vihjeet, pikakysymys selityksineen ja seuraava askel.
+- **Neuroverkkosimulaatiot.** Nopea koulutus kaikilla prosessoriytimillä, oma tavoite ja reittipisteet, maaston automaattinen vaikeutus, koulutusajojen vertailu ja kisat, hidastettu uusinta, neuroverkon kaavio toiminnassa, haasteet ja saavutukset sekä jakolinkki ja QR-koodi.
 - **Opettajille.** Kolme valmista oppituntia (Ensimmäinen robotti, Robotti väistää esteitä, PID-säätö käytännössä). Niissä on tunnin kulku minuutteineen, tulostettava oppilaan moniste, ratkaisut, arviointikriteerit ja vaihtoehto ilman laitteita. Oppilaslinkit avaavat kurssin suoraan. Luokan edistymisen voi koota oppilaiden vientitiedostoista ilman oppilastilejä tai henkilötietoja.
 - **24 työkalua:**
   - 2D- ja 3D-robottirakentajat
@@ -40,7 +41,7 @@ RoboLab opettaa robotiikkaa tekemällä. Kurssien robottioppaat ohjaavat käytt�
 | Free | 0 € | Perustyökalut ja kurssit Aloita tästä, Anturit ja elektroniikka sekä Virta ja akut |
 | Education | 2 €/kk tai 19 €/v, ilmainen luokkakoodilla | Lisää työkaluja (reitinhaku, PID, konenäkö, kinematiikka, neuroverkko 2D…) ja 7 kurssia |
 | Teacher | 5 €/kk tai 45 €/v | Education + Opettajille-sivu ja luokkakoodit (5 oppilasta sisältyy, lisäpaikka 1 €/v). Koululisenssi 290 €/v. |
-| Pro | 7 €/kk tai 59 €/v | Kaikki työkalut ja kaikki 10 kurssia |
+| Pro | 7 €/kk tai 59 €/v | Kaikki työkalut ja kaikki 11 kurssia |
 
 Käyttöönotto ja tason antaminen käsin on kuvattu tiedostossa [docs/maksut-ohje.md](docs/maksut-ohje.md).
 
@@ -98,6 +99,6 @@ Koulukäytön suunnitelmat ovat tiedostossa [docs/koulut-ja-tuotteistus.md](docs
 
 ## English summary
 
-RoboLab is a free, browser-based robotics learning environment and toolkit, with no ads and no required account. It has 10 guided courses at three levels, three ready-made school lessons with teacher guides, worksheets and solutions, and 24 tools. The tools cover kinematics, PID, path planning, mapping, motors, batteries, robot builders, neural network training, computer vision and ROS concepts. Trained brains can be exported as code for Arduino, ESP32, Pico and Raspberry Pi. The app works offline once it has been opened. All data stays in the browser.
+RoboLab is a free, browser-based robotics learning environment and toolkit, with no ads and no required account. It has 11 guided courses at three levels, three ready-made school lessons with teacher guides, worksheets and solutions, and 24 tools. The tools cover kinematics, PID, path planning, mapping, motors, batteries, robot builders, neural network training, computer vision and ROS concepts. Neural network training runs on every processor core and includes custom goals, waypoints, a curriculum, races, slow-motion replays, challenges with a class leaderboard and share links. Trained brains can be exported as code for Arduino, ESP32, Pico and Raspberry Pi, with a wiring guide. The app works offline once it has been opened. All data stays in the browser.
 
 To run it locally, serve the folder with any static web server (`serve.ps1` or `python -m http.server 8080`). To run the tests, open `tests.html` (maths) and `tests-app.html` (whole app, isolated in-memory storage). Please report issues at https://github.com/0ippi/RoboLab/issues.

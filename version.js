@@ -3,6 +3,17 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.12.0", date: "2026-10-28",
+    fi: ["Luokan haasteet: opettaja voi antaa luokalle haasteita samalla tavalla kuin kursseja, palautuspäivineen. Oppilas näkee ne Kurssit-sivulla tuloksineen, ja opettajan tulostaulu näyttää myös annetut haasteet, joista ei vielä ole tuloksia.",
+      "Esimerkit-valikossa uudet yhdistelmät: Pyöräauto helposta vaikeaan (maasto vaikeutuu itsestään) sekä omat reitit Gripille (2D) ja Dustylle (3D).",
+      "Robotinrakentajassa lyhyt opastus ensimmäisellä käyttökerralla.",
+      "Korjaus: Palkkiot ja tavoitteet -kurssin viimeinen tehtävä (kokeile haastetta) kuittautuu nyt varmasti."],
+    en: ["Class challenges: a teacher can assign challenges to the class just like courses, with due dates. Students see them with their results on the Courses page, and the teacher's leaderboard also shows assigned challenges that have no results yet.",
+      "New combinations in the Examples menu: Car from easy to hard (the terrain gets harder by itself) and your own routes for Grip (2D) and Dusty (3D).",
+      "A short guide in the robot builder the first time you open it.",
+      "Fix: the last task of the Rewards and goals course (try a challenge) now always ticks."],
+  },
+  {
     version: "2.11.0", date: "2026-10-28",
     fi: ["Haasteet neuroverkkosimulaatioissa: kouluta robotti ja kokeile, läpäiseekö se haasteen (esim. Pikajuoksu, Tasapaino, Esterata, Imurointikierros). Tulos mitataan aina samalla radalla, ja yritys näytetään uusintana.",
       "Saavutukset: Kurssit-sivulla näkyvät merkit, jotka avautuvat ominaisuuksia kokeilemalla sekä kursseja ja haasteita suorittamalla.",

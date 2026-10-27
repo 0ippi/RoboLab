@@ -554,18 +554,24 @@ const Education = (() => {
     ${roomChallengesHtml(d)}`;
   }
 
-  // Haasteiden tulostaulu: oppilaiden parhaat tulokset (achievements.js lähettää ne muodossa "ch-<haaste>")
-  const roomBoards = (d) => (window.Achievements?.CHALLENGES || []).map((c) => ({
-    c, rows: d.students.map((s) => ({ s, p: s.progress.find((x) => x.course === "ch-" + c.id) })).filter((r) => r.p)
-      .sort((a, b) => (b.p.score ?? 0) - (a.p.score ?? 0)),
-  })).filter((b) => b.rows.length);
+  // Haasteiden tulostaulu: oppilaiden parhaat tulokset (achievements.js lähettää ne muodossa "ch-<haaste>").
+  // Mukana luokalle annetut haasteet ja ne, joista on tuloksia.
+  const roomBoards = (d) => {
+    const assigned = new Set((d.courses || []).map((a) => a.id));
+    return (window.Achievements?.CHALLENGES || []).map((c) => ({
+      c, assigned: assigned.has("ch-" + c.id), rows: d.students.map((s) => ({ s, p: s.progress.find((x) => x.course === "ch-" + c.id) })).filter((r) => r.p)
+        .sort((a, b) => (b.p.score ?? 0) - (a.p.score ?? 0)),
+    })).filter((b) => b.rows.length || b.assigned);
+  };
   function roomChallengesHtml(d) {
     const boards = roomBoards(d);
     if (!boards.length) return "";
     return `<h4 class="room-sub">🏁 ${tr("Haasteiden tulostaulu", "Challenge leaderboard")}</h4>
       <div class="ch-boards">${boards.map(({ c, rows }) => `<div class="ch-board"><b>${esc(c.name)}</b><small>${esc(c.desc)}</small>
-        <ol>${rows.slice(0, 10).map((r, i) => `<li class="${r.p.finished ? "ok" : ""}"><span>${["🥇", "🥈", "🥉"][i] || `${i + 1}.`} ${esc(r.s.alias || "?")}</span>
-          <em>${r.p.score ?? 0}${c.unit ? " " + esc(c.unit) : ""}${r.p.finished ? " ✓" : ""}</em></li>`).join("")}</ol></div>`).join("")}</div>
+        ${rows.length ? `<ol>${rows.slice(0, 10).map((r, i) => `<li class="${r.p.finished ? "ok" : ""}"><span>${["🥇", "🥈", "🥉"][i] || `${i + 1}.`} ${esc(r.s.alias || "?")}</span>
+          <em>${r.p.score ?? 0}${c.unit ? " " + esc(c.unit) : ""}${r.p.finished ? " ✓" : ""}</em></li>`).join("")}</ol>
+          <small>${tr(`Läpäisseitä ${rows.filter((r) => r.p.finished).length} / ${d.students.length}`, `Passed ${rows.filter((r) => r.p.finished).length} / ${d.students.length}`)}</small>`
+          : `<small>${tr("Ei vielä tuloksia.", "No results yet.")}</small>`}</div>`).join("")}</div>
       <p class="note small">${tr("Oppilaat kokeilevat haasteita neuroverkkosimulaatioiden Haasteet-kortissa (2D sisältyy Education-tasoon). ✓ = tavoite saavutettu. Taulun voi näyttää luokalle heijastimella.", "Students try the challenges in the Challenges card of the neural network simulations (2D is included in the Education plan). ✓ = goal reached. You can show the board to the class on a projector.")}</p>`;
   }
 
@@ -581,7 +587,7 @@ const Education = (() => {
             <button class="btn small primary" data-edu="show-code">⛶ ${tr("Näytä isona", "Show large")}</button></div></div>
       </div>
       <details class="room-assign" ${assigned.size ? "" : "open"}>
-        <summary><b>${tr("Luokan kurssit", "Class courses")}</b> · ${assigned.size ? tr(`${assigned.size} valittu`, `${assigned.size} selected`) : tr("valitse kurssit, jotka luokan pitää suorittaa", "choose the courses the class must complete")}</summary>
+        <summary><b>${tr("Luokan kurssit ja haasteet", "Class courses and challenges")}</b> · ${assigned.size ? tr(`${assigned.size} valittu`, `${assigned.size} selected`) : tr("valitse kurssit, jotka luokan pitää suorittaa", "choose the courses the class must complete")}</summary>
         <p class="note">${tr("Valitut kurssit näkyvät oppilaille Kurssit-sivun alussa järjestyksessä. Palautuspäivä on vapaaehtoinen.", "The selected courses show to students at the top of the Courses page in order. The due date is optional.")}</p>
         <div class="assign-list">${Courses._courses.map((c) => {
           // Luokkakoodilla oppilas saa Education-tason: muiden tasojen kursseja hän ei voi avata
@@ -590,7 +596,15 @@ const Education = (() => {
           <input type="checkbox" data-assign="${c.id}" ${assigned.has(c.id) ? "checked" : ""} ${ok || assigned.has(c.id) ? "" : "disabled"}>
           <span><b>${esc(c.title)}</b><small>${esc(c.level)} · ~${c.minutes} min${ok ? "" : ` · ${tr("ei sisälly oppilaiden Education-tasoon", "not included in the students' Education plan")}`}</small></span>
           <input type="date" data-due="${c.id}" value="${esc(assigned.get(c.id) || "")}" aria-label="${tr("Palautuspäivä", "Due date")}" ${ok || assigned.has(c.id) ? "" : "disabled"}></label>`; }).join("")}</div>
-        <div class="row-actions"><button class="btn primary" data-edu="room-save">${tr("Tallenna kurssit", "Save courses")}</button></div>
+        ${(window.Achievements?.CHALLENGES || []).length ? `<h5 class="assign-sub">🎯 ${tr("Haasteet", "Challenges")}</h5>
+        <p class="note">${tr("Valitut haasteet näkyvät oppilaille luokan kurssien alla. Oppilas kouluttaa robotin neuroverkkosimulaatiossa ja kokeilee haastetta; tulokset tulevat haasteiden tulostauluun.", "The selected challenges show to students under the class courses. A student trains a robot in the neural network simulation and tries the challenge; the results come to the challenge leaderboard.")}</p>
+        <div class="assign-list">${Achievements.CHALLENGES.map((c) => {
+          const id = "ch-" + c.id, ok = !window.Plans || ["free", "education"].includes(Plans.tierForTool("nn" + c.dim));
+          return `<label class="assign-row ${ok ? "" : "locked"}">
+          <input type="checkbox" data-assign="${id}" ${assigned.has(id) ? "checked" : ""} ${ok || assigned.has(id) ? "" : "disabled"}>
+          <span><b>${esc(c.name)}</b><small>${esc(c.desc)}${ok ? "" : ` · ${tr("ei sisälly oppilaiden Education-tasoon", "not included in the students' Education plan")}`}</small></span>
+          <input type="date" data-due="${id}" value="${esc(assigned.get(id) || "")}" aria-label="${tr("Palautuspäivä", "Due date")}" ${ok || assigned.has(id) ? "" : "disabled"}></label>`; }).join("")}</div>` : ""}
+        <div class="row-actions"><button class="btn primary" data-edu="room-save">${tr("Tallenna", "Save")}</button></div>
       </details>
       <div class="room-bar"><h4>${tr("Oppilaiden eteneminen", "Student progress")}</h4>
         <div class="row-actions"><button class="btn small" data-edu="room-refresh">↻ ${tr("Päivitä", "Refresh")}</button>

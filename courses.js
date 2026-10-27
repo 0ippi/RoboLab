@@ -626,7 +626,8 @@ const Courses = (() => {
               // Päättyneiden kisojen laskuri (tools/nn.js); nollautuu sivun latauksessa, joten pohja seuraa sitä
               check: (c) => { const n = window.rsRaces || 0; if (c.mem.races == null || n < c.mem.races) c.mem.races = n; return n > c.mem.races; } },
             { id: "challenge", text: tr("Kokeile Haasteet-kortista jotain haastetta, johon nykyinen robottisi sopii", "Try a challenge in the Challenges card that fits your current robot"), after: "race",
-              check: (c) => did(c, "click", '#nn-ch [data-a="challenge"]') },
+              // Haasteyritysten laskuri (tools/nn.js): lista piirretään uudelleen, joten painettu nappi ei säily sivulla
+              check: (c) => { const n = window.rsChallenges || 0; if (c.mem.ch == null || n < c.mem.ch) c.mem.ch = n; return n > c.mem.ch; } },
           ],
           hints: [tr("Kisa kestää episodin pituuden verran (nopeus enintään 4×). Tulostaulu näkyy simulaation oikeassa yläkulmassa.", "The race lasts one episode (speed at most 4×). The results board shows in the top right corner of the simulation."),
             tr("Pikajuoksu sopii pyöräautolle. Haasteet, joiden nappi on harmaa, vaativat toisen robotin.", "Sprint fits the wheeled car. Challenges with a grey button need another robot.")],
@@ -1719,7 +1720,25 @@ const Courses = (() => {
           ${status}
           ${c?.finished ? "" : `<button class="btn ${c ? "" : "primary"} small" data-course="${a.id}">${c ? tr("Jatka", "Continue") : tr("Aloita", "Start")} →</button>`}</li>`;
       }).join("")}</ol>` : ""}
+      ${classChallengesHtml(cls, today, fmtDate)}
     </section>`;
+  }
+
+  // Opettajan antamat haasteet (achievements.js): tulos, tavoite ja linkki simulaatioon
+  function classChallengesHtml(cls, today, fmtDate) {
+    const A = window.Achievements;
+    const chs = (cls.courses || []).map((a) => ({ ...a, ch: A?.CHALLENGES.find((c) => "ch-" + c.id === a.id) })).filter((a) => a.ch);
+    if (!chs.length) return "";
+    return `<h3 class="cc-sub">🎯 ${tr("Luokan haasteet", "Class challenges")}</h3>
+      <ol class="cc-list">${chs.map((a) => {
+        const r = A.challengeState(a.ch.id), late = a.due && a.due < today && !r?.passed;
+        const status = r?.passed ? `<span class="badge ok">✓ ${tr("Läpäisty", "Passed")} · ${A.fmtScore(a.ch, r.best)}</span>`
+          : r ? `<span class="badge">${tr("Paras", "Best")} ${A.fmtScore(a.ch, r.best)} / ${A.fmtScore(a.ch, a.ch.goal)}</span>` : `<span class="badge">${tr("Ei yritetty", "Not tried")}</span>`;
+        return `<li class="${late ? "late" : ""}"><div><b>${esc(a.ch.name)}</b>
+            <small>${esc(a.ch.desc)}${a.due ? ` · ${late ? "⚠ " : ""}${tr("palautus", "due")} ${fmtDate(a.due)}` : ""}</small></div>
+          ${status}
+          ${r?.passed ? "" : `<a class="btn small ${r ? "" : "primary"}" href="#/nn${a.ch.dim}">${tr("Avaa simulaatio", "Open the simulation")} →</a>`}</li>`;
+      }).join("")}</ol>`;
   }
 
   function courseCard(course, i) {

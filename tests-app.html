@@ -1323,16 +1323,17 @@ async function test(name, fn) {
     pm.server.subs.set(uid, { plan: "teacher", seats: 20, valid_until: null });
     await w.Plans.refresh({ force: true });
     const { code } = await w.Cloud.rpc("create_class", { p_name: "7C", p_seats: 3 });
-    await w.Cloud.rpc("set_class_courses", { p_code: code, p_courses: [{ id: "start", due: "2099-12-31" }] });
+    await w.Cloud.rpc("set_class_courses", { p_code: code, p_courses: [{ id: "start", due: "2099-12-31" }, { id: "ch-sprint", due: null }] });
     // Oppilas (laite B): liittyy ilman tiliä, näkee luokan kurssin ja tekee sen loppukokeineen
     useDevice("B"); fresh(); await boot();
     let e0 = null; try { await w.Plans.activateClass(code); } catch (e) { e0 = e.code; }
     eq(e0, "alias", "nimimerkki vaadittiin");
     await w.Plans.activateClass(code, { alias: "Aino K" });
     eq(w.Plans.current().plan, "education", "taso");
-    eq(w.Plans.classInfo().courses.map((c) => c.id), ["start"], "luokan kurssit");
+    eq(w.Plans.classInfo().courses.map((c) => c.id), ["start", "ch-sprint"], "luokan kurssit ja haasteet");
     await go("#/learn", 300);
     ok(w.document.querySelector(".class-courses")?.textContent.includes(w.Courses._courses.find((c) => c.id === "start").title), "luokan kurssi ei näy oppilaalle");
+    ok(w.document.querySelector(".class-courses")?.textContent.includes(w.Achievements.CHALLENGES.find((c) => c.id === "sprint").name), "luokan haaste ei näy oppilaalle");
     const start = w.Courses._courses.find((c) => c.id === "start");
     ls().set("robolab-courses-v1", JSON.stringify({ active: null, c: { start: { step: start.steps.length - 1, finished: true, project: null,
       steps: Object.fromEntries(start.steps.map((s) => [s.id, { tasks: {}, quiz: 0, hint: 1, refl: "", base: null, done: true }])),
@@ -1355,9 +1356,10 @@ async function test(name, fn) {
     ok(/✓\s*2\/3/.test(w.document.querySelector("#room-table td.done")?.textContent || ""), "suoritus ja pisteet: " + w.document.querySelector("#room-table").textContent.slice(0, 200));
     ok(/Aino K[\s\S]*52/.test(w.document.querySelector("#room-table .ch-board")?.textContent || ""), "haasteiden tulostaulu");
     // Kurssien valinta näkymästä
+    ok(w.document.querySelector('[data-assign="ch-sprint"]')?.checked, "annettu haaste ei näy valittuna");
     w.document.querySelector('[data-assign="pid"]').checked = true;
     w.document.querySelector('[data-edu="room-save"]').click();
-    await waitFor(() => pm.server.classes.get(code).courses.length === 2, 3000, "kurssien tallennus");
+    await waitFor(() => pm.server.classes.get(code).courses.length === 3, 3000, "kurssien ja haasteen tallennus");
     // Oppilaan poisto: paikka vapautuu ja oppilaan laite putoaa luokasta
     w.confirm = () => true;
     await waitFor(() => w.document.querySelector('[data-edu="room-remove"]'), 3000, "poistonappi");

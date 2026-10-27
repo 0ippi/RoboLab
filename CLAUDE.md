@@ -39,6 +39,7 @@ Kun muutat sovellusta:
 - `Achievements.unlock(id)` (tapahtumat työkaluista, `achieve()` nn.js:ssä) ja `check()` (kursseista johdetut, kutsutaan courses.js:n `persist`issa). Tallennus `robolab-achievements` ({ got, ch }).
 - Haasteet `CHALLENGES`: kiinteä siemen, maasto ja kesto; tulos mitataan omalla mittarilla (`measureCode`), ei käyttäjän palkkiolla. Tavoitteet on kalibroitu kouluttamalla (kouluttamaton ei läpäise, n. 30–60 s nopea koulutus läpäisee).
 - Luokkaan liittyneen oppilaan tulokset lähtevät `report_progress`-kutsussa kursseina `ch-<id>` (ei SQL-muutoksia); opettajan luokkahuoneessa haasteiden tulostaulu (`roomChallengesHtml` education.js:ssä).
+- Opettaja antaa haasteita samalla `set_class_courses`-listalla kuin kursseja (id `ch-<haaste>`, enintään 20 yhteensä); oppilaan Kurssit-sivulla `classChallengesHtml` (courses.js). Kurssien tarkistukset käyttävät laskureita `window.rsRaces` ja `window.rsChallenges`, koska Haasteet-lista piirretään uudelleen (did() ei löydä irrotettua nappia).
 
 ## Rakentajan jouset
 - Nivel `motor: false` + `spring` (jäykkyys) + `springDamping` = jousi (lepoasento 0). 2D: vääntö lasketaan `act()`:ssa ja rajataan osan hitausmomentin mukaan (muuten värähtelee); 3D: Rapierin moottori kulmaan (stiffness/damping). Valmisosat: Jousijalka (`addSpringLeg`), Kosketusanturi (`addBumper`, foot-osa joustavalla saranalla).

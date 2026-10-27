@@ -116,6 +116,8 @@ const Achievements = (() => {
     return { score, best: d.ch[id].best, passed, first };
   }
   const challengeState = (id) => read().ch[id] || null;
+  // Tulos luettavaksi: kohteet kokonaislukuna, muut yhdellä desimaalilla ja yksiköllä
+  const fmtScore = (c, v) => (c.metric === "targets" ? String(Math.round(v)) : `${fmt(v, 1)} ${c.unit}`.trim());
 
   // Luokkakoodilla liittyneen oppilaan tulokset opettajalle samassa muodossa kuin kurssien eteneminen
   function challengeItems() {
@@ -140,6 +142,6 @@ const Achievements = (() => {
     </section>`;
   }
 
-  return { LIST, CHALLENGES, measureCode, unlock, check, challengeResult, challengeState, challengeItems, cardHtml, _read: read };
+  return { LIST, CHALLENGES, measureCode, unlock, check, challengeResult, challengeState, challengeItems, fmtScore, cardHtml, _read: read };
 })();
 window.Achievements = Achievements;
