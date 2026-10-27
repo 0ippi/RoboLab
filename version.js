@@ -3,6 +3,11 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.4.2", date: "2026-10-27",
+    fi: ["Korjattu pilvitilin salasanan vaihto: sähköpostin linkki avaa nyt RoboLabin lomakkeen, jossa asetat uuden salasanan. Linkki toimii millä tahansa selaimella ja laitteella. Vanhentuneesta tai jo käytetystä linkistä kerrotaan selvästi."],
+    en: ["Fixed cloud account password reset: the email link now opens a RoboLab form where you set a new password. The link works in any browser and on any device. An expired or already used link is clearly reported."],
+  },
+  {
     version: "2.4.1", date: "2026-10-27",
     fi: ["Kirjaudu ulos -nappi on nyt sivupalkin alaosassa nimesi alla.",
       "Profiilin Käyttäjät tällä koneella -listasta voi poistaa muita käyttäjiä, myös jos niiden salasana on unohtunut. Kirjautumisessa on Unohtuiko salasana? -linkki. Pilvitilin poisto laitteelta ei poista sen tietoja pilvestä."],
