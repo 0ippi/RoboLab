@@ -41,8 +41,11 @@
     [tr("Siirrä 5 cm (Shift: 1 cm)", "Move 5 cm (Shift: 1 cm)"), dim === "3d" ? tr("Nuolet, PgUp/PgDn", "Arrows, PgUp/PgDn") : tr("Nuolet", "Arrows")],
     [tr("Käännä 90° (Shift: toiseen suuntaan)", "Rotate 90° (Shift: the other way)"), "R"],
     [tr("Laske maahan", "Lower to ground"), "G"],
-    [tr("Siirtokahvat / kääntökahvat", "Move handles / rotate handles"), "W"],
+    [tr("Siirtokahvat", "Move handles"), "W"],
     [tr("Kääntökahvat", "Rotate handles"), "E"],
+    [tr("Skaalauskahvat", "Scale handles"), "S"],
+    [tr("Valintalaatikko päälle / pois", "Box select on / off"), "B"],
+    [tr("Siirrä vain valittu osa (ei kiinnitettyjä osia)", "Move only the selected part (not attached parts)"), "Alt+" + tr("veto", "drag")],
     [tr("Yhdistä kaksi osaa nivelellä", "Join two parts with a joint"), "J"],
     [tr("Peilaa", "Mirror"), "M"],
     [tr("Seuraava / edellinen osa", "Next / previous part"), "Tab"],
@@ -52,7 +55,8 @@
     [tr("Näytä / piilota painopiste", "Show / hide centre of mass"), "C"],
     [tr("Kohdista kamera", "Focus camera"), "F"],
     [tr("Pikavalikko", "Quick menu"), tr("Hiiren oikea", "Right click")],
-    [tr("Valitse useita", "Select several"), "Shift+" + tr("klikkaus", "click")],
+    [tr("Valitse useita", "Select several"), "Ctrl/Shift+" + tr("klikkaus", "click")],
+    [tr("Valitse laatikolla", "Select with a box"), dim === "2d" ? tr("Veto tyhjästä kohdasta", "Drag from empty space") : "Shift+" + tr("veto", "drag")],
     [tr("Poista valinta / lopeta testi", "Clear selection / stop test"), "Esc"],
   ];
   TOOL_SHORTCUTS.build2d = keys("2d");
