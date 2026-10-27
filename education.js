@@ -354,6 +354,9 @@ const Education = (() => {
             "The ready-made lessons include goals, a minute-by-minute plan, a student worksheet, solutions and assessment criteria. Students only need a browser: no accounts, no installs and no robots.")}</p></div></div>
       </div>
 
+      <h2 class="section-title">${tr("Luokkakoodit oppilaille", "Class codes for students")}</h2>
+      <div class="card" id="edu-classes">${classesIntroHtml()}</div>
+
       <h2 class="section-title">${tr("Valmiit oppitunnit", "Ready-made lessons")}</h2>
       <div class="edu-lessons">${LESSONS.map((L) => `
         <article class="card edu-lesson">
@@ -393,6 +396,55 @@ const Education = (() => {
         <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ota yhteyttä / anna palautetta", "Contact / give feedback")}</a></p>`;
     el.onclick = onClick;
     el.querySelector("#edu-import").onchange = (e) => importFiles([...e.target.files], el);
+    loadClasses(el);
+  }
+
+  /* ===== Luokkakoodit (Supabase: create_class, my_classes, delete_class) =====
+     Oppilas syöttää koodin Tasot- tai Kurssit-sivulla ja saa Education-tason laitteelleen ilman tiliä. */
+  function classesIntroHtml() {
+    if (!window.Cloud?.configured) return `<p class="note">${tr("Luokkakoodit vaativat pilvipalvelun, jota ei ole otettu käyttöön tässä RoboLabissa.", "Class codes need the cloud service, which is not set up in this RoboLab.")}</p>`;
+    if (!Accounts.current()?.cloud) return `<p>${tr("Luo luokalle koodi, jolla oppilaat saavat Education-tason ilman tilejä ja nimiä. Kirjaudu ensin pilvitilille, jolla on Teacher-taso.", "Create a code for your class that gives students the Education plan without accounts or names. First sign in with a cloud account on the Teacher plan.")}</p>
+      <div class="row-actions"><button class="btn primary" data-edu="cloud-login">☁ ${tr("Kirjaudu pilvitilille", "Sign in to your cloud account")}</button></div>`;
+    return `<p class="note">${tr("Ladataan luokkia…", "Loading classes…")}</p>`;
+  }
+
+  async function loadClasses(el) {
+    const box = el.querySelector("#edu-classes");
+    if (!box || !window.Cloud?.configured || !Accounts.current()?.cloud) return;
+    const src = Plans.current().sources.find((s) => s.from === "account" && (s.plan === "teacher" || s.plan === "pro") || s.from === "test");
+    let classes = [];
+    try { classes = (await Cloud.rpc("my_classes")) || []; }
+    catch (e) { box.innerHTML = `<p class="note">${esc(e.message)}</p>`; return; }
+    const allowed = Plans.PRICES.teacher.included + (src?.seats || 0);
+    const active = classes.filter((c) => Date.parse(c.valid_until) > Date.now());
+    const used = active.reduce((a, c) => a + c.seats, 0);
+    const date = (d) => new Date(d).toLocaleDateString(tr("fi-FI", "en-GB"));
+    box.innerHTML = `
+      ${src ? "" : `<div class="alert info"><b>i</b><span>${tr("Luokkakoodien luonti vaatii Teacher- tai Pro-tason. ", "Creating class codes needs the Teacher or Pro plan. ")}<a href="#/plans">${tr("Katso tasot", "See plans")}</a></span></div>`}
+      <p class="note">${tr(`Oppilaspaikkoja käytössä ${used} / ${allowed}. Yksi paikka = yksi oppilaan laite.`, `Student seats in use ${used} / ${allowed}. One seat = one student device.`)}</p>
+      ${classes.length ? `<div class="edu-table-wrap"><table class="ws-table"><thead><tr><th>${tr("Luokka", "Class")}</th><th>${tr("Koodi", "Code")}</th><th>${tr("Laitteita", "Devices")}</th><th>${tr("Voimassa", "Valid until")}</th><th></th></tr></thead>
+        <tbody>${classes.map((c) => `<tr><td>${esc(c.name || "–")}</td><td><b class="class-code">${esc(c.code)}</b></td><td>${c.used} / ${c.seats}</td><td>${date(c.valid_until)}</td>
+          <td><button class="btn small" data-edu="copy-code" data-c="${esc(c.code)}">${tr("Kopioi", "Copy")}</button> <button class="link-btn" data-edu="del-class" data-c="${esc(c.code)}">${tr("Poista", "Delete")}</button></td></tr>`).join("")}</tbody></table></div>`
+        : `<p class="note">${tr("Ei vielä luokkia.", "No classes yet.")}</p>`}
+      ${src ? `<form class="class-fields" id="edu-newclass">
+        <label>${tr("Luokan nimi", "Class name")}<input id="edu-cname" maxlength="60" placeholder="${tr("esim. 7B robotiikka", "e.g. 7B robotics")}"></label>
+        <label>${tr("Oppilaita", "Students")}<input id="edu-cseats" type="number" min="1" max="${Math.max(1, allowed - used)}" value="${Math.max(1, Math.min(25, allowed - used))}"></label>
+        <button class="btn primary" ${allowed - used < 1 ? "disabled" : ""}>${tr("Luo luokkakoodi", "Create class code")}</button></form>
+        ${allowed - used < 1 ? `<p class="note">${tr("Kaikki paikat ovat käytössä. Osta lisää oppilaspaikkoja Tasot-sivulta tai poista vanha luokka.", "All seats are in use. Buy more student seats on the Plans page or delete an old class.")}</p>` : ""}` : ""}
+      <p class="note small">${tr("Oppilas syöttää koodin Kurssit- tai Tasot-sivulla. Koodi ei kerää oppilaasta mitään tietoja; palvelin muistaa vain satunnaisen laitetunnuksen, jotta paikkoja ei käytetä kahdesti.", "Students enter the code on the Courses or Plans page. The code collects no data about the student; the server only remembers a random device ID so seats are not used twice.")}</p>`;
+    const form = box.querySelector("#edu-newclass");
+    if (form) form.onsubmit = async (e) => {
+      e.preventDefault();
+      form.querySelector("button").disabled = true;
+      try {
+        const r = await Cloud.rpc("create_class", { p_name: form.querySelector("#edu-cname").value.trim(), p_seats: Math.round(+form.querySelector("#edu-cseats").value) });
+        toast(tr(`Luokkakoodi luotu: ${r.code}`, `Class code created: ${r.code}`));
+      } catch (err) {
+        const m = String(err.raw || err.message);
+        toast(/not-teacher/.test(m) ? tr("Luokkakoodit vaativat Teacher-tason.", "Class codes need the Teacher plan.") : /no-seats/.test(m) ? tr("Oppilaspaikat eivät riitä.", "Not enough student seats.") : err.message);
+      }
+      loadClasses(el);
+    };
   }
 
   function rosterHtml() {
@@ -435,6 +487,13 @@ const Education = (() => {
     if (act === "print-sheet" && L) { printHtml(L.title, worksheetDoc(L)); return; }
     if (act === "print-sol" && L) { printHtml(L.title, solutionsDoc(L)); return; }
     if (act === "copy") { copyLink(location.origin + location.pathname + "#/course/" + (L ? L.course : b.dataset.c)); return; }
+    if (act === "cloud-login") { AccountsUI.showLogin("cloud"); return; }
+    if (act === "copy-code") { copyLink(b.dataset.c); return; }
+    if (act === "del-class") {
+      if (!confirm(tr(`Poistetaanko luokkakoodi ${b.dataset.c}? Oppilaiden Education-taso päättyy, kun heidän laitteensa seuraavan kerran tarkistaa koodin.`, `Delete class code ${b.dataset.c}? Students lose the Education plan the next time their device checks the code.`))) return;
+      Cloud.rpc("delete_class", { p_code: b.dataset.c }).then(() => loadClasses(e.currentTarget || document.querySelector("#content")), (err) => toast(err.message)).finally(() => loadClasses(document.querySelector("#content")));
+      return;
+    }
     if (act === "csv") { downloadFile("robolab-luokka.csv", "﻿" + toCsv(roster), "text/csv"); return; }
     if (act === "clear") { roster = []; render(e.currentTarget, TOOLS.find((t) => t.id === "teach")); return; }
   }

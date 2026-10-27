@@ -26,11 +26,13 @@
 window.__robolabStores = { local: new Map(), session: new Map() };
 window.__robolabErrors = [];
 window.__robolabQuota = 0;
+// Vanhat testit ajetaan Pro-tasolla (kaikki auki); tasotestit asettavat tämän tyhjäksi
+window.__robolabPlanOverride = "pro";
 
 // Pilvitilin testiversio: Supabase-asiakkaan pienin tarvittava osa muistissa. "Palvelin" on yhteinen,
 // istunto tallentuu laitteen (tallennus-Mapin) omaan avaimeen kuten oikeassa kirjastossa.
 function makeSupabaseMock() {
-  const server = { users: new Map(), rows: new Map(), clock: 0, confirm: false };
+  const server = { users: new Map(), rows: new Map(), subs: new Map(), classes: new Map(), clock: 0, confirm: false };
   const S = () => window.__robolabStores.local;
   const sess = () => { try { return JSON.parse(S().get("rlcloud-auth")); } catch { return null; } };
   const ts = () => new Date(Date.UTC(2026, 0, 1) + ++server.clock * 1000).toISOString();
@@ -79,8 +81,35 @@ function makeSupabaseMock() {
       onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
     },
     from: () => query(),
-    async rpc(name) {
-      const s = sess();
+    async rpc(name, args = {}) {
+      const s = sess(), uid = s?.user.id;
+      const sub = () => { const x = server.subs.get(uid); return x && (!x.valid_until || Date.parse(x.valid_until) > Date.now()) ? x : null; };
+      const err = (message) => ({ data: null, error: { message } });
+      if (name === "my_plan") {
+        if (!uid) return err("not authenticated");
+        const x = sub();
+        return { data: x ? { plan: x.plan, valid_until: x.valid_until || null, seats: x.seats || 0 } : { plan: "free", valid_until: null, seats: 0 }, error: null };
+      }
+      if (name === "activate_class_code") {
+        const c = server.classes.get(String(args.p_code || "").toUpperCase());
+        if (!c) return err("no-code");
+        if (Date.parse(c.valid_until) <= Date.now()) return err("expired");
+        if (!c.devices.has(args.p_device)) { if (c.devices.size >= c.seats) return err("full"); c.devices.add(args.p_device); }
+        return { data: { plan: "education", name: c.name, valid_until: c.valid_until }, error: null };
+      }
+      if (name === "create_class") {
+        const x = sub();
+        if (!x || !["teacher", "pro"].includes(x.plan)) return err("not-teacher");
+        const used = [...server.classes.values()].filter((c) => c.teacher === uid).reduce((a, c) => a + c.seats, 0);
+        const allowed = 5 + (x.seats || 0);
+        if (used + args.p_seats > allowed) return err("no-seats:" + (allowed - used));
+        const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        const code = Array.from({ length: 8 }, () => A[Math.floor(Math.random() * A.length)]).join("");
+        server.classes.set(code, { code, teacher: uid, name: args.p_name, seats: args.p_seats, valid_until: new Date(Date.now() + 365 * 864e5).toISOString(), devices: new Set() });
+        return { data: { code, seats: args.p_seats }, error: null };
+      }
+      if (name === "my_classes") return { data: [...server.classes.values()].filter((c) => c.teacher === uid).map((c) => ({ code: c.code, name: c.name, seats: c.seats, valid_until: c.valid_until, used: c.devices.size })), error: null };
+      if (name === "delete_class") { const c = server.classes.get(args.p_code); if (c?.teacher === uid) server.classes.delete(args.p_code); return { data: null, error: null }; }
       if (name !== "delete_my_account" || !s) return { error: { message: "not allowed" } };
       server.rows.delete(s.user.id);
       for (const [e, u] of server.users) if (u.user.id === s.user.id) server.users.delete(e);
@@ -597,6 +626,102 @@ async function test(name, fn) {
     window.__robolabSupabaseMock = null; useDevice("A");
   });
 
+  /* ===== Tilaustasot ===== */
+  await test("Free-taso: perustyökalut auki, muut lukittu, Päivitä-nappi ja mainos näkyvät", async () => {
+    window.__robolabPlanOverride = null; window.__robolabSupabaseMock = null; useDevice("A"); fresh(); await boot();
+    eq(w.Plans.current().plan, "free", "taso");
+    ok(!w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi piilossa");
+    ok(w.document.querySelector(".upgrade-banner"), "kojelaudan mainos puuttuu");
+    ok(w.document.querySelector('.nav-item.locked[data-route="pid"] .nav-lock'), "lukkoa ei näy valikossa");
+    await go("#/pid");
+    ok(w.document.querySelector(".locked-card"), "PID ei ole lukittu");
+    ok(!w.document.querySelector("#pid-results"), "lukittu työkalu avautui");
+    for (const id of ["motor", "power", "build2d", "sim2d", "units", "learn", "projects"]) {
+      await go("#/" + id, id === "build2d" ? 1500 : 400);
+      ok(!w.document.querySelector(".locked-card"), id + " lukittu Free-tasolla");
+    }
+  });
+
+  await test("Free: kolme ensimmäistä kurssia auki, lukittu kurssi ohjaa Tasot-sivulle", async () => {
+    await go("#/learn");
+    const locked = [...w.document.querySelectorAll(".course")].filter((c) => c.querySelector('a[href="#/plans"]')).length;
+    eq(locked, 7, "lukittuja kursseja");
+    w.Courses.start("pid");
+    await sleep(300);
+    eq(w.location.hash, "#/plans", "ohjaus");
+  });
+
+  await test("Kurssi avaa käyttämänsä työkalut kurssin ajaksi", async () => {
+    eq(w.Plans.canTool("nn2d"), false, "ennen kurssia");
+    w.Courses.start("sensors");
+    await sleep(400);
+    eq(w.Plans.canTool("nn2d"), true, "kurssin aikana");
+    eq(w.Plans.canTool("nn3d"), false, "kurssiin kuulumaton");
+    w.Courses.stop();
+    eq(w.Plans.canTool("nn2d"), false, "kurssin jälkeen");
+  });
+
+  await test("Tasot-sivu: hinnat, nykyinen taso ja ostonappi ilman maksulinkkiä", async () => {
+    await go("#/plans");
+    const t = w.document.querySelector("#content").textContent;
+    for (const p of ["Free", "Education", "Teacher", "Pro", "19 €", "45 €", "59 €"]) ok(t.includes(p), "puuttuu: " + p);
+    w.document.querySelector('[data-buy="pro_month"]').click();
+    ok(/pian|soon/i.test(lastToast()), "ilmoitus: " + lastToast());
+  });
+
+  const pm = (window.__robolabSupabaseMock = makeSupabaseMock());
+  pm.server.classes.set("ABCD2345", { code: "ABCD2345", teacher: "x", name: "7B", seats: 1, valid_until: new Date(Date.now() + 864e5).toISOString(), devices: new Set() });
+  await test("Luokkakoodi: Education laitteelle ilman tiliä; väärä koodi ja täysi luokka hylätään", async () => {
+    useDevice("A"); fresh(); await boot();
+    let e1 = null; try { await w.Plans.activateClass("ZZZZ9999"); } catch (e) { e1 = e.message; }
+    ok(e1 && /löytynyt|not found/i.test(e1), "väärä koodi: " + e1);
+    await w.Plans.activateClass("abcd-2345");
+    eq(w.Plans.current().plan, "education", "taso");
+    eq(w.Plans.canTool("pid"), true, "PID auki"); eq(w.Plans.canTool("nn3d"), false, "Pro-työkalu");
+    eq(w.Plans.canCourse("vision"), true, "Education-kurssi"); eq(w.Plans.canCourse("ai"), false, "Pro-kurssi");
+    ok(!G("Accounts").current(), "tili luotiin");
+    await boot();
+    eq(w.Plans.current().plan, "education", "säilyy uudelleenlatauksessa");
+    useDevice("B"); fresh(); await boot();
+    let e2 = null; try { await w.Plans.activateClass("ABCD2345"); } catch (e) { e2 = e.message; }
+    ok(e2 && /paikat|seats/i.test(e2), "täysi luokka: " + e2);
+    eq(w.Plans.current().plan, "free", "B:n taso");
+  });
+
+  await test("Pilvitilin tilaus: Pro avaa kaiken; vanhentunut tilaus palaa Free-tasolle", async () => {
+    useDevice("A"); fresh(); await boot();
+    await w.Cloud.signUp({ email: "pro@example.com", password: "salasana789", name: "Pro" });
+    const uid = G("Accounts").current().cloudUid;
+    pm.server.subs.set(uid, { plan: "pro", seats: 0, valid_until: null });
+    await w.Plans.refresh({ force: true });
+    eq(w.Plans.current().plan, "pro", "taso");
+    ok(w.Plans.canTool("nn3d") && w.Plans.canTool("teach") && w.Plans.canCourse("ai"), "Pro ei avaa kaikkea");
+    await boot();
+    ok(w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi näkyy Prolla");
+    ok(!w.document.querySelector(".upgrade-banner"), "mainos näkyy Prolla");
+    pm.server.subs.set(uid, { plan: "pro", seats: 0, valid_until: new Date(Date.now() - 1000).toISOString() });
+    await w.Plans.refresh({ force: true });
+    eq(w.Plans.current().plan, "free", "vanhentunut");
+  });
+
+  await test("Teacher: Opettajille auki, luokkakoodin luonti ja paikkaraja", async () => {
+    const uid = G("Accounts").current().cloudUid;
+    pm.server.subs.set(uid, { plan: "teacher", seats: 0, valid_until: null });
+    await w.Plans.refresh({ force: true });
+    eq(w.Plans.canTeach(), true, "Opettajille"); eq(w.Plans.canTool("nn3d"), false, "Pro-työkalu");
+    await go("#/teach", 800);
+    ok(!w.document.querySelector(".locked-card"), "Opettajille lukittu");
+    ok(w.document.querySelector("#edu-newclass"), "luontilomake puuttuu");
+    const r = await w.Cloud.rpc("create_class", { p_name: "8A", p_seats: 5 });
+    ok(/^[A-Z2-9]{8}$/.test(r.code), "koodi: " + r.code);
+    let e = null; try { await w.Cloud.rpc("create_class", { p_name: "8B", p_seats: 1 }); } catch (x) { e = x.raw; }
+    ok(/no-seats/.test(e || ""), "paikkaraja: " + e);
+    await go("#/dashboard", 200); await go("#/teach", 800);
+    ok(w.document.querySelector("#edu-classes").textContent.includes(r.code), "luokka ei näy listassa");
+    window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro"; useDevice("A");
+  });
+
+  /* ===== Puhelin ja offline ===== */
   await test("Puhelinleveys (375 px): ei vaakavieritystä ja valikko aukeaa", async () => {
     await boot("#/dashboard", { width: 375 });
     const bad = [];

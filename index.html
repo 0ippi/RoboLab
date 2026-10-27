@@ -39,6 +39,7 @@ if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window
   // Pilvitilin testiversio (ei oikeaa Supabasea) ja automaattisen synkronoinnin esto testeissä
   if (window.parent.__robolabSupabaseMock) window.__robolabSupabaseMock = window.parent.__robolabSupabaseMock;
   window.__robolabCloudNoAuto = true;
+  if (window.parent.__robolabPlanOverride) window.__robolabPlanOverride = window.parent.__robolabPlanOverride;
   if (window.parent.__robolabCloudOverride) window.__robolabCloudOverride = window.parent.__robolabCloudOverride;
   const s = window.parent.__robolabStores;
   Object.defineProperty(window, "localStorage", { value: fake(s.local), configurable: true });
@@ -92,6 +93,7 @@ if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window
         <span>Hae työkaluja…</span>
         <kbd>Ctrl K</kbd>
       </button>
+      <button class="btn upgrade-btn" id="upgrade-btn" hidden></button>
       <button class="btn install-btn" id="install-app" hidden>
         <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
         <span>Asenna sovellus</span>
@@ -179,6 +181,7 @@ if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window
 <script src="tools/nn.js"></script>
 <script src="tools/builder.js"></script>
 <script src="courses.js"></script>
+<script src="plans.js"></script>
 <script src="education.js"></script>
 <script src="assistant.js"></script>
 </body>

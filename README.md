@@ -1,6 +1,6 @@
 # RoboLab
 
-**Robotiikan oppimisympäristö ja työkalupakki selaimessa.** Ilmainen, ei mainoksia, ei pakollista tiliä. Toimii asennuksen jälkeen myös ilman nettiä.
+**Robotiikan oppimisympäristö ja työkalupakki selaimessa.** Free-taso on ilmainen eikä vaadi tiliä. Education (2 €/kk, oppilaille ilmainen opettajan luokkakoodilla), Teacher (5 €/kk) ja Pro (7 €/kk) avaavat lisää kursseja ja työkaluja. Toimii asennuksen jälkeen myös ilman nettiä.
 
 👉 Kokeile: **https://0ippi.github.io/RoboLab/**
 
@@ -32,6 +32,17 @@ RoboLab opettaa robotiikkaa tekemällä. Kurssien robottioppaat ohjaavat käytt�
   - Ilman nettiä ja kielimallia Volt vastaa sisäänrakennetulla oppaalla, suomeksi tai englanniksi.
   - Vapaaehtoisesti voi ladata ilmaisen kielimallin (0,4–2 Gt), joka toimii omalla koneella. Se vaatii WebGPU:n ja vastaa englanniksi.
   - Omalla Claude API -avaimella saa parhaat vastaukset.
+
+## Tasot
+
+| Taso | Hinta | Sisältö |
+|---|---|---|
+| Free | 0 € | Perustyökalut ja kurssit Aloita tästä, Anturit ja elektroniikka sekä Virta ja akut |
+| Education | 2 €/kk tai 19 €/v, ilmainen luokkakoodilla | Lisää työkaluja (reitinhaku, PID, konenäkö, kinematiikka, neuroverkko 2D…) ja 7 kurssia |
+| Teacher | 5 €/kk tai 45 €/v | Education + Opettajille-sivu ja luokkakoodit (5 oppilasta sisältyy, lisäpaikka 1 €/v). Koululisenssi 290 €/v. |
+| Pro | 7 €/kk tai 59 €/v | Kaikki työkalut ja kaikki 10 kurssia |
+
+Käyttöönotto ja tason antaminen käsin on kuvattu tiedostossa [docs/maksut-ohje.md](docs/maksut-ohje.md).
 
 ## Käynnistys paikallisesti
 

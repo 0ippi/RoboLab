@@ -156,6 +156,14 @@ const Cloud = (() => {
     Accounts.remove(acc.id);
   }
 
+  // Palvelimen funktiot (tilaukset, luokkakoodit). Toimii myös ilman kirjautumista, jos funktio sallii sen.
+  async function rpc(name, args) {
+    const c = await lib();
+    const { data, error } = await c.rpc(name, args);
+    if (error) { const e = new Error(friendly(error)); e.raw = String(error.message || ""); throw e; }
+    return data;
+  }
+
   /* ===== Synkronointi ===== */
   async function push(uid, data, h = hash(data)) {
     const c = await lib();
@@ -268,7 +276,7 @@ const Cloud = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else setTimeout(start);
 
   return {
-    configured, status, signUp, signIn, signOut, hasSession, resetPassword, deleteAccount, sync, resolve, tick, friendly,
+    configured, status, signUp, signIn, signOut, hasSession, resetPassword, deleteAccount, sync, resolve, tick, friendly, rpc,
     onStatus: (f) => { listeners.add(f); return () => listeners.delete(f); },
     _hash: hash, _collect: collect, _meta: metaOf,
   };

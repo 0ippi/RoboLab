@@ -3,6 +3,15 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.3.0", date: "2026-10-27",
+    fi: ["Uudet tasot: Free (ilmainen, ei tiliä), Education (2 €/kk, oppilaille ilmainen opettajan luokkakoodilla), Teacher (5 €/kk) ja Pro (7 €/kk). Päivitä-napista näet, mitä kukin taso sisältää.",
+      "Free-tasolla ovat perustyökalut ja kolme ensimmäistä kurssia. Lukitut työkalut ja kurssit näkyvät lukkomerkillä, ja kurssin aikana sen omat työkalut ovat aina käytössä.",
+      "Opettajat voivat luoda Opettajille-sivulla luokkakoodin, jolla oppilaat saavat Education-tason ilman tilejä tai nimiä. Projektisi säilyvät aina, vaikka taso vaihtuisi."],
+    en: ["New plans: Free (no account), Education (€2/mo, free for students with a teacher's class code), Teacher (€5/mo) and Pro (€7/mo). The Upgrade button shows what each plan includes.",
+      "Free includes the basic tools and the first three courses. Locked tools and courses show a lock, and during a course its own tools are always available.",
+      "Teachers can create a class code on the For teachers page that gives students the Education plan without accounts or names. Your projects are always kept, even if your plan changes."],
+  },
+  {
     version: "2.2.0", date: "2026-10-27",
     fi: ["Pilvitili: kirjaudu sähköpostilla, niin samat projektit, kurssit, robotit ja asetukset ovat käytössä kaikilla laitteillasi. Muutokset synkronoituvat automaattisesti, ja jos samaa tiliä on muokattu kahdella laitteella, saat valita kumpi versio säilyy.",
       "Pilvitili on vapaaehtoinen: paikalliset tilit ja vierastila toimivat kuten ennenkin. Pilvitilin ja kaikki sen tiedot voi poistaa profiilista, eikä Claude API -avain koskaan tallennu pilveen."],

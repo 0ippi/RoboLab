@@ -33,6 +33,11 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Pilvitili on `accounts.js`:n tili, jolla `cloud: true` ja `cloudUid`; vaihto `Accounts.cloudAccount` / `useAccount`. Laitekohtaiset avaimet: `rlcloud-meta` (synkronointitila), `rlcloud-auth` (Supabasen istunto). Synkronoimatta: API-avain ja `SKIP`-lista cloud.js:ssä.
 - Testit käyttävät Supabasen testiversiota (`makeSupabaseMock` tests-app.html:ssä); oikeaa Supabasea ei testata automaattisesti. Älä koskaan lisää service_role-avainta.
 
+## Tilaustasot
+- `plans.js` (`Plans`): hinnat (`PRICES`) ja tasojen sisältö (`FEATURES`: työkalu- ja kurssilistat). Uusi työkalu tai kurssi on oletuksena Pro-tasoa, ellei sitä lisätä FREE- tai EDU-listaan.
+- Taso tulee pilvitilin `subscriptions`-rivistä (`my_plan`) tai laitteen luokkakoodista (`activate_class_code`). Laiteavaimet: `rlplan`, `rlclass`, `rldevice`. SQL: `docs/supabase-plans.sql`, ohje: `docs/maksut-ohje.md`, maksujen webhook: `supabase/functions/stripe-webhook`.
+- Lukitus on sovelluksessa (`Plans.canTool` routerissa, `canCourse` kursseissa). Aktiivinen kurssi avaa sen omat työkalut. Testeissä `__robolabPlanOverride` (oletus "pro").
+
 ## Opettajille ja tietoturva
 - `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–C (`LESSONS`), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
 - Tuotu koodi (nn2d/nn3d `taskCode`) merkitään `taskCodeUntrusted`: sitä ei ajeta ennen kuin käyttäjä hyväksyy sen editorissa. Kaikki tuodut tai tallennetut arvot `esc()`:llä HTML:ään; `getToolState` pakottaa numero-oletusten kentät luvuiksi.

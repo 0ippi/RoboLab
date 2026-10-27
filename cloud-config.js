@@ -5,4 +5,15 @@
 window.ROBOLAB_CLOUD = {
   url: "https://tsftpfpbvujwhwuayofz.supabase.co",
   anonKey: "sb_publishable_4Qv4nBe9YV4J8Z6C0a2HMA_jrXZH9GZ", // julkinen publishable-avain (Project Settings → API Keys)
+  // Maksulinkit (esim. Stripe Payment Links). Tyhjä = verkkomaksu ei vielä käytössä; Osta-nappi kertoo sen.
+  // Tilaus liitetään pilvitiliin: sovellus lisää linkkiin client_reference_id = käyttäjän tunnus.
+  payments: {
+    education_month: "",
+    education_year: "",
+    teacher_month: "",
+    teacher_year: "",
+    seats: "",          // oppilaspaikat (määrä valitaan kassalla)
+    pro_month: "",
+    pro_year: "",
+  },
 };

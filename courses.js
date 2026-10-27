@@ -880,6 +880,12 @@ const Courses = (() => {
   function start(id, { restart = false } = {}) {
     const course = byId(id);
     if (!course) return;
+    // Tilaustaso (plans.js): lukittu kurssi ohjaa Tasot-sivulle
+    if (window.Plans && !Plans.canCourse(id)) {
+      toast(tr(`Kurssi "${course.title}" kuuluu ${Plans.NAMES[Plans.tierForCourse(id)]}-tasoon.`, `The course "${course.title}" is part of the ${Plans.NAMES[Plans.tierForCourse(id)]} plan.`));
+      location.hash = "#/plans";
+      return;
+    }
     if (restart) {
       const old = P.c[id];
       if (old?.project && projects.projects[old.project] && Object.keys(projects.projects).length > 1) {
@@ -1066,7 +1072,7 @@ const Courses = (() => {
   }
 
   function drawFinished(course) {
-    const next = COURSES.find((c) => c.id !== course.id && !P.c[c.id]?.finished);
+    const next = COURSES.find((c) => c.id !== course.id && !P.c[c.id]?.finished && (!window.Plans || Plans.canCourse(c.id)));
     const who = GUIDE[course.id] || "volt";
     panel.innerHTML = `
       <div class="lesson-head"><div class="lesson-title"><small>${tr("Kurssi", "Course")}</small><b>${esc(course.title)}</b></div>
@@ -1198,8 +1204,10 @@ const Courses = (() => {
       <h2 class="path-title">${tr("Oppimispolku", "Learning path")}</h2>
       <p class="note path-note">${tr("Kurssit on järjestetty niin, että jokainen rakentaa edellisten päälle. Voit silti aloittaa mistä tahansa.", "The courses are ordered so each one builds on the previous ones. You can still start anywhere.")}</p>
       ${COURSES.map((c, i) => { const st = STAGES.find((x) => x.from === c.id); return (st ? `${i ? "</div>" : ""}<h3 class="stage-title">${st.title}</h3><p class="note stage-note">${st.desc}</p><div class="course-grid">` : "") + courseCard(c, i); }).join("")}</div>
+      ${window.Plans && Plans.current().plan === "free" ? `<section class="card class-card"><h2>${tr("Onko sinulla opettajan luokkakoodi?", "Do you have a class code from your teacher?")}</h2>${Plans.classBoxHtml()}</section>` : ""}
       ${window.Education ? Education.studentCardHtml() : ""}`;
     window.Education?.bindStudentCard(root);
+    window.Plans?.bindClassForm(root);
     root.onclick = (e) => {
       const b = e.target.closest("[data-course]");
       if (!b) return;
@@ -1213,20 +1221,21 @@ const Courses = (() => {
 
   function courseCard(course, i) {
     const p = progressOf(course), c = P.c[course.id];
+    const locked = window.Plans && !Plans.canCourse(course.id);
     const label = !c ? tr("Aloita kurssi", "Start course") : c.finished ? tr("Avaa uudelleen", "Open again") : tr("Jatka", "Continue");
-    const next = COURSES.find((x) => !P.c[x.id]?.finished) === course;
+    const next = !locked && COURSES.find((x) => !P.c[x.id]?.finished && (!window.Plans || Plans.canCourse(x.id))) === course;
     const need = NEEDS[course.id] && !P.c[NEEDS[course.id]]?.finished && !c ? byId(NEEDS[course.id]) : null;
     return `<article class="card course ${next ? "next" : ""}">
       <div class="course-step"><span>${i + 1}</span>${next ? `<b>${tr("Suositeltu seuraavaksi", "Recommended next")}</b>` : ""}</div>
       <div class="course-top"><div class="course-bot">${Robots.svg(GUIDE[course.id], c?.finished ? "happy" : "idle", { size: 64 })}</div>
         <div><h3>${esc(course.title)}</h3><small>${esc(course.level)} · ${course.steps.length} ${tr("vaihetta", "steps")} · ~${course.minutes} min · ${tr("opas", "guide")} ${esc(Robots.CAST[GUIDE[course.id]].name)}</small></div>
-        ${c?.finished ? `<span class="badge ok">✓ ${tr("Suoritettu", "Completed")}</span>` : ""}</div>
+        ${c?.finished ? `<span class="badge ok">✓ ${tr("Suoritettu", "Completed")}</span>` : locked ? Plans.badge(Plans.tierForCourse(course.id)) : ""}</div>
       <p>${esc(course.desc)}</p>
       <ul class="course-outcomes">${course.outcomes.map((o) => `<li>${esc(o)}</li>`).join("")}</ul>
       ${need ? `<p class="course-need">💡 ${tr(`Helpompi, jos teet ensin kurssin ”${esc(need.title)}”.`, `Easier if you first do “${esc(need.title)}”.`)}</p>` : ""}
       <div class="course-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p * 100)}"><span style="width:${p * 100}%"></span></div>
       <div class="row-actions">
-        <button class="btn primary" data-course="${course.id}">${label} →</button>
+        ${locked ? `<a class="btn" href="#/plans">🔒 ${tr(`Avaa ${Plans.NAMES[Plans.tierForCourse(course.id)]}-tasolla`, `Unlock with ${Plans.NAMES[Plans.tierForCourse(course.id)]}`)}</a>` : `<button class="btn primary" data-course="${course.id}">${label} →</button>`}
         ${c ? `<button class="link-btn" data-course="${course.id}" data-act="restart">${tr("Aloita alusta", "Restart")}</button>` : ""}
       </div>
     </article>`;

@@ -37,6 +37,7 @@ const ICONS = {
   keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z"/>',
   cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>',
   chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 10h6v4H9zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
 };
@@ -55,6 +56,9 @@ const TOOLS = [
     desc: tr("Opi robotiikkaa vaihe vaiheelta oikeilla työkaluilla — tekoälyopettaja auttaa.", "Learn robotics step by step with the real tools — an AI tutor helps.") },
   { id: "teach", group: G.general, name: tr("Opettajille", "For teachers"), icon: "cap", status: "ready",
     desc: tr("Valmiit oppitunnit, tulostettavat monisteet ja ratkaisut sekä luokan edistyminen ilman oppilastilejä.", "Ready-made lessons, printable worksheets and solutions, and class progress without student accounts.") },
+  // Tasot ja hinnat avataan Päivitä-napista (plans.js), ei näy työkalulistoissa
+  { id: "plans", group: G.general, name: tr("Tasot ja hinnat", "Plans & pricing"), icon: "star", status: "ready", nav: false,
+    desc: tr("Free, Education, Teacher ja Pro: mitä kukin sisältää ja mitä se maksaa. Luokkakoodin aktivointi.", "Free, Education, Teacher and Pro: what each includes and costs. Class code activation.") },
   { id: "projects", group: G.general, name: tr("Projektit", "Projects"), icon: "folder", status: "ready",
     desc: tr("Jokainen projekti tallentaa työkalujen syötteet erikseen. Vie ja tuo JSON-tiedostona.", "Each project stores tool inputs separately. Export and import as JSON.") },
   // Profiili avataan sivupalkin alaosan käyttäjästä, ei näy työkalulistoissa (account-ui.js)
@@ -858,8 +862,8 @@ function renderNav() {
   $("#nav").innerHTML = Object.entries(groups).map(([g, items]) => `
     <div class="nav-group-title">${g}</div>
     ${items.map((t) => `
-      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"}" data-route="${t.id}" data-tip="${esc(t.name)}">
-        ${icon(t.icon)}<span class="label">${t.name}</span>
+      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${window.Plans && !Plans.canTool(t.id) ? "locked" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
+        ${icon(t.icon)}<span class="label">${t.name}</span>${window.Plans && !Plans.canTool(t.id) ? `<span class="nav-lock" aria-label="${tr("Lukittu", "Locked")}" title="${Plans.NAMES[Plans.tierForTool(t.id)]}">🔒</span>` : ""}
       </a>`).join("")}
   `).join("");
 }
@@ -921,6 +925,10 @@ function router() {
   } else if (route === "dashboard") {
     $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     content.innerHTML = dashboardPage();
+  } else if (window.Plans && !Plans.canTool(route)) {
+    // Lukittu työkalu: esittely ja päivitys (tilaustaso, plans.js)
+    $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
+    content.innerHTML = Plans.lockedHtml(tool);
   } else if (TOOL_IMPL[route]) {
     $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     currentImpl = TOOL_IMPL[route];
@@ -961,7 +969,7 @@ function dashboardPage() {
     <a class="card" href="#/${t.id}">
       <div class="card-icon">${icon(t.icon)}</div>
       <div><h3>${t.name}</h3><p>${why || t.desc}</p></div>
-      <div class="card-foot"><span>${t.group}</span>${favs().includes(t.id) ? `<span class="fav-mini" aria-label="${tr("Suosikki", "Favourite")}">★</span>` : `<span>${tr("Avaa", "Open")} →</span>`}</div>
+      <div class="card-foot"><span>${t.group}</span>${window.Plans && !Plans.canTool(t.id) ? Plans.badge(Plans.tierForTool(t.id)) : favs().includes(t.id) ? `<span class="fav-mini" aria-label="${tr("Suosikki", "Favourite")}">★</span>` : `<span>${tr("Avaa", "Open")} →</span>`}</div>
     </a>`;
   const byId = (id) => TOOLS.find((t) => t.id === id);
   const g = goal();
@@ -1007,6 +1015,11 @@ function dashboardPage() {
     </div>
     ${welcome}
     ${courseHtml}
+    ${window.Plans && Plans.current().plan === "free" ? `<a class="card upgrade-banner" href="#/plans">
+      <span class="ub-star" aria-hidden="true">⭐</span>
+      <div><b>${tr("Avaa kaikki kurssit ja työkalut", "Unlock all courses and tools")}</b>
+        <span>${tr(`Education ${Plans.PRICES.education.month} €/kk — ilmainen opettajan luokkakoodilla. Pro ${Plans.PRICES.pro.month} €/kk: kaikki työkalut ja kurssit.`, `Education €${Plans.PRICES.education.month}/mo — free with your teacher's class code. Pro €${Plans.PRICES.pro.month}/mo: every tool and course.`)}</span></div>
+      <span class="ub-go">${tr("Katso tasot", "See plans")} →</span></a>` : ""}
     <div class="stats">
       <a class="card stat" href="#/projects"><div class="k">${tr("Projekti", "Project")}</div><div class="v small">${esc(activeProject().name)}</div></a>
       <button class="card stat stat-btn" id="dash-search"><div class="k">${tr("Etsi työkalu tai asetus", "Find a tool or setting")}</div><div class="v small">${tr("Haku", "Search")} <kbd>Ctrl+K</kbd></div></button>
