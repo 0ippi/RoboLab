@@ -138,11 +138,20 @@ export class View3D {
       grid.visible = settings.showGrid !== false;
       this.terrainGroup.add(plane, grid);
       const boxMat = new THREE.MeshStandardMaterial({ color: this.theme.block, roughness: 0.9 });
-      for (const b of t.boxes) {
-        const m = new THREE.Mesh(Look.geometry({ type: 'box', size: [b.w, b.h, b.d], round: 0.08 }), boxMat);
-        m.position.set(b.x, b.y, b.z);
-        m.castShadow = m.receiveShadow = true;
-        this.terrainGroup.add(m);
+      if (t.boxes.length > 120) {
+        // Satoja esteitä tai porraskehiä: yksi instanssoitu verkko (yksi piirtokutsu) yksittäisten verkkojen sijaan
+        const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), boxMat, t.boxes.length);
+        const m4 = new THREE.Matrix4();
+        t.boxes.forEach((b, i) => inst.setMatrixAt(i, m4.makeScale(b.w, b.h, b.d).setPosition(b.x, b.y, b.z)));
+        inst.castShadow = inst.receiveShadow = true;
+        this.terrainGroup.add(inst);
+      } else {
+        for (const b of t.boxes) {
+          const m = new THREE.Mesh(Look.geometry({ type: 'box', size: [b.w, b.h, b.d], round: 0.08 }), boxMat);
+          m.position.set(b.x, b.y, b.z);
+          m.castShadow = m.receiveShadow = true;
+          this.terrainGroup.add(m);
+        }
       }
     }
     // Aloitusmerkki

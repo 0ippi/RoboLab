@@ -1,5 +1,7 @@
 // 3D-robotin rakentaminen mallista, sensorit ja moottorit (Rapier).
-import * as THREE from 'three';
+// Three.js koko osoitteella (sama kuin index.html:n import mapissa, joten sivulla moduuli on yksi ja sama):
+// rinnakkaiskoulutuksen Web Worker ei näe sivun import mapia.
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js';
 
 export const ROBOT_GROUPS = 0x00020001; // jäsen: ryhmä 2, törmää vain maahan (ryhmä 1)
 
