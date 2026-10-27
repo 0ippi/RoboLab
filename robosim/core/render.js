@@ -59,10 +59,24 @@ RS.Renderer = class {
     return this._c;
   }
 
+  // Kappaleen sijainti ja kulma. Hidastetussa uusinnassa (opts.lerp) liike tasoitetaan kahden
+  // fysiikka-askeleen välillä, jotta 0,1× nopeuskin näyttää sujuvalta.
+  pose(body) {
+    const p = body.getPosition(), a = body.getAngle(), L = this.lerp;
+    const q = L && L.prev.get(body);
+    if (!q) return { x: p.x, y: p.y, a };
+    const k = L.alpha;
+    let da = a - q.a;
+    da -= Math.round(da / (2 * Math.PI)) * 2 * Math.PI;
+    return { x: q.x + (p.x - q.x) * k, y: q.y + (p.y - q.y) * k, a: q.a + da * k };
+  }
+
+  // opts: { focus, showAll, showTarget, race: värit kisaajille, rays: anturisäteet, lerp, waypoints: [{x, y}] }
   draw(episode, opts) {
     const ctx = this.ctx;
     const W = this.canvas.width, H = this.canvas.height;
     const C = this.colors();
+    this.lerp = opts.lerp || null;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const sky = ctx.createLinearGradient(0, 0, 0, H);
     sky.addColorStop(0, C.sky0);
@@ -127,6 +141,18 @@ RS.Renderer = class {
     ctx.globalAlpha = 1;
 
     const focus = opts.focus;
+    // Omat reittipisteet: katkoviiva järjestyksessä ja numerot (piirretään vain, kun tehtävä käyttää kohteita)
+    const wps = opts.showTarget && episode.targets?.length && opts.waypoints?.length ? episode.targets : null;
+    if (wps) {
+      ctx.strokeStyle = C.target; ctx.lineWidth = 2 / s; ctx.globalAlpha = 0.5;
+      ctx.setLineDash([0.12, 0.1]);
+      ctx.beginPath();
+      wps.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      wps.forEach((p) => { ctx.fillStyle = C.target; ctx.beginPath(); ctx.arc(p.x, p.y, 0.09, 0, Math.PI * 2); ctx.fill(); });
+    }
     // Kohde
     if (opts.showTarget && focus >= 0) {
       const tg = episode.targetOf(episode.agents[focus]);
@@ -137,15 +163,33 @@ RS.Renderer = class {
       ctx.beginPath(); ctx.arc(tg.x, tg.y, 0.12, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Robotit: ensin muut haaleina ja yksinkertaisina, sitten seurattava kaikkine yksityiskohtineen
-    if (opts.showAll) {
-      ctx.globalAlpha = 0.16;
-      episode.agents.forEach((a, i) => { if (i !== focus) this.drawRobot(a.robot, s, false, 'low'); });
+    if (opts.race) {
+      // Kisa: kaikki kilpailijat täysin näkyvinä, jokaisen yllä oma värillinen lippu
+      episode.agents.forEach((a) => { if (a.robot.parts.length) this.drawRobot(a.robot, s, true, q); });
+      episode.agents.forEach((a, i) => { if (a.robot.parts.length) this.drawFlag(a.robot, opts.race[i], s); });
+    } else {
+      // Robotit: ensin muut haaleina ja yksinkertaisina, sitten seurattava kaikkine yksityiskohtineen
+      if (opts.showAll) {
+        ctx.globalAlpha = 0.16;
+        episode.agents.forEach((a, i) => { if (i !== focus) this.drawRobot(a.robot, s, false, 'low'); });
+      }
+      ctx.globalAlpha = 1;
+      if (focus >= 0) {
+        if (q === 'high') this.drawShadow(episode.agents[focus].robot, t);
+        this.drawRobot(episode.agents[focus].robot, s, true, q);
+      }
     }
-    ctx.globalAlpha = 1;
-    if (focus >= 0) {
-      if (q === 'high') this.drawShadow(episode.agents[focus].robot, t);
-      this.drawRobot(episode.agents[focus].robot, s, true, q);
+
+    // Etäisyysanturien säteet: viiva osumaan asti ja piste osumakohdassa
+    if (opts.rays) {
+      ctx.lineWidth = 2 / s;
+      for (const r of opts.rays) {
+        ctx.strokeStyle = r.hit ? C.target : C.text;
+        ctx.globalAlpha = r.hit ? 0.85 : 0.35;
+        ctx.beginPath(); ctx.moveTo(r.x0, r.y0); ctx.lineTo(r.x1, r.y1); ctx.stroke();
+        if (r.hit) { ctx.fillStyle = C.target; ctx.beginPath(); ctx.arc(r.x1, r.y1, 0.05, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1;
     }
 
     // Etäisyysmerkit
@@ -159,6 +203,32 @@ RS.Renderer = class {
       const gy = baseY - RS.groundHeight(t, x) * s;
       ctx.fillText(`${x} m`, sx, Math.min(H - 6 * this.dpr, gy + 18 * this.dpr));
     }
+    // Reittipisteiden numerot ruudun koordinaateissa, jotta teksti ei ole peilikuva
+    if (wps) {
+      ctx.font = `600 ${11 * this.dpr}px system-ui, sans-serif`;
+      ctx.fillStyle = C.target;
+      wps.forEach((p, i) => ctx.fillText(String(i + 1), W / 2 + (p.x - this.camX) * s, baseY - p.y * s - 10 * this.dpr));
+    }
+  }
+
+  // Ruudun piste (clientX, clientY) maailman koordinaateiksi: reittipisteiden asettamista varten
+  toWorld(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect(), d = this.dpr || 1, s = this.scale * d;
+    const px = (clientX - r.left) * d, py = (clientY - r.top) * d;
+    return { x: (px - this.canvas.width / 2) / s + this.camX, y: (this.canvas.height * 0.62 + this.camY * s - py) / s };
+  }
+
+  // Kisaajan lippu rungon yläpuolella
+  drawFlag(robot, color, s) {
+    const ctx = this.ctx, p = this.pose(robot.root);
+    let top = -Infinity;
+    for (const { body } of robot.parts) top = Math.max(top, this.pose(body).y);
+    const x = p.x, y0 = top + 0.35, y1 = y0 + 0.45;
+    ctx.strokeStyle = RS.DECO.INK; ctx.lineWidth = 2 / s;
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x + 0.32, y1 - 0.1); ctx.lineTo(x, y1 - 0.2); ctx.closePath();
+    ctx.fill(); ctx.stroke();
   }
 
   // Laatu luetaan asetuksista kerran sekunnissa
@@ -187,10 +257,10 @@ RS.Renderer = class {
     const ctx = this.ctx;
     const ink = RS.DECO.INK, lw = (q === 'low' ? 1.5 : 2.4) / s;
     for (const { body, spec } of robot.parts) {
-      const p = body.getPosition();
+      const p = this.pose(body);
       ctx.save();
       ctx.translate(p.x, p.y);
-      ctx.rotate(body.getAngle());
+      ctx.rotate(p.a);
       for (const sh of spec.shapes) {
         const color = sh.color || spec.color || '#9fb3c8';
         ctx.save();

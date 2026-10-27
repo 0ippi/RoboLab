@@ -3,7 +3,12 @@
 RS.DT = 1 / 60;
 
 // Kohdepisteet "Mene kohteeseen" -tehtävää varten. Samat kaikille saman episodin roboteille.
-RS.makeTargets = function (model, terrain, rng, startX) {
+// Käyttäjän omat reittipisteet (cfg.targets) korvaavat arvotut: piste ilman y:tä asetetaan maan tasalle
+// robotin rungon korkeudelle, jolloin maassa kulkeva robotti voi saavuttaa sen.
+RS.makeTargets = function (model, terrain, rng, startX, own, rootLift) {
+  if (own?.length) {
+    return own.map((p) => ({ x: +p.x || 0, y: Number.isFinite(p.y) ? p.y : RS.groundHeight(terrain, +p.x || 0) + rootLift }));
+  }
   const spec = model.target || { x: [3, 8], y: [0.6, 1.6], mirror: true };
   const list = [];
   let x = startX;
@@ -20,7 +25,7 @@ RS.makeTargets = function (model, terrain, rng, startX) {
 };
 
 RS.Episode = class {
-  // cfg: { model, taskFn, terrain, seed, population, layers, duration }
+  // cfg: { model, taskFn, terrain, seed, population, layers, duration, targets? }
   constructor(cfg) {
     this.cfg = cfg;
     this.world = new planck.World({ gravity: RS.V(0, -10) });
@@ -42,7 +47,8 @@ RS.Episode = class {
       };
     });
     const first = this.agents[0].robot;
-    this.targets = RS.makeTargets(cfg.model, this.terrain, RS.rng(cfg.seed + 7), first.startX);
+    this.targets = RS.makeTargets(cfg.model, this.terrain, RS.rng(cfg.seed + 7), first.startX, cfg.targets,
+      first.startY - RS.groundHeight(this.terrain, first.startX));
     for (const a of this.agents) a.prevTargetDist = this.targetDist(a);
   }
 

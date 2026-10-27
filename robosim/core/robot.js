@@ -39,6 +39,10 @@ RS.normalizeModel = function (input) {
   return m;
 };
 
+// Etäisyysanturien säteet maailman koordinaateissa (eivät käänny rungon mukana): −90° = suoraan alas
+RS.LIDAR_RANGE = 4;
+RS.lidarAngle = (i, n) => RS.deg(n === 1 ? -45 : -90 + (100 * i) / (n - 1));
+
 RS.modelInfo = function (m) {
   const motors = m.joints.filter((j) => j.motor !== false).length;
   const thrusters = (m.thrusters || []).length;
@@ -195,10 +199,9 @@ RS.Robot = class {
     }
   }
 
-  // Etäisyyssäde maahan: 1 = ei osumaa 4 m:n sisällä.
+  // Etäisyyssäde maahan: 1 = ei osumaa RS.LIDAR_RANGE metrin sisällä.
   lidar(pos, i, n) {
-    const ang = RS.deg(n === 1 ? -45 : -90 + (100 * i) / (n - 1));
-    const range = 4;
+    const ang = RS.lidarAngle(i, n), range = RS.LIDAR_RANGE;
     if (!this.terrain) return 1;
     return RS.terrainRay(this.terrain, pos.x, pos.y, Math.cos(ang) * range, Math.sin(ang) * range);
   }
