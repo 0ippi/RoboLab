@@ -31,7 +31,7 @@ const Plans = (() => {
   const RANK = { free: 0, education: 1, teacher: 2, pro: 3 };
 
   const CLASS_KEY = "rlclass", PLAN_KEY = "rlplan", DEVICE_KEY = "rldevice"; // laitekohtaisia (eivät kuulu käyttäjän tietoihin)
-  const RECHECK = 7 * 24 * 3600 * 1000;     // tason tarkistus pilvestä viikoittain
+  const RECHECK = 15 * 60 * 1000;           // luokan tiedot (annetut kurssit, jäsenyys) haetaan 15 minuutin välein
   const OFFLINE_GRACE = 30 * 24 * 3600 * 1000; // ilman nettiä tallennettu taso pysyy voimassa 30 päivää
 
   const read = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
@@ -121,34 +121,67 @@ const Plans = (() => {
     const c = read(CLASS_KEY);
     if (c && (force || Date.now() - (c.checked || 0) > RECHECK)) {
       try { await activateClass(c.code, { silent: true }); }
-      catch (e) { if (/no-code|expired/.test(e.code || "")) write(CLASS_KEY, null); }
+      catch (e) { if (/no-code|expired|no-member/.test(e.code || "")) write(CLASS_KEY, null); }
     }
+    if (c && read(CLASS_KEY)?.pending) syncProgress();
     changed();
     return current();
   }
 
-  // Oppilas aktivoi opettajan luokkakoodin: Education tälle laitteelle, tiliä ei tarvita
-  async function activateClass(code, { silent = false } = {}) {
+  /* ===== Luokkahuone (oppilaan laite) ===== */
+  // Oppilas liittyy opettajan luokkaan koodilla ja nimimerkillä: Education tälle laitteelle, tiliä ei tarvita.
+  // silent = taustatarkistus: haetaan luokan tiedot (annetut kurssit) kuluttamatta paikkaa.
+  async function activateClass(code, { silent = false, alias } = {}) {
     code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length !== 8) { const e = new Error(tr("Luokkakoodissa on 8 merkkiä.", "A class code has 8 characters.")); e.code = "format"; throw e; }
+    const old = read(CLASS_KEY);
+    alias = String(alias ?? (old?.code === code ? old.alias : "") ?? "").trim().slice(0, 30);
+    if (!silent && !alias) { const e = new Error(tr("Kirjoita nimimerkki, jonka opettaja tunnistaa (ei koko nimeä).", "Type an alias your teacher will recognise (not your full name).")); e.code = "alias"; throw e; }
     let r;
-    try { r = await Cloud.rpc("activate_class_code", { p_code: code, p_device: deviceId() }); }
-    catch (err) {
+    try {
+      r = silent && old?.code === code ? await Cloud.rpc("class_info", { p_code: code, p_device: deviceId() })
+        : await Cloud.rpc("join_class", { p_code: code, p_device: deviceId(), p_alias: alias || tr("oppilas", "student") });
+    } catch (err) {
       const m = String(err.raw || err.message || "");
-      const known = ["no-code", "expired", "full"].find((k) => m.includes(k));
+      const known = ["no-code", "expired", "full", "no-member", "no-alias"].find((k) => m.includes(k));
       const e = new Error(known === "no-code" ? tr("Luokkakoodia ei löytynyt. Tarkista koodi opettajalta.", "Class code not found. Check the code with your teacher.")
         : known === "expired" ? tr("Luokkakoodi on vanhentunut. Pyydä opettajalta uusi.", "The class code has expired. Ask your teacher for a new one.")
         : known === "full" ? tr("Luokan kaikki paikat on jo käytetty. Pyydä opettajaa lisäämään paikkoja.", "All seats in this class are taken. Ask your teacher to add seats.")
+        : known === "no-member" ? tr("Opettaja on poistanut tämän laitteen luokasta.", "Your teacher has removed this device from the class.")
+        : known === "no-alias" ? tr("Kirjoita nimimerkki.", "Type an alias.")
         : err.message);
       e.code = known || "network";
       throw e;
     }
-    write(CLASS_KEY, { code, name: r?.name || "", until: r?.valid_until || null, checked: Date.now() });
+    write(CLASS_KEY, { code, name: r?.name || "", alias: r?.alias || alias, until: r?.valid_until || null, courses: Array.isArray(r?.courses) ? r.courses : [],
+      checked: Date.now(), sent: old?.code === code ? old.sent : null, pending: old?.code === code ? old.pending : true });
     changed();
-    if (!silent) toast(tr("Luokkakoodi aktivoitu: Education-taso on nyt käytössä tällä laitteella.", "Class code activated: the Education plan is now on for this device."));
+    if (!silent) { toast(tr(`Liityit luokkaan${r?.name ? " " + r.name : ""}. Opettaja näkee nyt edistymisesi nimimerkillä ${alias}.`, `You joined the class${r?.name ? " " + r.name : ""}. Your teacher can now see your progress under the alias ${alias}.`)); syncProgress(); }
     return current();
   }
   function removeClass() { write(CLASS_KEY, null); changed(); }
+  const classInfo = () => { const c = read(CLASS_KEY); return valid(c) ? c : null; };
+
+  // Kurssien eteneminen opettajalle: vain luvut (vaiheet, suoritus, vihjeet, loppukokeen pisteet), ei vastauksia.
+  // Lähetetään viiveellä muutosten jälkeen; jos yhteys puuttuu, yritetään uudelleen seuraavalla tarkistuksella.
+  let syncTimer = 0;
+  function queueSync() { if (!read(CLASS_KEY)) return; clearTimeout(syncTimer); syncTimer = setTimeout(syncProgress, 2500); }
+  async function syncProgress() {
+    const c = read(CLASS_KEY);
+    if (!c || !window.Cloud?.configured || !window.Courses?.summary) return;
+    const assigned = new Set((c.courses || []).map((x) => x.id));
+    const items = Courses.summary().filter((p) => p.finished || p.done > 0 || assigned.has(p.id))
+      .map((p) => ({ course: p.id, steps: p.steps, done: p.done, finished: p.finished, hints: p.hints, score: p.score ?? null, score_max: p.scoreMax ?? null }));
+    const sig = JSON.stringify(items);
+    if (sig === c.sent && !c.pending) return;
+    try {
+      await Cloud.rpc("report_progress", { p_code: c.code, p_device: deviceId(), p_items: items });
+      write(CLASS_KEY, { ...read(CLASS_KEY), sent: sig, pending: false });
+    } catch (e) {
+      if (/no-member|no-code|expired/.test(String(e.raw || ""))) { write(CLASS_KEY, null); changed(); return; }
+      write(CLASS_KEY, { ...read(CLASS_KEY), pending: true });
+    }
+  }
 
   /* ===== Kehittäjätila ===== */
   // Kehittäjä (Supabase: developers-taulu) voi vaihtaa oman tilinsä tason testausta varten. Palvelin tarkistaa oikeuden.
@@ -258,13 +291,14 @@ const Plans = (() => {
   }
 
   function classBoxHtml() {
-    const c = sources().find((s) => s.from === "class");
-    if (c) return `<div class="class-active">✓ ${tr("Luokkakoodi aktiivinen", "Class code active")}: <b>${esc(c.code)}</b>${c.name ? ` (${esc(c.name)})` : ""}${c.until ? ` · ${tr("voimassa", "valid until")} ${new Date(c.until).toLocaleDateString(tr("fi-FI", "en-GB"))}` : ""}
-      <button class="link-btn" data-plans="remove-class">${tr("Poista tältä laitteelta", "Remove from this device")}</button></div>`;
+    const c = sources().find((s) => s.from === "class"), info = classInfo();
+    if (c) return `<div class="class-active">✓ ${tr("Olet luokassa", "You are in the class")} <b>${esc(c.name || c.code)}</b> (${esc(c.code)})${info?.alias ? ` ${tr("nimimerkillä", "as")} <b>${esc(info.alias)}</b>` : ""}${c.until ? ` · ${tr("voimassa", "valid until")} ${new Date(c.until).toLocaleDateString(tr("fi-FI", "en-GB"))}` : ""}
+      <button class="link-btn" data-plans="remove-class">${tr("Poistu luokasta tällä laitteella", "Leave the class on this device")}</button></div>`;
     return `<form class="class-form" data-plans-form="class">
       <label>${tr("Luokkakoodi opettajalta", "Class code from your teacher")}<input id="pl-class" maxlength="12" autocomplete="off" placeholder="ABCD2345" spellcheck="false"></label>
-      <button class="btn primary">${tr("Aktivoi", "Activate")}</button></form>
-      <p class="note small">${tr("Koodi avaa Education-tason tälle laitteelle. Tiliä tai nimeä ei tarvita.", "The code unlocks the Education plan on this device. No account or name needed.")}</p>`;
+      <label>${tr("Nimimerkki", "Alias")}<input id="pl-alias" class="alias" maxlength="30" autocomplete="off" placeholder="${tr("esim. Aino K tai oppilas 12", "e.g. Amy K or student 12")}"></label>
+      <button class="btn primary">${tr("Liity luokkaan", "Join the class")}</button></form>
+      <p class="note small">${tr("Koodi avaa Education-tason tälle laitteelle, ja opettaja näkee kurssiesi etenemisen nimimerkilläsi. Tiliä, sähköpostia tai koko nimeä ei tarvita.", "The code unlocks the Education plan on this device, and your teacher sees your course progress under your alias. No account, email or full name needed.")}</p>`;
   }
 
   function render(el, tool) {
@@ -359,7 +393,7 @@ const Plans = (() => {
       e.preventDefault();
       const btn = f.querySelector("button");
       btn.disabled = true;
-      try { await activateClass(f.querySelector("#pl-class").value); router(); }
+      try { await activateClass(f.querySelector("#pl-class").value, { alias: f.querySelector("#pl-alias")?.value }); router(); }
       catch (err) { toast(err.message); btn.disabled = false; }
     };
   }
@@ -390,7 +424,7 @@ const Plans = (() => {
 
   TOOL_IMPL.plans = { render };
 
-  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, isDeveloper, devSetPlan,
+  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, classInfo, queueSync, syncProgress, isDeveloper, devSetPlan,
     lockedHtml, classBoxHtml, bindClassForm, badge, buy, deviceId, onChange: (f) => listeners.add(f), _changed: changed };
 })();
 window.Plans = Plans;

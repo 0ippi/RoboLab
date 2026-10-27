@@ -819,6 +819,123 @@ const Courses = (() => {
     "ai.own": L("Nyt on sinun robottisi vuoro oppia!", "Now it's your robot's turn to learn!"),
     "ai.three": L("Hei, tuo olen minä 3D:nä! Opetetaan minut löytämään kohteet.", "Hey, that's me in 3D! Let's teach me to find targets.", "dusty"),
   };
+  /* ===== Loppukokeet ===== */
+  // Kurssin lopussa kolme soveltavaa kysymystä. Pisteet lasketaan ensimmäisistä vastauksista ja ne näkyvät
+  // opettajalle luokkahuoneessa. Väärästä vastauksesta saa selityksen ja voi yrittää uudelleen oppiakseen.
+  const Q = (q, options, correct, explain) => ({ q, options, correct, explain });
+  const EXAMS = {
+    start: [
+      Q(tr("Robotti-imuri huomaa portaan reunan ja pysähtyy. Mikä robotin osa huomasi reunan?", "A robot vacuum notices the edge of a stair and stops. Which part of the robot noticed the edge?"),
+        [tr("Anturi (putoamisanturi)", "A sensor (cliff sensor)"), tr("Moottori", "The motor"), tr("Mikrokontrolleri", "The microcontroller")], 0,
+        tr("Anturi aistii reunan, ohjain (mikrokontrolleri) päättää pysähtyä ja moottorit pysähtyvät: aisti → päätä → toimi.", "The sensor senses the edge, the controller (microcontroller) decides to stop and the motors stop: sense → think → act.")),
+      Q(tr("Pyörän halkaisija on 10 cm ja moottori pyörii 60 kierrosta minuutissa. Kuinka pitkän matkan robotti kulkee minuutissa?", "The wheel diameter is 10 cm and the motor turns at 60 rpm. How far does the robot travel in a minute?"),
+        [tr("noin 6 m", "about 6 m"), tr("noin 19 m", "about 19 m"), tr("noin 60 m", "about 60 m")], 1,
+        tr("Yksi kierros = π × 0,1 m ≈ 0,31 m. 60 kierrosta × 0,31 m ≈ 19 m.", "One turn = π × 0.1 m ≈ 0.31 m. 60 turns × 0.31 m ≈ 19 m.")),
+      Q(tr("Vasen pyörä pyörii eteenpäin ja oikea yhtä nopeasti taaksepäin. Mitä robotti tekee?", "The left wheel spins forward and the right one equally fast backward. What does the robot do?"),
+        [tr("Kääntyy paikallaan oikealle", "Turns on the spot to the right"), tr("Ajaa suoraan eteenpäin", "Drives straight ahead"), tr("Kaartaa loivasti vasemmalle", "Curves gently to the left")], 0,
+        tr("Pyörät vastakkaisiin suuntiin = kääntyminen paikallaan. Vasen puoli menee eteen, joten keula kääntyy oikealle.", "Wheels in opposite directions = turning on the spot. The left side goes forward, so the nose turns right.")),
+    ],
+    power: [
+      Q(tr("Moottorit ottavat 1,2 A ja elektroniikka 0,3 A. Akku on 3000 mAh, ja siitä käytetään 80 %. Kuinka kauan robotti toimii?", "The motors draw 1.2 A and the electronics 0.3 A. The battery is 3000 mAh and 80 % of it is used. How long does the robot run?"),
+        [tr("noin 1 h 36 min", "about 1 h 36 min"), tr("noin 2 h", "about 2 h"), tr("noin 2,5 h", "about 2.5 h")], 0,
+        tr("Virta yhteensä 1,5 A. Käytettävissä 0,8 × 3 Ah = 2,4 Ah. 2,4 Ah / 1,5 A = 1,6 h ≈ 1 h 36 min.", "Total current 1.5 A. Usable 0.8 × 3 Ah = 2.4 Ah. 2.4 Ah / 1.5 A = 1.6 h ≈ 1 h 36 min.")),
+      Q(tr("Miksi LiPo-akkua ei saa purkaa aivan tyhjäksi?", "Why must a LiPo battery not be drained completely?"),
+        [tr("Liian matala kennojännite vahingoittaa kennoa pysyvästi", "Too low a cell voltage damages the cell permanently"), tr("Akku latautuu silloin hitaammin", "It then charges more slowly"), tr("Moottorit pyörivät silloin väärään suuntaan", "The motors then spin the wrong way")], 0,
+        tr("LiPo-kenno vaurioituu, jos sen jännite laskee alle noin 3,0 V. Siksi ohjaimissa on alijännitesuoja.", "A LiPo cell is damaged if its voltage drops below about 3.0 V. That's why controllers have low-voltage protection.")),
+      Q(tr("Moottori ottaa käynnistyessä hetkellisesti 5 A ja ajossa 0,8 A. Mikä luku ratkaisee moottoriohjaimen valinnan?", "A motor briefly draws 5 A when starting and 0.8 A when driving. Which number decides the choice of motor driver?"),
+        [tr("Huippuvirta 5 A", "The peak current 5 A"), tr("Ajovirta 0,8 A", "The running current 0.8 A"), tr("Keskiarvo 2,9 A", "The average 2.9 A")], 0,
+        tr("Ohjaimen pitää kestää suurin virta, joka siitä kulkee. Muuten se ylikuumenee tai suojaus katkaisee virran juuri käynnistyksessä.", "The driver must withstand the largest current through it. Otherwise it overheats or its protection cuts power right at start-up.")),
+    ],
+    sensors: [
+      Q(tr("Ultraäänianturin kaiku palaa 5,8 ms kuluttua. Äänen nopeus on 343 m/s. Kuinka kaukana este on?", "An ultrasonic sensor's echo returns after 5.8 ms. The speed of sound is 343 m/s. How far away is the obstacle?"),
+        [tr("noin 1 m", "about 1 m"), tr("noin 2 m", "about 2 m"), tr("noin 0,5 m", "about 0.5 m")], 0,
+        tr("Ääni kulkee esteelle ja takaisin: etäisyys = 343 m/s × 0,0058 s / 2 ≈ 1,0 m.", "The sound travels to the obstacle and back: distance = 343 m/s × 0.0058 s / 2 ≈ 1.0 m.")),
+      Q(tr("Miksi kahden anturin arvot tulostetaan samalle riville pilkulla erotettuina (esim. 120,85)?", "Why are two sensors' values printed on the same line separated by a comma (e.g. 120,85)?"),
+        [tr("Piirturi näyttää ne kahtena eri sarjana", "The plotter shows them as two separate series"), tr("Sarjaportti on silloin nopeampi", "The serial port is faster then"), tr("Muuten ohjelma ei käänny", "Otherwise the program won't compile")], 0,
+        tr("Rivi = yksi mittaushetki, pilkulla erotetut luvut = eri anturit. Näin piirturi osaa piirtää jokaisen anturin omana käyränään.", "A line = one moment, comma-separated numbers = different sensors. That way the plotter draws each sensor as its own curve.")),
+      Q(tr("Etäisyysanturi antaa lukemat 102, 98, 250, 101 ja 99 cm. Mikä poistaa yksittäisen virhelukeman 250 parhaiten?", "A distance sensor gives 102, 98, 250, 101 and 99 cm. What best removes the single bad reading 250?"),
+        [tr("Mediaanisuodatin (keskimmäinen arvo)", "A median filter (the middle value)"), tr("Kaikkien lukemien keskiarvo", "The average of all readings"), tr("Suurimman lukeman käyttö", "Using the largest reading")], 0,
+        tr("Mediaani on 101 cm, eikä yksittäinen virhe vaikuta siihen. Keskiarvo olisi 130 cm, koska virhelukema vetää sitä ylöspäin.", "The median is 101 cm and a single error doesn't affect it. The average would be 130 cm because the bad reading pulls it up.")),
+    ],
+    nav: [
+      Q(tr("Ruudukkokartan solu on 5 cm ja kartta on 4 m × 3 m. Montako solua kartassa on?", "A grid map's cell is 5 cm and the map is 4 m × 3 m. How many cells does it have?"),
+        ["4 800", "1 200", "12 000"], 0,
+        tr("4 m / 0,05 m = 80 ja 3 m / 0,05 m = 60 solua. 80 × 60 = 4 800.", "4 m / 0.05 m = 80 and 3 m / 0.05 m = 60 cells. 80 × 60 = 4,800.")),
+      Q(tr("Robotti seuraa reittiä, mutta oikaisee mutkissa ja osuu kulmiin. Mitä kannattaa kokeilla ensin?", "A robot follows a path but cuts corners and hits them. What should you try first?"),
+        [tr("Lyhentää katseluetäisyyttä", "Shorten the lookahead distance"), tr("Kasvattaa suurinta nopeutta", "Increase the top speed"), tr("Vaihtaa A*:n RRT:hen", "Switch A* to RRT")], 0,
+        tr("Pitkä katseluetäisyys tähtää kauas reitillä, jolloin robotti oikaisee. Lyhyempi seuraa reittiä tarkemmin.", "A long lookahead aims far along the path, so the robot cuts corners. A shorter one follows the path more closely.")),
+      Q(tr("Miksi reittisuunnittelussa esteitä \"paisutetaan\" robotin säteen verran?", "Why are obstacles \"inflated\" by the robot's radius in path planning?"),
+        [tr("Jotta koko runko mahtuu reitille, ei vain keskipiste", "So the whole body fits along the path, not just the centre"), tr("Jotta reitti olisi lyhyempi", "So the path is shorter"), tr("Jotta kartta piirtyy nopeammin", "So the map draws faster")], 0,
+        tr("Reitinhaku käsittelee robottia pisteenä. Paisutus lisää esteisiin robotin säteen, jolloin pisteen reitti on turvallinen myös rungolle.", "Path search treats the robot as a point. Inflating adds the robot's radius to obstacles, so a path for the point is safe for the body too.")),
+    ],
+    pid: [
+      Q(tr("Termostaatti pitää huoneen 21 °C:ssa. Mitkä ovat asetusarvo, mittaus ja ohjaus?", "A thermostat keeps a room at 21 °C. What are the setpoint, the measurement and the control?"),
+        [tr("21 °C, lämpömittarin lukema, lämmittimen teho", "21 °C, the thermometer reading, the heater power"), tr("Lämmittimen teho, 21 °C, termostaatti", "The heater power, 21 °C, the thermostat"), tr("Kaikki kolme ovat lämpötiloja", "All three are temperatures")], 0,
+        tr("Asetusarvo on tavoite, mittaus kertoo nykytilan ja ohjaus on se, mitä säädin muuttaa (lämmitin).", "The setpoint is the goal, the measurement tells the current state and the control is what the controller changes (the heater).")),
+      Q(tr("Robottikäsi heiluu tavoitekulman ympärillä ennen kuin asettuu. Mitä kerrointa kannattaa kasvattaa?", "A robot arm swings around its target angle before settling. Which gain should you increase?"),
+        ["Kd", "Ki", "Kp"], 0,
+        tr("D-termi jarruttaa liikettä, kun virhe pienenee nopeasti, ja vaimentaa heilumista. Kp:n tai Ki:n kasvattaminen yleensä lisää heilumista.", "The D term brakes the motion when the error shrinks fast and damps swinging. Raising Kp or Ki usually adds swinging.")),
+      Q(tr("Viivanseuraaja kulkee aina 2 cm viivan vieressä, koska toinen pyörä on hieman hitaampi. Mikä termi korjaa tämän?", "A line follower always runs 2 cm beside the line because one wheel is slightly slower. Which term fixes this?"),
+        [tr("I-termi", "The I term"), tr("D-termi", "The D term"), tr("Ei mikään, virhe on pakko hyväksyä", "None, the error must be accepted")], 0,
+        tr("Pysyvä virhe kasvattaa integraalia, kunnes ohjaus korjaa sen. Juuri tämä on I-termin tehtävä.", "A persistent error grows the integral until the control corrects it. That is exactly the I term's job.")),
+    ],
+    vision: [
+      Q(tr("Kynnysarvolla 128 pikselistä tulee musta, jos sen harmaasävy on alle 128. Mitä tapahtuu pikselille, jonka arvo on 200?", "With threshold 128 a pixel becomes black if its gray value is below 128. What happens to a pixel with value 200?"),
+        [tr("Siitä tulee valkoinen", "It becomes white"), tr("Siitä tulee musta", "It becomes black"), tr("Se poistetaan kuvasta", "It is removed from the image")], 0,
+        tr("200 on suurempi kuin 128, joten pikseli on kynnyksen kirkkaalla puolella ja muuttuu valkoiseksi.", "200 is above 128, so the pixel is on the bright side of the threshold and becomes white.")),
+      Q(tr("Viivanseuraajan kamera näkee viivan kuvan oikeassa reunassa. Mihin robotin pitää kääntyä?", "A line follower's camera sees the line at the right edge of the image. Which way should the robot turn?"),
+        [tr("Oikealle", "Right"), tr("Vasemmalle", "Left"), tr("Ei minnekään, se ajaa suoraan", "Nowhere, it drives straight")], 0,
+        tr("Viiva on robotin oikealla puolella, joten kääntymällä oikealle robotti palaa viivan päälle.", "The line is on the robot's right, so turning right brings the robot back over the line.")),
+      Q(tr("Värikuva on 320 × 240 pikseliä ja jokaisessa pikselissä on R, G ja B. Montako lukua kuvassa on?", "A colour image is 320 × 240 pixels and each pixel has R, G and B. How many numbers does the image hold?"),
+        ["230 400", "76 800", "960"], 0,
+        tr("320 × 240 = 76 800 pikseliä, ja jokaisessa on kolme lukua: 76 800 × 3 = 230 400.", "320 × 240 = 76,800 pixels with three numbers each: 76,800 × 3 = 230,400.")),
+    ],
+    frames: [
+      Q(tr("Lidar on 0,2 m robotin keskipisteen edessä ja näkee esteen 1 m suoraan edessään. Kuinka kaukana este on robotin keskipisteestä?", "The lidar is 0.2 m in front of the robot's centre and sees an obstacle 1 m straight ahead. How far is the obstacle from the robot's centre?"),
+        ["1,2 m", "0,8 m", "1,0 m"].map((v) => tr(v, v.replace(",", "."))), 0,
+        tr("Mittaus on lidarin kehyksessä. Siirretään se robotin kehykseen lisäämällä lidarin paikka: 0,2 m + 1 m = 1,2 m.", "The reading is in the lidar's frame. Moving it to the robot frame adds the lidar's position: 0.2 m + 1 m = 1.2 m.")),
+      Q(tr("Robotin asento kartassa on yaw = 180°. Mihin robotin eteenpäin-suunta (x-akseli) osoittaa kartassa?", "The robot's pose in the map has yaw = 180°. Where does the robot's forward direction (x axis) point in the map?"),
+        [tr("Kartan −X-suuntaan", "Towards the map's −X"), tr("Kartan +X-suuntaan", "Towards the map's +X"), tr("Kartan +Y-suuntaan", "Towards the map's +Y")], 0,
+        tr("Kierto 180° z-akselin ympäri kääntää x-akselin täsmälleen vastakkaiseen suuntaan.", "A 180° turn about the z axis points the x axis exactly the opposite way.")),
+      Q(tr("Miksi robotit tallentavat asennon usein kvaterniona eikä Euler-kulmina?", "Why do robots often store orientation as a quaternion rather than Euler angles?"),
+        [tr("Kvaternioilla ei ole kardaanilukkoa, ja niiden välillä voi interpoloida tasaisesti", "Quaternions have no gimbal lock and can be interpolated smoothly"), tr("Kvaterniot vievät vähemmän muistia", "Quaternions take less memory"), tr("Euler-kulmat toimivat vain 2D:ssä", "Euler angles only work in 2D")], 0,
+        tr("Kvaternio (4 lukua) vie jopa enemmän tilaa kuin kolme Euler-kulmaa, mutta se kuvaa jokaisen asennon ilman kardaanilukkoa.", "A quaternion (4 numbers) even takes more space than three Euler angles, but it describes every orientation without gimbal lock.")),
+    ],
+    arm: [
+      Q(tr("Kaksinivelisen käden linkit ovat 0,3 m ja 0,2 m. Kuinka kauas tukipisteestä kärki ylettyy enimmillään?", "A two-joint arm has links of 0.3 m and 0.2 m. How far from the base can the tip reach at most?"),
+        ["0,5 m", "0,3 m", "0,1 m"].map((v) => tr(v, v.replace(",", "."))), 0,
+        tr("Kun käsi on suorana, linkkien pituudet summautuvat: 0,3 + 0,2 = 0,5 m. Lähimmillään kärki on 0,3 − 0,2 = 0,1 m päässä.", "With the arm straight the link lengths add up: 0.3 + 0.2 = 0.5 m. The closest the tip gets is 0.3 − 0.2 = 0.1 m.")),
+      Q(tr("Montako nivelkulmien ratkaisua kaksinivelisellä tasokädellä yleensä on samaan kohteeseen ulottuvuusalueen sisällä?", "How many joint-angle solutions does a two-joint planar arm usually have for one target inside its reach?"),
+        [tr("Kaksi: kyynärpää ylhäällä tai alhaalla", "Two: elbow up or elbow down"), tr("Aina yksi", "Always one"), tr("Äärettömän monta", "Infinitely many")], 0,
+        tr("Sama kärjen paikka saavutetaan taivuttamalla kyynärpää kumpaan suuntaan tahansa. Reunalla ratkaisuja on yksi.", "The same tip position is reached by bending the elbow either way. At the edge of the reach there is one.")),
+      Q(tr("Nivelen pitää pitää 1 kg kuormaa 0,4 m päässä nivelestä. Kuinka suuri vääntömomentti tarvitaan (g ≈ 9,8 m/s²)?", "A joint must hold a 1 kg load 0.4 m away. How much torque is needed (g ≈ 9.8 m/s²)?"),
+        ["3,9 Nm", "0,4 Nm", "9,8 Nm"].map((v) => tr(v, v.replace(",", "."))), 0,
+        tr("Momentti = voima × varsi = 1 kg × 9,8 m/s² × 0,4 m ≈ 3,9 Nm. Lisäksi tarvitaan varaa käden omalle painolle ja kiihdytykselle.", "Torque = force × arm = 1 kg × 9.8 m/s² × 0.4 m ≈ 3.9 Nm. You also need margin for the arm's own weight and acceleration.")),
+    ],
+    ai: [
+      Q(tr("Neuroverkko koulutetaan robotille, jolla on 2 moottoria ja 6 anturilukemaa. Montako ulostuloa verkossa on?", "A neural network is trained for a robot with 2 motors and 6 sensor readings. How many outputs does the network have?"),
+        ["2", "6", "8"], 0,
+        tr("Ulostulot ovat moottorien käskyjä (yksi kullekin moottorille). Anturit ovat sisääntuloja.", "The outputs are motor commands (one per motor). The sensors are the inputs.")),
+      Q(tr("Paras tulos ei parane 200 sukupolven jälkeenkään. Mikä on järkevin seuraava kokeilu?", "The best score doesn't improve even after 200 generations. What is the most sensible next try?"),
+        [tr("Muuttaa palkkiota niin, että pienetkin edistysaskeleet palkitaan", "Change the reward so even small steps forward are rewarded"), tr("Kouluttaa vain pidempään", "Just train for longer"), tr("Poistaa robotilta anturit", "Remove the robot's sensors")], 0,
+        tr("Jos palkkio tulee vain harvoin (esim. vasta maalissa), evoluutio ei näe, mikä yritys oli lähempänä. Askelittainen palkkio ohjaa oppimista.", "If the reward comes rarely (e.g. only at the goal), evolution can't see which attempt was closer. A step-by-step reward guides learning.")),
+      Q(tr("Miksi robotin aivojen pitää saada anturitietoa eikä pelkkää aikaa?", "Why must the robot's brain get sensor data and not just the time?"),
+        [tr("Ilman antureita robotti ei voi reagoida ympäristöön, vaan toistaa samaa liikettä", "Without sensors the robot can't react to its surroundings and just repeats the same motion"), tr("Anturit nopeuttavat tietokonetta", "Sensors speed up the computer"), tr("Ilman antureita verkkoa ei voi tallentaa", "Without sensors the network can't be saved")], 0,
+        tr("Pelkän ajan perusteella robotti oppii vain ulkoa opitun liikesarjan. Anturien avulla se voi esimerkiksi väistää esteen, joka on joka kerta eri paikassa.", "From time alone the robot only learns a memorised motion. With sensors it can for example avoid an obstacle that is in a different place each time.")),
+    ],
+    ros: [
+      Q(tr("Kamera julkaisee kuvia topiciin /camera/image, ja kaksi eri solmua tarvitsee kuvat. Miten ne saavat ne?", "A camera publishes images to /camera/image and two different nodes need them. How do they get them?"),
+        [tr("Molemmat tilaavat saman topicin", "Both subscribe to the same topic"), tr("Kameran pitää julkaista kuva kahdesti eri nimillä", "The camera must publish twice under different names"), tr("Solmut lukevat kuvat URDF-tiedostosta", "The nodes read the images from the URDF file")], 0,
+        tr("Topiciin voi olla kytkeytynyt monta tilaajaa. Julkaisijan ei tarvitse tietää, kuka kuuntelee.", "A topic can have many subscribers. The publisher doesn't need to know who listens.")),
+      Q(tr("Mikä on base_link?", "What is base_link?"),
+        [tr("Robotin rungon pääkoordinaatisto, johon muut osat kiinnitetään", "The robot body's main frame that other parts attach to"), tr("Kartan origo", "The map's origin"), tr("Kameran kuvakoordinaatisto", "The camera's image frame")], 0,
+        tr("base_link liikkuu robotin mukana. Anturien kehykset (esim. laser, camera_link) ilmoitetaan suhteessa siihen.", "base_link moves with the robot. Sensor frames (e.g. laser, camera_link) are given relative to it.")),
+      Q(tr("Kartan resolution on 0,05 ja koko 200 × 200 solua. Kuinka suuren alueen kartta kattaa?", "A map's resolution is 0.05 and its size 200 × 200 cells. How large an area does it cover?"),
+        [tr("10 m × 10 m", "10 m × 10 m"), tr("200 m × 200 m", "200 m × 200 m"), tr("4 m × 4 m", "4 m × 4 m")], 0,
+        tr("Resolution on solun koko metreinä: 200 × 0,05 m = 10 m kumpaankin suuntaan.", "Resolution is the cell size in metres: 200 × 0.05 m = 10 m each way.")),
+    ],
+  };
+
   const guideOf = (course, step) => SAY[course.id + "." + step.id]?.who || GUIDE[course.id] || "volt";
   // Ensimmäinen kappale teoriasta käy repliikiksi, jos vaiheelle ei ole kirjoitettu omaa
   const sayOf = (course, step) => SAY[course.id + "." + step.id]?.text || step.teach.split("\n\n")[0].replace(/\*\*/g, "");
@@ -833,6 +950,7 @@ const Courses = (() => {
   const persist = () => {
     try { localStorage.setItem(KEY, JSON.stringify(P)); }
     catch { if (!persistWarned) { persistWarned = true; toast(tr("Kurssin edistymistä ei voitu tallentaa: selaimen tallennustila on täynnä.", "Course progress could not be saved: browser storage is full.")); } }
+    window.Plans?.queueSync?.(); // luokkahuone: eteneminen opettajalle (plans.js)
   };
   const byId = (id) => COURSES.find((c) => c.id === id);
   const cp = (id) => (P.c[id] ||= { step: 0, steps: {}, project: null, finished: false });
@@ -992,6 +1110,7 @@ const Courses = (() => {
     panel.dataset.size = textSize;
     document.body.dataset.lessonSize = textSize;
     document.body.classList.toggle("lesson-collapsed", collapsed);
+    if (c.examOpen && c.exam && !c.exam.done) { drawExam(course); return; }
     if (c.finished) { drawFinished(course); return; }
 
     const tasksOk = step.tasks.every((t) => s.tasks[t.id]);
@@ -1094,6 +1213,41 @@ const Courses = (() => {
     </div>`;
   }
 
+  // Loppukoe: vaihtoehtojen järjestys arvotaan kerran oppilasta kohden (oikea vastaus ei ole aina samassa kohdassa)
+  function openExam(course) {
+    const c = cp(course.id), ex = EXAMS[course.id];
+    if (!ex) return;
+    if (!c.exam || c.exam.done && !c.finished) c.exam = { first: [], cur: [], done: false, order: ex.map((q) => q.options.map((_, i) => i).sort(() => Math.random() - 0.5)) };
+    c.examOpen = true;
+    persist(); drawPanel();
+  }
+
+  function drawExam(course) {
+    const c = cp(course.id), ex = EXAMS[course.id], e = c.exam;
+    const who = GUIDE[course.id] || "volt";
+    const answered = e.first.filter((x) => x != null).length;
+    panel.innerHTML = `
+      <div class="lesson-head"><div class="lesson-title"><small>${esc(course.title)}</small><b>${tr("Loppukoe", "Final quiz")} · ${answered}/${ex.length}</b></div>
+        <button class="icon-btn" data-l="close" aria-label="${tr("Keskeytä", "Pause")}"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+      <div class="lesson-body">
+        ${bubble(who, "talk", `<p>${tr("Viimeinen tehtävä! Vastaa kolmeen kysymykseen. Pisteet lasketaan ensimmäisestä vastauksestasi, ja jos olet luokassa, opettaja näkee ne. Väärästä vastauksesta saat selityksen.",
+          "Last task! Answer three questions. Your score counts your first answers, and if you're in a class your teacher sees it. A wrong answer shows an explanation.")}</p>`, { big: true })}
+        ${ex.map((q, qi) => {
+          const order = e.order?.[qi] || q.options.map((_, i) => i), cur = e.cur[qi], ok = cur === q.correct;
+          return `<div class="lesson-quiz exam-q">
+            <div class="quiz-head">${qi + 1}. ${tr("kysymys", "question")}</div>
+            <p class="quiz-q">${esc(q.q)}</p>
+            <div class="quiz-opts">${order.map((oi, k) => `<button class="quiz-opt ${cur === oi ? (ok ? "right" : "wrong") : ""}" data-l="exam" data-q="${qi}" data-i="${oi}" ${ok ? "disabled" : ""}><span class="q-letter">${"ABCD"[k]}</span>${esc(q.options[oi])}</button>`).join("")}</div>
+            ${cur != null ? (ok ? `<p class="exam-ok">✓ ${esc(q.explain)}</p>` : `<p class="exam-wrong">${tr("Ei aivan. Mieti uudelleen.", "Not quite. Think again.")} ${esc(q.explain)}</p>`) : ""}
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="lesson-foot">
+        <span class="note">${answered}/${ex.length} ${tr("vastattu", "answered")}</span>
+        <button class="btn ${answered === ex.length ? "primary pulse" : ""}" data-l="examdone">${tr("Valmis", "Finish")} →</button>
+      </div>`;
+  }
+
   function drawFinished(course) {
     const next = COURSES.find((c) => c.id !== course.id && !P.c[c.id]?.finished && (!window.Plans || Plans.canCourse(c.id)));
     const who = GUIDE[course.id] || "volt";
@@ -1104,6 +1258,9 @@ const Courses = (() => {
         <div class="done-bots">${Robots.svg(who, "happy", { size: 96, cls: "jump" })}${Robots.svg("volt", "wink", { size: 72, cls: "jump late" })}</div>
         <h3>${tr("Kurssi suoritettu!", "Course complete!")}</h3>
         ${bubble(who, "happy", `<p>${tr("Olit huippu! Tällä kurssilla opit:", "You were awesome! On this course you learned:")}</p><ul>${course.outcomes.map((o) => `<li>${esc(o)}</li>`).join("")}</ul>`)}
+        ${EXAMS[course.id] ? (P.c[course.id]?.exam?.done
+          ? `<p class="exam-score">${tr("Loppukoe", "Final quiz")}: <b>${P.c[course.id].exam.score} / ${EXAMS[course.id].length}</b></p>`
+          : `<button class="btn" data-l="exam-open">${tr("Tee kurssin loppukoe", "Take the course's final quiz")}</button>`) : ""}
         ${next ? `<p>${tr("Seuraavaksi suosittelemme:", "Up next we recommend:")}</p><button class="btn primary" data-l="startnext" data-c="${next.id}">${Robots.svg(GUIDE[next.id], "happy", { size: 28 })} ${esc(next.title)}</button>` : ""}
         <button class="btn" data-l="all">${tr("Kaikki kurssit", "All courses")}</button>
       </div>`;
@@ -1114,7 +1271,7 @@ const Courses = (() => {
     const course = byId(P.active);
     if (!course || !panel || panel.hidden) return;
     const c = cp(course.id);
-    if (c.finished) return;
+    if (c.finished || c.examOpen) return;
     const onProj = String(onCourseProject(course));
     if (panel.dataset.proj !== onProj) { panel.dataset.proj = onProj; drawPanel(); return; } // projekti vaihtui
     const step = course.steps[c.step];
@@ -1143,9 +1300,29 @@ const Courses = (() => {
     if (act === "prev") { goStep(c.step - 1); return; }
     if (act === "skip" || act === "next") {
       if (act === "next" && !evalStep(course, step).done) { toast(tr("Tee ensin tehtävät ja vastaa kysymykseen — tai ohita vaihe.", "Do the tasks and answer the question first — or skip the step.")); return; }
-      if (c.step === course.steps.length - 1) { c.finished = true; persist(); drawPanel(); return; }
+      if (c.step === course.steps.length - 1) {
+        // Viimeisen vaiheen jälkeen loppukoe; kurssi on suoritettu, kun koe on tehty
+        if (EXAMS[course.id] && !c.exam?.done) { openExam(course); return; }
+        c.finished = true; persist(); drawPanel(); return;
+      }
       goStep(c.step + 1); return;
     }
+    if (act === "exam" && c.exam && !c.exam.done) {
+      const qi = +b.dataset.q, oi = +b.dataset.i;
+      if (c.exam.first[qi] == null) c.exam.first[qi] = oi; // pisteet ensimmäisestä vastauksesta
+      c.exam.cur[qi] = oi;
+      persist(); drawPanel(); return;
+    }
+    if (act === "examdone" && c.exam && !c.exam.done) {
+      const ex = EXAMS[course.id];
+      if (c.exam.first.filter((x) => x != null).length < ex.length) { toast(tr("Vastaa ensin kaikkiin kysymyksiin.", "Answer all the questions first.")); return; }
+      c.exam.done = true;
+      c.exam.score = ex.filter((q, i) => c.exam.first[i] === q.correct).length;
+      c.examOpen = false;
+      c.finished = true;
+      persist(); drawPanel(); return;
+    }
+    if (act === "exam-open") { openExam(course); return; }
     if (act === "hint") { s.hint++; persist(); drawPanel(); return; }
     if (act === "quiz") { s.quiz = +b.dataset.i; persist(); drawPanel(); return; }
     if (act === "model") { panel.querySelector("#lesson-model").innerHTML = `<div class="model-answer">${md(step.reflect.model)}</div>`; return; }
@@ -1222,6 +1399,7 @@ const Courses = (() => {
           <p class="note">${tr("Jokainen kurssi tehdään omaan projektiinsa, joten muut työsi pysyvät ennallaan.", "Each course runs in its own project, so your other work stays untouched.")}</p>`, { big: true })}
         <div class="cast-row">${Object.entries(Robots.CAST).map(([id, r]) => `<div class="cast" title="${esc(r.role)}">${Robots.svg(id, "idle", { size: 54 })}<b>${esc(r.name)}</b><small>${esc(r.role)}</small></div>`).join("")}</div>
       </div>
+      ${classCoursesHtml()}
       <h2 class="path-title">${tr("Oppimispolku", "Learning path")}</h2>
       <p class="note path-note">${tr("Kurssit on järjestetty niin, että jokainen rakentaa edellisten päälle. Voit silti aloittaa mistä tahansa.", "The courses are ordered so each one builds on the previous ones. You can still start anywhere.")}</p>
       ${COURSES.map((c, i) => { const st = STAGES.find((x) => x.from === c.id); return (st ? `${i ? "</div>" : ""}<h3 class="stage-title">${st.title}</h3><p class="note stage-note">${st.desc}</p><div class="course-grid">` : "") + courseCard(c, i); }).join("")}</div>
@@ -1238,6 +1416,30 @@ const Courses = (() => {
         start(id, { restart: true });
       } else start(id);
     };
+  }
+
+  // Opettajan luokalle antamat kurssit (luokkakoodilla liittynyt oppilas): järjestys, määräpäivä ja tilanne
+  function classCoursesHtml() {
+    const cls = window.Plans?.classInfo?.();
+    if (!cls) return "";
+    const list = (cls.courses || []).map((a) => ({ ...a, course: byId(a.id) })).filter((a) => a.course);
+    const today = new Date().toISOString().slice(0, 10);
+    const fmtDate = (d) => new Date(d + "T12:00").toLocaleDateString(tr("fi-FI", "en-GB"), { day: "numeric", month: "numeric" });
+    return `<section class="card class-courses" aria-labelledby="cc-title">
+      <h2 id="cc-title">🏫 ${tr("Luokan kurssit", "Class courses")}${cls.name ? ` · ${esc(cls.name)}` : ""}</h2>
+      <p class="note">${list.length ? tr(`Opettaja on antanut nämä kurssit tehtäväksi. Edistymisesi näkyy opettajalle nimimerkillä ${esc(cls.alias || "")}.`, `Your teacher has assigned these courses. Your progress shows to your teacher under the alias ${esc(cls.alias || "")}.`)
+        : tr("Opettaja ei ole vielä valinnut luokalle kursseja. Voit tehdä mitä tahansa kursseja; edistymisesi näkyy opettajalle.", "Your teacher hasn't picked courses for the class yet. You can do any course; your progress shows to your teacher.")}</p>
+      ${list.length ? `<ol class="cc-list">${list.map((a) => {
+        const c = P.c[a.id], p = progressOf(a.course), late = a.due && a.due < today && !c?.finished;
+        const status = c?.finished ? `<span class="badge ok">✓ ${tr("Suoritettu", "Completed")}${c.exam?.done ? ` · ${c.exam.score}/${EXAMS[a.id]?.length}` : ""}</span>`
+          : c ? `<span class="badge">${Math.round(p * 100)} %</span>` : `<span class="badge">${tr("Aloittamatta", "Not started")}</span>`;
+        return `<li class="${late ? "late" : ""}"><div><b>${esc(a.course.title)}</b>
+            <small>~${a.course.minutes} min${a.due ? ` · ${late ? "⚠ " : ""}${tr("palautus", "due")} ${fmtDate(a.due)}` : ""}</small>
+            <div class="course-progress"><span style="width:${p * 100}%"></span></div></div>
+          ${status}
+          ${c?.finished ? "" : `<button class="btn ${c ? "" : "primary"} small" data-course="${a.id}">${c ? tr("Jatka", "Continue") : tr("Aloita", "Start")} →</button>`}</li>`;
+      }).join("")}</ol>` : ""}
+    </section>`;
   }
 
   function courseCard(course, i) {
@@ -1287,8 +1489,10 @@ const Courses = (() => {
       const p = P.c[c.id];
       const done = p ? c.steps.filter((st) => p.steps[st.id]?.done).length : 0;
       const skipped = p ? c.steps.slice(0, p.finished ? c.steps.length : p.step).filter((st) => !p.steps[st.id]?.done).length : 0;
-      return { id: c.id, steps: c.steps.length, done, finished: !!p?.finished, hints: p ? Object.values(p.steps).reduce((a, s) => a + (s.hint || 0), 0) : 0, skipped };
+      return { id: c.id, steps: c.steps.length, done, finished: !!p?.finished, hints: p ? Object.values(p.steps).reduce((a, s) => a + (s.hint || 0), 0) : 0, skipped,
+        score: p?.exam?.done ? p.exam.score : null, scoreMax: EXAMS[c.id]?.length ?? null };
     }),
+    exams: EXAMS,
     start, stop, context, _courses: COURSES,
   };
 })();

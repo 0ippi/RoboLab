@@ -118,6 +118,48 @@ function makeSupabaseMock() {
         server.classes.set(code, { code, teacher: uid, name: args.p_name, seats: args.p_seats, valid_until: new Date(Date.now() + 365 * 864e5).toISOString(), devices: new Set() });
         return { data: { code, seats: args.p_seats }, error: null };
       }
+      // Luokkahuone: oppilaat nimimerkeillä, eteneminen ja opettajan valitsemat kurssit
+      const cls = (code) => server.classes.get(String(code || "").trim().toUpperCase());
+      const info = (c, dev) => ({ plan: "education", name: c.name, valid_until: c.valid_until, courses: c.courses || [], alias: c.aliases?.get(dev) || "" });
+      if (name === "join_class") {
+        const c = cls(args.p_code);
+        if (!c) return err("no-code");
+        if (!String(args.p_alias || "").trim()) return err("no-alias");
+        if (!c.devices.has(args.p_device)) { if (c.devices.size >= c.seats) return err("full"); c.devices.add(args.p_device); }
+        (c.aliases ||= new Map()).set(args.p_device, String(args.p_alias).trim().slice(0, 30));
+        return { data: info(c, args.p_device), error: null };
+      }
+      if (name === "class_info") {
+        const c = cls(args.p_code);
+        if (!c) return err("no-code");
+        if (!c.devices.has(args.p_device)) return err("no-member");
+        return { data: info(c, args.p_device), error: null };
+      }
+      if (name === "report_progress") {
+        const c = cls(args.p_code);
+        if (!c || !c.devices.has(args.p_device)) return err("no-member");
+        (c.progress ||= new Map()).set(args.p_device, JSON.parse(JSON.stringify(args.p_items)));
+        return { data: null, error: null };
+      }
+      if (name === "class_overview") {
+        const c = cls(args.p_code);
+        if (!c || c.teacher !== uid) return err("not-owner");
+        const students = [...c.devices].map((d) => ({ device: d, alias: c.aliases?.get(d) || "", joined: new Date().toISOString(), seen: new Date().toISOString(),
+          progress: (c.progress?.get(d) || []).map((p) => ({ ...p, updated: new Date().toISOString() })) }));
+        return { data: { code: c.code, name: c.name, seats: c.seats, valid_until: c.valid_until, courses: c.courses || [], students }, error: null };
+      }
+      if (name === "set_class_courses") {
+        const c = cls(args.p_code);
+        if (!c || c.teacher !== uid) return err("not-owner");
+        c.courses = args.p_courses.map((x) => ({ id: x.id, due: x.due || null }));
+        return { data: null, error: null };
+      }
+      if (name === "remove_student") {
+        const c = cls(args.p_code);
+        if (!c || c.teacher !== uid) return err("not-owner");
+        c.devices.delete(args.p_device); c.aliases?.delete(args.p_device); c.progress?.delete(args.p_device);
+        return { data: null, error: null };
+      }
       if (name === "am_developer") return uid ? { data: server.devs.has(uid), error: null } : err("not authenticated");
       if (name === "dev_set_plan") {
         if (!server.devs.has(uid)) return err("not-developer");
@@ -726,6 +768,27 @@ async function test(name, fn) {
     w.Courses.stop();
   });
 
+  await test("Loppukoe: viimeisen vaiheen jälkeen kolme kysymystä, pisteet ensimmäisistä vastauksista", async () => {
+    const start = w.Courses._courses.find((c) => c.id === "start"), exam = w.Courses.exams.start;
+    eq(Object.keys(w.Courses.exams).length, w.Courses._courses.length, "jokaisella kurssilla loppukoe");
+    ls().set("robolab-courses-v1", JSON.stringify({ active: "start", c: { start: { step: start.steps.length - 1, finished: false, project: null,
+      steps: Object.fromEntries(start.steps.map((s) => [s.id, { tasks: Object.fromEntries(s.tasks.map((t) => [t.id, true])), quiz: s.quiz?.correct ?? null, hint: 0, refl: "x".repeat(50), base: null, done: true }])) } } }));
+    await boot();
+    await waitFor(() => w.document.querySelector("#lesson-next"), 3000, "kurssipaneeli");
+    w.document.querySelector("#lesson-next").click();
+    await waitFor(() => w.document.querySelectorAll("#lesson .exam-q").length === 3, 2000, "loppukoe");
+    // Ensimmäiseen väärin, sitten oikein: pisteeksi lasketaan ensimmäinen vastaus
+    const wrong = (exam[0].correct + 1) % exam[0].options.length;
+    w.document.querySelector(`#lesson [data-l="exam"][data-q="0"][data-i="${wrong}"]`).click();
+    for (const [qi, q] of exam.entries()) w.document.querySelector(`#lesson [data-l="exam"][data-q="${qi}"][data-i="${q.correct}"]`).click();
+    w.document.querySelector('#lesson [data-l="examdone"]').click();
+    await waitFor(() => w.document.querySelector("#lesson .exam-score"), 2000, "pisteet");
+    ok(/2\s*\/\s*3/.test(w.document.querySelector("#lesson .exam-score").textContent), "pisteet: " + w.document.querySelector("#lesson .exam-score").textContent);
+    const s = w.Courses.summary().find((x) => x.id === "start");
+    ok(s.finished && s.score === 2 && s.scoreMax === 3, "yhteenveto: " + JSON.stringify(s));
+    w.Courses.stop();
+  });
+
   await test("Rakentaja: valmisosat, monivalinta, ryhmäsiirto, kiinnitetyt osat ja skaalaus", async () => {
     await go("#/build3d", 2500);
     const d = w.document, q = (id) => d.querySelector("#rb-" + id), B = w.__builder;
@@ -880,9 +943,9 @@ async function test(name, fn) {
   pm.server.classes.set("ABCD2345", { code: "ABCD2345", teacher: "x", name: "7B", seats: 1, valid_until: new Date(Date.now() + 864e5).toISOString(), devices: new Set() });
   await test("Luokkakoodi: Education laitteelle ilman tiliä; väärä koodi ja täysi luokka hylätään", async () => {
     useDevice("A"); fresh(); await boot();
-    let e1 = null; try { await w.Plans.activateClass("ZZZZ9999"); } catch (e) { e1 = e.message; }
+    let e1 = null; try { await w.Plans.activateClass("ZZZZ9999", { alias: "Testi" }); } catch (e) { e1 = e.message; }
     ok(e1 && /löytynyt|not found/i.test(e1), "väärä koodi: " + e1);
-    await w.Plans.activateClass("abcd-2345");
+    await w.Plans.activateClass("abcd-2345", { alias: "Oppilas 1" });
     eq(w.Plans.current().plan, "education", "taso");
     eq(w.Plans.canTool("pid"), true, "PID auki"); eq(w.Plans.canTool("nn3d"), false, "Pro-työkalu");
     eq(w.Plans.canCourse("vision"), true, "Education-kurssi"); eq(w.Plans.canCourse("ai"), false, "Pro-kurssi");
@@ -890,7 +953,7 @@ async function test(name, fn) {
     await boot();
     eq(w.Plans.current().plan, "education", "säilyy uudelleenlatauksessa");
     useDevice("B"); fresh(); await boot();
-    let e2 = null; try { await w.Plans.activateClass("ABCD2345"); } catch (e) { e2 = e.message; }
+    let e2 = null; try { await w.Plans.activateClass("ABCD2345", { alias: "Oppilas 2" }); } catch (e) { e2 = e.message; }
     ok(e2 && /paikat|seats/i.test(e2), "täysi luokka: " + e2);
     eq(w.Plans.current().plan, "free", "B:n taso");
   });
@@ -924,13 +987,61 @@ async function test(name, fn) {
     await go("#/teach", 800);
     ok(!w.document.querySelector(".locked-card"), "Opettajille lukittu");
     ok(w.document.querySelector("#edu-newclass"), "luontilomake puuttuu");
-    eq(w.document.querySelectorAll('.edu-steps [data-edu="jump"]').length, 3, "pikaohjeen vaiheet");
+    eq(w.document.querySelectorAll('.edu-guide li').length, 5, "pikaoppaan vaiheet");
+    ok(w.document.querySelector(".edu-faq"), "usein kysyttyä puuttuu");
     const r = await w.Cloud.rpc("create_class", { p_name: "8A", p_seats: 5 });
     ok(/^[A-Z2-9]{8}$/.test(r.code), "koodi: " + r.code);
     let e = null; try { await w.Cloud.rpc("create_class", { p_name: "8B", p_seats: 1 }); } catch (x) { e = x.raw; }
     ok(/no-seats/.test(e || ""), "paikkaraja: " + e);
     await go("#/dashboard", 200); await go("#/teach", 800);
     ok(w.document.querySelector("#edu-classes").textContent.includes(r.code), "luokka ei näy listassa");
+  });
+
+  await test("Luokkahuone: opettaja valitsee kurssit, oppilas liittyy nimimerkillä ja opettaja näkee etenemisen ja loppukokeen", async () => {
+    // Opettaja (laite A): lisäpaikkoja ja uusi luokka, kurssiksi "Aloita tästä"
+    useDevice("A"); await boot();
+    const uid = G("Accounts").current().cloudUid;
+    pm.server.subs.set(uid, { plan: "teacher", seats: 20, valid_until: null });
+    await w.Plans.refresh({ force: true });
+    const { code } = await w.Cloud.rpc("create_class", { p_name: "7C", p_seats: 3 });
+    await w.Cloud.rpc("set_class_courses", { p_code: code, p_courses: [{ id: "start", due: "2099-12-31" }] });
+    // Oppilas (laite B): liittyy ilman tiliä, näkee luokan kurssin ja tekee sen loppukokeineen
+    useDevice("B"); fresh(); await boot();
+    let e0 = null; try { await w.Plans.activateClass(code); } catch (e) { e0 = e.code; }
+    eq(e0, "alias", "nimimerkki vaadittiin");
+    await w.Plans.activateClass(code, { alias: "Aino K" });
+    eq(w.Plans.current().plan, "education", "taso");
+    eq(w.Plans.classInfo().courses.map((c) => c.id), ["start"], "luokan kurssit");
+    await go("#/learn", 300);
+    ok(w.document.querySelector(".class-courses")?.textContent.includes(w.Courses._courses.find((c) => c.id === "start").title), "luokan kurssi ei näy oppilaalle");
+    const start = w.Courses._courses.find((c) => c.id === "start");
+    ls().set("robolab-courses-v1", JSON.stringify({ active: null, c: { start: { step: start.steps.length - 1, finished: true, project: null,
+      steps: Object.fromEntries(start.steps.map((s) => [s.id, { tasks: {}, quiz: 0, hint: 1, refl: "", base: null, done: true }])),
+      exam: { done: true, score: 2, first: [0, 1, 0], cur: [0, 0, 0] } } } }));
+    await boot();
+    await w.Plans.syncProgress();
+    const sent = [...pm.server.classes.get(code).progress.values()][0].find((p) => p.course === "start");
+    ok(sent?.finished && sent.score === 2 && sent.score_max === 3, "eteneminen ei mennyt opettajalle: " + JSON.stringify(sent));
+    // Opettaja näkee luokkahuoneessa oppilaan, suorituksen ja pisteet
+    useDevice("A"); await boot();
+    await go("#/teach", 600);
+    await waitFor(() => w.document.querySelector(`[data-edu="open-room"][data-c="${code}"]`), 4000, "luokkalista");
+    w.document.querySelector(`[data-edu="open-room"][data-c="${code}"]`).click();
+    await waitFor(() => w.document.querySelector("#room-table")?.textContent.includes("Aino K"), 4000, "oppilas luokkahuoneessa");
+    ok(/✓\s*2\/3/.test(w.document.querySelector("#room-table td.done")?.textContent || ""), "suoritus ja pisteet: " + w.document.querySelector("#room-table").textContent.slice(0, 200));
+    // Kurssien valinta näkymästä
+    w.document.querySelector('[data-assign="pid"]').checked = true;
+    w.document.querySelector('[data-edu="room-save"]').click();
+    await waitFor(() => pm.server.classes.get(code).courses.length === 2, 3000, "kurssien tallennus");
+    // Oppilaan poisto: paikka vapautuu ja oppilaan laite putoaa luokasta
+    w.confirm = () => true;
+    await waitFor(() => w.document.querySelector('[data-edu="room-remove"]'), 3000, "poistonappi");
+    w.document.querySelector('[data-edu="room-remove"]').click();
+    await waitFor(() => !w.document.querySelector("#room-table")?.textContent.includes("Aino K"), 3000, "oppilaan poisto");
+    useDevice("B"); await boot();
+    await w.Plans.refresh({ force: true });
+    eq(w.Plans.classInfo(), null, "poistettu oppilas on yhä luokassa");
+    useDevice("A"); await boot();
   });
 
   await test("Kehittäjätila: vain kehittäjä näkee tasonvaihtimen ja voi vaihtaa omaa tasoaan", async () => {

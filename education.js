@@ -308,6 +308,12 @@ const Education = (() => {
       <p class="doc-meta"><b>${tr("Taso", "Level")}:</b> ${esc(L.level)}<br><b>${tr("Kesto", "Duration")}:</b> ${esc(L.minutes)}<br>
         <b>${tr("Oppilaslinkki", "Student link")}:</b> ${esc(studentLink(L))}</p>
       <p>${esc(L.summary)}</p>
+      <div class="doc-box"><b>${tr("Tunti lyhyesti", "The lesson in brief")}</b><ol>
+        <li>${tr(`Ennen tuntia: luo luokkahuone, valitse sille kurssi ”${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” ja tulosta monisteet.`, `Before the lesson: create a classroom, assign the course “${esc(Courses._courses.find((c) => c.id === L.course)?.title || "")}” and print the worksheets.`)}</li>
+        <li>${tr("Tunnin alussa: näytä luokkakoodi isona. Oppilaat liittyvät Kurssit-sivulla koodilla ja nimimerkillä.", "At the start: show the class code large. Students join on the Courses page with the code and an alias.")}</li>
+        <li>${tr("Tunnin aikana: seuraa tunnin kulkua alla ja luokkahuoneen taulukkoa. Auta oppilaita, joiden eteneminen on pysähtynyt.", "During the lesson: follow the plan below and the classroom table. Help students whose progress has stalled.")}</li>
+        <li>${tr("Lopuksi: käy poistumislippu läpi. Arvioi kriteerien ja loppukokeen pisteiden avulla.", "At the end: go through the exit ticket. Assess with the criteria and the final quiz scores.")}</li>
+      </ol></div>
       <h2>${tr("Oppimistavoitteet", "Learning goals")}</h2>${list(L.goals)}
       <h2>${tr("Tarvittavat välineet", "Materials")}</h2>${list(L.materials)}
       <h2>${tr("Valmistelu", "Preparation")}</h2>${list(L.prep)}
@@ -344,23 +350,58 @@ const Education = (() => {
   let roster = []; // tuodut oppilastiedostot: vain muistissa, ei tallenneta
 
   function render(el, tool) {
-    const courses = Courses._courses;
+    pageEl = el;
+    const courses = Courses._courses, exams = Courses.exams || {};
     el.innerHTML = `
       ${toolHead(tool)}
       <div class="card edu-intro">
         <div class="edu-intro-row">${Robots.svg("volt", "happy", { size: 64 })}
-          <div><h2>${tr("Robotiikkaa luokassa ilman valmistelutaakkaa", "Robotics in class without the prep work")}</h2>
-          <p>${tr("Valmiissa oppitunneissa on tavoitteet, tunnin kulku minuutteineen, oppilaan moniste, ratkaisut ja arviointikriteerit. Oppilaat tarvitsevat vain selaimen: ei tilejä, ei asennuksia eikä robotteja.",
-            "The ready-made lessons include goals, a minute-by-minute plan, a student worksheet, solutions and assessment criteria. Students only need a browser: no accounts, no installs and no robots.")}</p></div></div>
-        <ol class="edu-steps">
-          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-classes"><b>${tr("1. Luo luokkakoodi", "1. Create a class code")}</b></button><span>${tr("Oppilaat syöttävät sen ja saavat kurssit auki ilman tilejä.", "Students enter it and get the courses without accounts.")}</span></li>
-          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-lessons"><b>${tr("2. Valitse oppitunti", "2. Pick a lesson")}</b></button><span>${tr("Tulosta opettajan ohje ja oppilaan moniste.", "Print the teacher guide and the student worksheet.")}</span></li>
-          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-progress"><b>${tr("3. Katso edistyminen", "3. See progress")}</b></button><span>${tr("Tuo oppilaiden palauttamat tiedostot tunnin lopuksi.", "Import the files students hand in at the end of the lesson.")}</span></li>
+          <div><h2>${tr("Näin otat RoboLabin käyttöön luokassa", "How to use RoboLab in your class")}</h2>
+          <p>${tr("Oppilaat tarvitsevat vain selaimen ja luokkakoodin: ei tilejä, sähköposteja eikä asennuksia. Sinä näet luokkahuoneesta, kuka on aloittanut, kuka on valmis ja miten loppukokeet menivät.",
+            "Students only need a browser and the class code: no accounts, emails or installs. In the classroom you see who has started, who has finished and how the final quizzes went.")}</p></div></div>
+        <ol class="edu-guide">
+          <li><b>${tr("Luo luokkahuone", "Create a classroom")}</b>
+            <span>${tr("Kirjaudu pilvitilille (Teacher-taso) ja luo luokka alla. Saat 8-merkkisen luokkakoodin.", "Sign in to your cloud account (Teacher plan) and create a class below. You get an 8-character class code.")}</span>
+            <button class="link-btn" data-edu="jump" data-to="edu-sec-classes">${tr("Luokkahuoneet ↓", "Classrooms ↓")}</button></li>
+          <li><b>${tr("Valitse kurssit", "Pick the courses")}</b>
+            <span>${tr("Avaa luokkahuone ja valitse kurssit, jotka luokan pitää suorittaa, sekä halutessasi palautuspäivä. Kurssien kesto ja tavoitteet ovat alla.", "Open the classroom and choose the courses the class must complete, plus a due date if you like. Course durations and goals are listed below.")}</span>
+            <button class="link-btn" data-edu="jump" data-to="edu-sec-courses">${tr("Kurssit ↓", "Courses ↓")}</button></li>
+          <li><b>${tr("Jaa koodi oppilaille", "Share the code with students")}</b>
+            <span>${tr("Näytä koodi isona heijastimella. Oppilaat avaavat RoboLabin, menevät Kurssit-sivulle ja kirjoittavat koodin ja nimimerkin (ei koko nimeä).", "Show the code large on the projector. Students open RoboLab, go to the Courses page and type the code and an alias (not their full name).")}</span></li>
+          <li><b>${tr("Seuraa edistymistä", "Follow progress")}</b>
+            <span>${tr("Luokkahuone päivittyy itsestään. ✓ tarkoittaa suoritettua kurssia, ja luku sen vieressä on loppukokeen pisteet. Oppilaiden kurssit avautuvat Education-tasolla.", "The classroom updates by itself. ✓ means a completed course, and the number beside it is the final quiz score. Students' courses unlock at the Education level.")}</span></li>
+          <li><b>${tr("Valmis tuntisuunnitelma (valinnainen)", "A ready lesson plan (optional)")}</b>
+            <span>${tr("Oppitunneissa A–C on tunnin kulku minuutteineen, tulostettava moniste, ratkaisut ja arviointikriteerit.", "Lessons A–C include a minute-by-minute plan, a printable worksheet, solutions and assessment criteria.")}</span>
+            <button class="link-btn" data-edu="jump" data-to="edu-sec-lessons">${tr("Oppitunnit ↓", "Lessons ↓")}</button></li>
         </ol>
+        <details class="edu-faq"><summary>${tr("Usein kysyttyä", "Frequently asked questions")}</summary>
+          <dl>
+            <dt>${tr("Mitä oppilaista tallennetaan?", "What is stored about students?")}</dt>
+            <dd>${tr("Nimimerkki, satunnainen laitetunnus ja kurssien eteneminen (vaiheet, vihjeiden määrä ja loppukokeen pisteet). Ei nimiä, sähköposteja, vastauksia eikä projekteja. Tiedot ovat EU:ssa ja poistuvat, kun poistat oppilaan tai luokan.", "An alias, a random device ID and course progress (steps, number of hints and final quiz score). No names, emails, answers or projects. The data is stored in the EU and is deleted when you remove the student or the class.")}</dd>
+            <dt>${tr("Oppilaan edistyminen ei näy.", "A student's progress doesn't show.")}</dt>
+            <dd>${tr("Eteneminen lähtee muutaman sekunnin viiveellä, kun oppilaan laite on netissä. Ilman nettiä se lähtee, kun yhteys palaa. Paina luokkahuoneessa Päivitä.", "Progress is sent a few seconds after a change while the student's device is online. Offline, it is sent when the connection returns. Press Refresh in the classroom.")}</dd>
+            <dt>${tr("Oppilas vaihtaa laitetta.", "A student switches devices.")}</dt>
+            <dd>${tr("Jokainen laite on oma paikkansa, ja eteneminen on tallennettu laitteelle. Oppilas voi liittyä uudella laitteella samalla nimimerkillä. Poista vanha laite listasta, jos paikat loppuvat.", "Each device takes its own seat, and progress is stored on the device. The student can join on the new device with the same alias. Remove the old device from the list if you run out of seats.")}</dd>
+            <dt>${tr("Paikat loppuivat.", "Out of seats.")}</dt>
+            <dd>${tr("Poista vanhoja oppilaita tai luokkia, tai osta lisää oppilaspaikkoja Tasot-sivulta.", "Remove old students or classes, or buy more student seats on the Plans page.")}</dd>
+            <dt>${tr("Entä jos koulun koneet eivät saa yhteyttä pilveen?", "What if the school's computers can't reach the cloud?")}</dt>
+            <dd>${tr("Oppilaat voivat palauttaa edistymisensä tiedostona Kurssit-sivun lopusta, ja sinä tuot tiedostot tämän sivun lopussa.", "Students can hand in their progress as a file at the end of the Courses page, and you import the files at the end of this page.")}</dd>
+          </dl></details>
       </div>
 
-      <h2 class="section-title" id="edu-sec-classes">${tr("Luokkakoodit oppilaille", "Class codes for students")}</h2>
+      <h2 class="section-title" id="edu-sec-classes">${tr("Luokkahuoneet", "Classrooms")}</h2>
       <div class="card" id="edu-classes">${classesIntroHtml()}</div>
+
+      <h2 class="section-title" id="edu-sec-courses">${tr("Kurssit opetuksessa", "Courses for teaching")}</h2>
+      <div class="card edu-table-wrap">
+        <p class="note">${tr("Jokainen kurssi on itsenäinen oppitunti. Oppilas etenee robottioppaan kanssa vaihe kerrallaan; tehtävät tarkistetaan automaattisesti, ja lopussa on kolmen kysymyksen loppukoe. Kurssin suorittaa, kun vaiheet ja loppukoe on tehty.",
+          "Every course is a stand-alone lesson. Students go step by step with a robot guide; tasks are checked automatically, and there is a three-question final quiz at the end. A course is completed when the steps and the final quiz are done.")}</p>
+        <table class="ws-table edu-courses"><thead><tr><th>#</th><th>${tr("Kurssi ja tavoitteet", "Course and goals")}</th><th>${tr("Taso", "Level")}</th><th>${tr("Kesto", "Time")}</th><th>${tr("Vaiheet", "Steps")}</th><th></th></tr></thead>
+          <tbody>${courses.map((c, i) => `<tr><td>${i + 1}</td><td><b>${esc(c.title)}</b><br><small>${esc(c.desc)}</small>
+              <ul class="edu-outcomes">${c.outcomes.map((o) => `<li>${esc(o)}</li>`).join("")}</ul></td>
+            <td>${esc(c.level)}${window.Plans ? `<br>${Plans.badge(Plans.tierForCourse(c.id))}` : ""}</td><td>~${c.minutes} min</td><td>${c.steps.length}${exams[c.id] ? ` + ${tr("koe", "quiz")}` : ""}</td>
+            <td><button class="btn small" data-edu="copy" data-c="${c.id}">${tr("Kopioi linkki", "Copy link")}</button></td></tr>`).join("")}</tbody></table>
+      </div>
 
       <h2 class="section-title" id="edu-sec-lessons">${tr("Valmiit oppitunnit", "Ready-made lessons")}</h2>
       <div class="edu-lessons">${LESSONS.map((L) => `
@@ -375,20 +416,12 @@ const Education = (() => {
         </article>`).join("")}</div>
       <div id="edu-detail"></div>
 
-      <h2 class="section-title">${tr("Kaikki kurssit oppitunteina", "All courses as lessons")}</h2>
-      <div class="card edu-table-wrap">
-        <p class="note">${tr("Jokainen kurssi toimii itsenäisenä oppituntina. Jaa oppilaille kurssin linkki: se avaa kurssin suoraan ensimmäiseen vaiheeseen.", "Every course works as a stand-alone lesson. Share the course link with students: it opens the course straight at the first step.")}</p>
-        <table class="ws-table edu-courses"><thead><tr><th>#</th><th>${tr("Kurssi", "Course")}</th><th>${tr("Taso", "Level")}</th><th>${tr("Kesto", "Time")}</th><th>${tr("Vaiheet", "Steps")}</th><th></th></tr></thead>
-          <tbody>${courses.map((c, i) => `<tr><td>${i + 1}</td><td><b>${esc(c.title)}</b><br><small>${esc(c.desc)}</small></td><td>${esc(c.level)}</td><td>~${c.minutes} min</td><td>${c.steps.length}</td>
-            <td><button class="btn small" data-edu="copy" data-c="${c.id}">${tr("Kopioi linkki", "Copy link")}</button></td></tr>`).join("")}</tbody></table>
-      </div>
-
-      <h2 class="section-title" id="edu-sec-progress">${tr("Luokan edistyminen", "Class progress")}</h2>
+      <h2 class="section-title" id="edu-sec-progress">${tr("Edistyminen tiedostoista (ilman pilveä)", "Progress from files (without the cloud)")}</h2>
       <div class="card">
-        <p>${tr("Oppilas valitsee Kurssit-sivun lopusta 'Palauta edistyminen opettajalle', kirjoittaa luokkatunnuksen ja nimimerkin ja tallentaa tiedoston. Kerää tiedostot esimerkiksi oppimisalustan palautuskansioon ja tuo ne tähän.",
-          "The student picks 'Hand in progress to the teacher' at the end of the Courses page, types the class code and an alias, and saves the file. Collect the files, e.g. in your learning platform's hand-in folder, and import them here.")}</p>
-        <div class="alert info"><b>i</b><span>${tr("Tietosuoja: tiedostossa on vain kurssien eteneminen ja vihjeiden määrä — ei nimiä, projekteja, vastauksia eikä tilin tietoja. Ohjeista oppilaita käyttämään nimimerkkiä tai numeroa. Tuodut tiedot pysyvät vain tässä selainikkunassa eivätkä tallennu mihinkään; ne katoavat, kun suljet sivun.",
-          "Privacy: the file only contains course progress and the number of hints — no names, projects, answers or account details. Tell students to use an alias or a number. Imported data stays only in this browser window and is not saved anywhere; it disappears when you close the page.")}</span></div>
+        <p>${tr("Jos luokkahuone ei ole käytössä, oppilas valitsee Kurssit-sivun lopusta 'Palauta edistyminen opettajalle', kirjoittaa luokkatunnuksen ja nimimerkin ja tallentaa tiedoston. Kerää tiedostot esimerkiksi oppimisalustan palautuskansioon ja tuo ne tähän.",
+          "If you don't use a classroom, the student picks 'Hand in progress to the teacher' at the end of the Courses page, types the class code and an alias, and saves the file. Collect the files, e.g. in your learning platform's hand-in folder, and import them here.")}</p>
+        <div class="alert info"><b>i</b><span>${tr("Tietosuoja: tiedostossa on vain kurssien eteneminen ja vihjeiden määrä — ei nimiä, projekteja, vastauksia eikä tilin tietoja. Tuodut tiedot pysyvät vain tässä selainikkunassa eivätkä tallennu mihinkään; ne katoavat, kun suljet sivun.",
+          "Privacy: the file only contains course progress and the number of hints — no names, projects, answers or account details. Imported data stays only in this browser window and is not saved anywhere; it disappears when you close the page.")}</span></div>
         <div class="row-actions">
           <label class="btn primary">${tr("Tuo oppilaiden tiedostot…", "Import student files…")}<input type="file" id="edu-import" accept=".json,application/json" multiple hidden></label>
           <button class="btn" data-edu="csv" ${roster.length ? "" : "disabled"}>${tr("Vie CSV-taulukoksi", "Export as CSV")}</button>
@@ -400,20 +433,34 @@ const Education = (() => {
         <a href="https://github.com/0ippi/RoboLab/blob/main/docs/koulut-ja-tuotteistus.md" target="_blank" rel="noopener">${tr("Pilottiohjelma ja kysely", "Pilot programme and survey")}</a> ·
         <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ota yhteyttä / anna palautetta", "Contact / give feedback")}</a></p>`;
     el.onclick = onClick;
+    el.onchange = onChange;
     el.querySelector("#edu-import").onchange = (e) => importFiles([...e.target.files], el);
-    loadClasses(el);
+    if (room) openRoom(room.code); else loadClasses(el);
   }
 
-  /* ===== Luokkakoodit (Supabase: create_class, my_classes, delete_class) =====
-     Oppilas syöttää koodin Tasot- tai Kurssit-sivulla ja saa Education-tason laitteelleen ilman tiliä. */
+  /* ===== Luokkahuoneet (Supabase: create_class, my_classes, delete_class, class_overview, set_class_courses, remove_student) =====
+     Oppilas liittyy Kurssit- tai Tasot-sivulla luokkakoodilla ja nimimerkillä; eteneminen tulee tänne automaattisesti. */
+  let pageEl = null, room = null, roomTimer = 0;
   function classesIntroHtml() {
-    if (!window.Cloud?.configured) return `<p class="note">${tr("Luokkakoodit vaativat pilvipalvelun, jota ei ole otettu käyttöön tässä RoboLabissa.", "Class codes need the cloud service, which is not set up in this RoboLab.")}</p>`;
-    if (!Accounts.current()?.cloud) return `<p>${tr("Luo luokalle koodi, jolla oppilaat saavat Education-tason ilman tilejä ja nimiä. Kirjaudu ensin pilvitilille, jolla on Teacher-taso.", "Create a code for your class that gives students the Education plan without accounts or names. First sign in with a cloud account on the Teacher plan.")}</p>
+    if (!window.Cloud?.configured) return `<p class="note">${tr("Luokkahuoneet vaativat pilvipalvelun, jota ei ole otettu käyttöön tässä RoboLabissa.", "Classrooms need the cloud service, which is not set up in this RoboLab.")}</p>`;
+    if (!Accounts.current()?.cloud) return `<p>${tr("Luokkahuoneessa oppilaat liittyvät luokkakoodilla ja nimimerkillä ilman tilejä, ja sinä näet heidän etenemisensä. Kirjaudu ensin pilvitilille, jolla on Teacher-taso.", "In a classroom students join with the class code and an alias without accounts, and you see their progress. First sign in with a cloud account on the Teacher plan.")}</p>
       <div class="row-actions"><button class="btn primary" data-edu="cloud-login">☁ ${tr("Kirjaudu pilvitilille", "Sign in to your cloud account")}</button></div>`;
     return `<p class="note">${tr("Ladataan luokkia…", "Loading classes…")}</p>`;
   }
 
+  const dateFmt = (d) => new Date(d).toLocaleDateString(tr("fi-FI", "en-GB"));
+  function ago(t) {
+    const s = (Date.now() - Date.parse(t)) / 1000;
+    if (!(s >= 0)) return "–";
+    if (s < 90) return tr("juuri nyt", "just now");
+    if (s < 3600) return tr(`${Math.round(s / 60)} min sitten`, `${Math.round(s / 60)} min ago`);
+    if (s < 86400) return tr(`${Math.round(s / 3600)} h sitten`, `${Math.round(s / 3600)} h ago`);
+    return dateFmt(t);
+  }
+
   async function loadClasses(el) {
+    clearInterval(roomTimer);
+    room = null;
     const box = el.querySelector("#edu-classes");
     if (!box || !window.Cloud?.configured || !Accounts.current()?.cloud) return;
     const src = Plans.current().sources.find((s) => s.from === "account" && s.plan === "teacher" || s.from === "test");
@@ -423,33 +470,150 @@ const Education = (() => {
     const allowed = Plans.PRICES.teacher.included + (src?.seats || 0);
     const active = classes.filter((c) => Date.parse(c.valid_until) > Date.now());
     const used = active.reduce((a, c) => a + c.seats, 0);
-    const date = (d) => new Date(d).toLocaleDateString(tr("fi-FI", "en-GB"));
     box.innerHTML = `
-      ${src ? "" : `<div class="alert info"><b>i</b><span>${tr("Luokkakoodien luonti vaatii Teacher- tai Pro-tason. ", "Creating class codes needs the Teacher or Pro plan. ")}<a href="#/plans">${tr("Katso tasot", "See plans")}</a></span></div>`}
-      <p class="note">${tr(`Oppilaspaikkoja käytössä ${used} / ${allowed}. Yksi paikka = yksi oppilaan laite.`, `Student seats in use ${used} / ${allowed}. One seat = one student device.`)}</p>
-      ${classes.length ? `<div class="edu-table-wrap"><table class="ws-table"><thead><tr><th>${tr("Luokka", "Class")}</th><th>${tr("Koodi", "Code")}</th><th>${tr("Laitteita", "Devices")}</th><th>${tr("Voimassa", "Valid until")}</th><th></th></tr></thead>
-        <tbody>${classes.map((c) => `<tr><td>${esc(c.name || "–")}</td><td><b class="class-code">${esc(c.code)}</b></td><td>${c.used} / ${c.seats}</td><td>${date(c.valid_until)}</td>
-          <td><button class="btn small" data-edu="copy-code" data-c="${esc(c.code)}">${tr("Kopioi", "Copy")}</button> <button class="link-btn" data-edu="del-class" data-c="${esc(c.code)}">${tr("Poista", "Delete")}</button></td></tr>`).join("")}</tbody></table></div>`
-        : `<p class="note">${tr("Ei vielä luokkia.", "No classes yet.")}</p>`}
-      ${src ? `<form class="class-fields" id="edu-newclass">
+      ${src ? "" : `<div class="alert info"><b>i</b><span>${tr("Luokkahuoneiden luonti vaatii Teacher-tason. ", "Creating classrooms needs the Teacher plan. ")}<a href="#/plans">${tr("Katso tasot", "See plans")}</a></span></div>`}
+      ${classes.length ? `<div class="room-list">${classes.map((c) => `
+        <div class="room-card">
+          <div><b>${esc(c.name || tr("Nimetön luokka", "Unnamed class"))}</b>
+            <small>${tr("Koodi", "Code")} <b class="class-code">${esc(c.code)}</b> · ${tr(`${c.used} / ${c.seats} oppilasta`, `${c.used} / ${c.seats} students`)} · ${tr("voimassa", "valid until")} ${dateFmt(c.valid_until)}</small></div>
+          <div class="row-actions">
+            <button class="btn primary small" data-edu="open-room" data-c="${esc(c.code)}">${tr("Avaa luokkahuone", "Open classroom")} →</button>
+            <button class="link-btn" data-edu="del-class" data-c="${esc(c.code)}">${tr("Poista", "Delete")}</button>
+          </div></div>`).join("")}</div>`
+        : `<p class="note">${tr("Ei vielä luokkia. Luo ensimmäinen alla.", "No classes yet. Create the first one below.")}</p>`}
+      ${src ? `<h3 class="card-title" style="margin-top:var(--pad)">${tr("Uusi luokkahuone", "New classroom")}</h3>
+        <form class="class-fields" id="edu-newclass">
         <label>${tr("Luokan nimi", "Class name")}<input id="edu-cname" maxlength="60" placeholder="${tr("esim. 7B robotiikka", "e.g. 7B robotics")}"></label>
         <label>${tr("Oppilaita", "Students")}<input id="edu-cseats" type="number" min="1" max="${Math.max(1, allowed - used)}" value="${Math.max(1, Math.min(25, allowed - used))}"></label>
-        <button class="btn primary" ${allowed - used < 1 ? "disabled" : ""}>${tr("Luo luokkakoodi", "Create class code")}</button></form>
-        ${allowed - used < 1 ? `<p class="note">${tr("Kaikki paikat ovat käytössä. Osta lisää oppilaspaikkoja Tasot-sivulta tai poista vanha luokka.", "All seats are in use. Buy more student seats on the Plans page or delete an old class.")}</p>` : ""}` : ""}
-      <p class="note small">${tr("Oppilas syöttää koodin Kurssit- tai Tasot-sivulla. Koodi ei kerää oppilaasta mitään tietoja; palvelin muistaa vain satunnaisen laitetunnuksen, jotta paikkoja ei käytetä kahdesti.", "Students enter the code on the Courses or Plans page. The code collects no data about the student; the server only remembers a random device ID so seats are not used twice.")}</p>`;
+        <button class="btn primary" ${allowed - used < 1 ? "disabled" : ""}>${tr("Luo luokkahuone", "Create classroom")}</button></form>
+        <p class="note">${tr(`Oppilaspaikkoja käytössä ${used} / ${allowed}. Yksi paikka = yksi oppilaan laite.`, `Student seats in use ${used} / ${allowed}. One seat = one student device.`)}
+        ${allowed - used < 1 ? tr(" Kaikki paikat ovat käytössä: osta lisää oppilaspaikkoja Tasot-sivulta tai poista vanha luokka.", " All seats are in use: buy more student seats on the Plans page or delete an old class.") : ""}</p>` : ""}`;
     const form = box.querySelector("#edu-newclass");
     if (form) form.onsubmit = async (e) => {
       e.preventDefault();
       form.querySelector("button").disabled = true;
       try {
         const r = await Cloud.rpc("create_class", { p_name: form.querySelector("#edu-cname").value.trim(), p_seats: Math.round(+form.querySelector("#edu-cseats").value) });
-        toast(tr(`Luokkakoodi luotu: ${r.code}`, `Class code created: ${r.code}`));
+        toast(tr(`Luokkahuone luotu. Luokkakoodi: ${r.code}`, `Classroom created. Class code: ${r.code}`));
+        openRoom(r.code);
+        return;
       } catch (err) {
         const m = String(err.raw || err.message);
-        toast(/not-teacher/.test(m) ? tr("Luokkakoodit vaativat Teacher-tason.", "Class codes need the Teacher plan.") : /no-seats/.test(m) ? tr("Oppilaspaikat eivät riitä.", "Not enough student seats.") : err.message);
+        toast(/not-teacher/.test(m) ? tr("Luokkahuoneet vaativat Teacher-tason.", "Classrooms need the Teacher plan.") : /no-seats/.test(m) ? tr("Oppilaspaikat eivät riitä.", "Not enough student seats.") : err.message);
       }
       loadClasses(el);
     };
+  }
+
+  // Luokkahuone: annetut kurssit ja oppilaiden eteneminen. Päivittyy 20 sekunnin välein, kun näkymä on auki.
+  async function openRoom(code, { quiet = false } = {}) {
+    const box = pageEl?.querySelector("#edu-classes");
+    if (!box) return;
+    if (!quiet) box.innerHTML = `<p class="note">${tr("Ladataan luokkahuonetta…", "Loading the classroom…")}</p>`;
+    let d;
+    try { d = await Cloud.rpc("class_overview", { p_code: code }); }
+    catch (e) { box.innerHTML = `<p class="note">${esc(e.message)}</p><button class="btn" data-edu="room-back">← ${tr("Kaikki luokat", "All classes")}</button>`; return; }
+    if (!pageEl?.isConnected || currentRoute() !== "teach") return;
+    const editing = box.querySelector(".room-assign[open]") ? true : false;
+    room = { code, data: d };
+    if (quiet && editing) { box.querySelector("#room-table").innerHTML = roomTableHtml(d); return; } // ei häiritä kesken valintojen
+    box.innerHTML = roomHtml(d);
+    clearInterval(roomTimer);
+    roomTimer = setInterval(() => {
+      if (!pageEl?.isConnected || currentRoute() !== "teach" || !room) { clearInterval(roomTimer); return; }
+      if (!document.hidden) openRoom(room.code, { quiet: true });
+    }, 20000);
+  }
+
+  // Sarakkeet: annetut kurssit, tai jos niitä ei ole, kurssit, joita joku oppilas on aloittanut
+  function roomCourses(d) {
+    const all = Courses._courses;
+    const assigned = (d.courses || []).map((a) => ({ ...a, course: all.find((c) => c.id === a.id) })).filter((a) => a.course);
+    if (assigned.length) return assigned;
+    return all.filter((c) => d.students.some((s) => s.progress.some((p) => p.course === c.id))).map((c) => ({ id: c.id, due: null, course: c }));
+  }
+
+  function roomTableHtml(d) {
+    const cols = roomCourses(d), today = new Date().toISOString().slice(0, 10);
+    if (!d.students.length) return `<div class="room-empty">${Robots.svg("zippy", "happy", { size: 56 })}<p>${tr("Ei vielä oppilaita. Näytä luokkakoodi oppilaille: he kirjoittavat sen ja nimimerkin RoboLabin Kurssit-sivulla.", "No students yet. Show the class code to your students: they type it and an alias on RoboLab's Courses page.")}</p></div>`;
+    const cell = (s, a) => {
+      const p = s.progress.find((x) => x.course === a.id);
+      const late = a.due && a.due < today && !p?.finished;
+      if (!p) return `<td class="${late ? "late" : "none"}">–</td>`;
+      if (p.finished) return `<td class="done" title="${tr("Suoritettu", "Completed")} ${ago(p.updated)}">✓${p.score != null ? ` <small>${p.score}/${p.score_max ?? "?"}</small>` : ""}</td>`;
+      const pct = Math.round((p.done / (p.steps || 1)) * 100);
+      return `<td class="${late ? "late" : "part"}" title="${p.done}/${p.steps} ${tr("vaihetta", "steps")}, ${p.hints} ${tr("vihjettä", "hints")}"><div class="mini-bar"><span style="width:${pct}%"></span></div><small>${p.done}/${p.steps}</small></td>`;
+    };
+    return `<div class="edu-table-wrap"><table class="ws-table room-table">
+      <thead><tr><th>${tr("Oppilas", "Student")}</th>${cols.map((a) => `<th title="${esc(a.course.title)}">${esc(a.course.title.split(":")[0])}${a.due ? `<br><small>${tr("pal.", "due")} ${new Date(a.due + "T12:00").toLocaleDateString(tr("fi-FI", "en-GB"), { day: "numeric", month: "numeric" })}</small>` : ""}</th>`).join("")}<th>${tr("Viimeksi", "Last seen")}</th><th></th></tr></thead>
+      <tbody>${d.students.map((s) => `<tr><td><b>${esc(s.alias || "?")}</b></td>${cols.map((a) => cell(s, a)).join("")}<td><small>${ago(s.seen)}</small></td>
+        <td><button class="link-btn" data-edu="room-remove" data-dev="${esc(s.device)}" data-alias="${esc(s.alias || "")}" aria-label="${tr("Poista oppilas", "Remove student")}">✕</button></td></tr>`).join("")}</tbody>
+      <tfoot><tr><td>${tr("Suorittaneita", "Completed")}</td>${cols.map((a) => `<td>${d.students.filter((s) => s.progress.some((p) => p.course === a.id && p.finished)).length} / ${d.students.length}</td>`).join("")}<td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <p class="note small">${tr("✓ = kurssi suoritettu ja loppukokeen pisteet. Palkki = tehdyt vaiheet. Punainen = palautuspäivä mennyt eikä kurssia ole suoritettu.", "✓ = course completed with the final quiz score. Bar = steps done. Red = the due date has passed and the course isn't completed.")}</p>`;
+  }
+
+  function roomHtml(d) {
+    const assigned = new Map((d.courses || []).map((a) => [a.id, a.due]));
+    return `<div class="room">
+      <div class="room-head">
+        <button class="btn small" data-edu="room-back">← ${tr("Kaikki luokat", "All classes")}</button>
+        <div><h3>${esc(d.name || tr("Nimetön luokka", "Unnamed class"))}</h3>
+          <small>${tr(`${d.students.length} / ${d.seats} oppilasta`, `${d.students.length} / ${d.seats} students`)} · ${tr("voimassa", "valid until")} ${dateFmt(d.valid_until)}</small></div>
+        <div class="room-code"><span>${tr("Luokkakoodi", "Class code")}</span><b class="class-code">${esc(d.code)}</b>
+          <div class="row-actions"><button class="btn small" data-edu="copy-code" data-c="${esc(d.code)}">${tr("Kopioi", "Copy")}</button>
+            <button class="btn small primary" data-edu="show-code">⛶ ${tr("Näytä isona", "Show large")}</button></div></div>
+      </div>
+      <details class="room-assign" ${assigned.size ? "" : "open"}>
+        <summary><b>${tr("Luokan kurssit", "Class courses")}</b> · ${assigned.size ? tr(`${assigned.size} valittu`, `${assigned.size} selected`) : tr("valitse kurssit, jotka luokan pitää suorittaa", "choose the courses the class must complete")}</summary>
+        <p class="note">${tr("Valitut kurssit näkyvät oppilaille Kurssit-sivun alussa järjestyksessä. Palautuspäivä on vapaaehtoinen.", "The selected courses show to students at the top of the Courses page in order. The due date is optional.")}</p>
+        <div class="assign-list">${Courses._courses.map((c) => `<label class="assign-row">
+          <input type="checkbox" data-assign="${c.id}" ${assigned.has(c.id) ? "checked" : ""}>
+          <span><b>${esc(c.title)}</b><small>${esc(c.level)} · ~${c.minutes} min</small></span>
+          <input type="date" data-due="${c.id}" value="${esc(assigned.get(c.id) || "")}" aria-label="${tr("Palautuspäivä", "Due date")}"></label>`).join("")}</div>
+        <div class="row-actions"><button class="btn primary" data-edu="room-save">${tr("Tallenna kurssit", "Save courses")}</button></div>
+      </details>
+      <div class="room-bar"><h4>${tr("Oppilaiden eteneminen", "Student progress")}</h4>
+        <div class="row-actions"><button class="btn small" data-edu="room-refresh">↻ ${tr("Päivitä", "Refresh")}</button>
+          <button class="btn small" data-edu="room-csv" ${d.students.length ? "" : "disabled"}>${tr("Vie CSV", "Export CSV")}</button></div></div>
+      <div id="room-table">${roomTableHtml(d)}</div>
+    </div>`;
+  }
+
+  // Luokkakoodi isona heijastimelle, ohjeineen
+  function showCode(d) {
+    const ov = document.createElement("div");
+    ov.className = "code-overlay";
+    ov.setAttribute("role", "dialog");
+    ov.innerHTML = `<div class="code-box">
+      <p>${tr("1. Avaa", "1. Open")} <b>${esc(location.origin + location.pathname)}</b></p>
+      <p>${tr("2. Mene Kurssit-sivulle ja kirjoita luokkakoodi ja nimimerkki", "2. Go to the Courses page and type the class code and an alias")}</p>
+      <div class="big-code">${esc(d.code.slice(0, 4))} ${esc(d.code.slice(4))}</div>
+      <p class="note">${esc(d.name || "")}</p>
+      <button class="btn primary" data-close>${tr("Sulje", "Close")}</button></div>`;
+    document.body.append(ov);
+    const close = () => ov.remove();
+    ov.onclick = (e) => { if (e.target === ov || e.target.closest("[data-close]")) close(); };
+    ov.querySelector("[data-close]").focus();
+    document.addEventListener("keydown", function esc1(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc1); } });
+  }
+
+  function roomCsv(d) {
+    const cols = roomCourses(d);
+    const head = [tr("Nimimerkki", "Alias"), tr("Viimeksi", "Last seen"), ...cols.map((a) => a.course.title), ...cols.map((a) => `${a.course.title} – ${tr("loppukoe", "final quiz")}`)];
+    const rows = d.students.map((s) => {
+      const ps = cols.map((a) => s.progress.find((p) => p.course === a.id));
+      return [s.alias, s.seen ? new Date(s.seen).toISOString().slice(0, 16).replace("T", " ") : "",
+        ...ps.map((p) => (!p ? "" : p.finished ? "100 %" : Math.round((p.done / (p.steps || 1)) * 100) + " %")),
+        ...ps.map((p) => (p?.score != null ? `${p.score}/${p.score_max ?? ""}` : ""))];
+    });
+    return [head, ...rows].map((l) => l.map(csvCell).join(";")).join("\r\n");
+  }
+
+  function onChange(e) {
+    // Palautuspäivän valinta merkitsee kurssin valituksi
+    const due = e.target.closest("[data-due]");
+    if (due && due.value) { const cb = pageEl.querySelector(`[data-assign="${due.dataset.due}"]`); if (cb) cb.checked = true; }
   }
 
   function rosterHtml() {
@@ -495,6 +659,24 @@ const Education = (() => {
     if (act === "copy") { copyLink(location.origin + location.pathname + "#/course/" + (L ? L.course : b.dataset.c)); return; }
     if (act === "cloud-login") { AccountsUI.showLogin("cloud"); return; }
     if (act === "copy-code") { copyLink(b.dataset.c); return; }
+    if (act === "open-room") { openRoom(b.dataset.c); return; }
+    if (act === "room-back") { loadClasses(pageEl); return; }
+    if (act === "room-refresh" && room) { openRoom(room.code); return; }
+    if (act === "show-code" && room) { showCode(room.data); return; }
+    if (act === "room-csv" && room) { downloadFile(`robolab-${(room.data.name || room.code).replace(/[^\w\-åäöÅÄÖ]+/g, "_").slice(0, 30)}.csv`, "﻿" + roomCsv(room.data), "text/csv"); return; }
+    if (act === "room-save" && room) {
+      const courses = [...pageEl.querySelectorAll("[data-assign]:checked")].map((cb) => ({ id: cb.dataset.assign, due: pageEl.querySelector(`[data-due="${cb.dataset.assign}"]`)?.value || null }));
+      b.disabled = true;
+      Cloud.rpc("set_class_courses", { p_code: room.code, p_courses: courses })
+        .then(() => { toast(tr(`Luokan kurssit tallennettu (${courses.length}). Oppilaat näkevät ne seuraavalla tarkistuksella.`, `Class courses saved (${courses.length}). Students see them at their next check.`)); openRoom(room.code); },
+          (err) => { toast(err.message); b.disabled = false; });
+      return;
+    }
+    if (act === "room-remove" && room) {
+      if (!confirm(tr(`Poistetaanko oppilas "${b.dataset.alias}" luokasta? Hänen etenemisensä poistuu tästä näkymästä ja paikka vapautuu.`, `Remove student "${b.dataset.alias}" from the class? Their progress is removed from this view and the seat is freed.`))) return;
+      Cloud.rpc("remove_student", { p_code: room.code, p_device: b.dataset.dev }).then(() => openRoom(room.code), (err) => toast(err.message));
+      return;
+    }
     if (act === "del-class") {
       if (!confirm(tr(`Poistetaanko luokkakoodi ${b.dataset.c}? Oppilaiden Education-taso päättyy, kun heidän laitteensa seuraavan kerran tarkistaa koodin.`, `Delete class code ${b.dataset.c}? Students lose the Education plan the next time their device checks the code.`))) return;
       Cloud.rpc("delete_class", { p_code: b.dataset.c }).then(() => loadClasses(e.currentTarget || document.querySelector("#content")), (err) => toast(err.message)).finally(() => loadClasses(document.querySelector("#content")));
@@ -531,6 +713,7 @@ const Education = (() => {
 
   /* ===== Oppilaan puoli: palautus Kurssit-sivulla ===== */
   function studentCardHtml() {
+    if (window.Plans?.classInfo?.()) return ""; // luokkahuoneessa eteneminen menee opettajalle automaattisesti
     const c = readClass();
     return `<section class="card class-card" aria-labelledby="cls-title">
       <h2 id="cls-title">${tr("Palauta edistyminen opettajalle", "Hand in progress to the teacher")}</h2>
@@ -553,7 +736,7 @@ const Education = (() => {
     };
   }
 
-  TOOL_IMPL.teach = { render };
+  TOOL_IMPL.teach = { render, unmount() { clearInterval(roomTimer); } };
 
   return { LESSONS, parseProgress, buildProgress, toCsv, csvCell, studentCardHtml, bindStudentCard, teacherDoc, worksheetDoc, solutionsDoc };
 })();
