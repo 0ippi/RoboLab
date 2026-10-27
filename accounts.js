@@ -32,18 +32,16 @@ const Accounts = (() => {
     return ses === a || ls.getItem(REMEMBER) === a;
   }
 
-  // Nykyisen käyttäjän tiedot talteen omaan nimiavaruuteensa. Kopio tehdään ensin, poisto vasta kun kaikki on tallessa.
-  function stash(id) {
+  // Nykyisen käyttäjän tiedot talteen omaan nimiavaruuteensa. Avaimet siirretään yksi kerrallaan
+  // (kopio ja heti perään alkuperäisen poisto), jotta tallennustila ei koskaan tarvitse kahta kopiota kaikesta.
+  // prune: poistetaan nimiavaruudesta avaimet, joita käyttäjällä ei enää ole (ei peruutuksessa).
+  function stash(id, prune = true) {
     const keys = userKeys();
-    for (const k of keys) ls.setItem(NS + id + ":" + k, ls.getItem(k));
-    const live = new Set(keys.map((k) => NS + id + ":" + k));
-    for (const k of nsKeys(id)) if (!live.has(k)) ls.removeItem(k);
-    for (const k of keys) ls.removeItem(k);
+    if (prune) { const live = new Set(keys.map((k) => NS + id + ":" + k)); for (const k of nsKeys(id)) if (!live.has(k)) ls.removeItem(k); }
+    for (const k of keys) { ls.setItem(NS + id + ":" + k, ls.getItem(k)); ls.removeItem(k); }
   }
   function unstash(id) {
-    const keys = nsKeys(id);
-    for (const k of keys) ls.setItem(k.slice((NS + id + ":").length), ls.getItem(k));
-    for (const k of keys) ls.removeItem(k);
+    for (const k of nsKeys(id)) { ls.setItem(k.slice((NS + id + ":").length), ls.getItem(k)); ls.removeItem(k); }
   }
   function switchTo(id) {
     const from = active();
@@ -51,10 +49,18 @@ const Accounts = (() => {
     // Uusi tai tyhjä käyttäjä saa saman kielen kuin edellinen, ettei kirjautumisnäkymä vaihda kieltä
     let lang = null;
     try { lang = JSON.parse(ls.getItem("robolab-settings-v1"))?.language; } catch {}
-    stash(from);
-    unstash(id);
-    if (lang && !ls.getItem("robolab-settings-v1")) ls.setItem("robolab-settings-v1", JSON.stringify({ language: lang }));
-    ls.setItem(ACTIVE, id);
+    let stage = 0;
+    try {
+      stash(from); stage = 1;
+      unstash(id); stage = 2;
+      if (lang && !ls.getItem("robolab-settings-v1")) ls.setItem("robolab-settings-v1", JSON.stringify({ language: lang }));
+      ls.setItem(ACTIVE, id);
+    } catch (e) {
+      // Peruutus: kohdekäyttäjän jo palautetut avaimet takaisin hänen nimiavaruuteensa ja lähtijän tiedot paikalleen.
+      // Aktiivinen käyttäjä vaihtuu vain onnistuneessa siirrossa, joten kenenkään tietoja ei sekoiteta.
+      try { if (stage >= 1) stash(id, false); unstash(from); } catch {}
+      throw new Error("storage");
+    }
   }
 
   function markSession(id, remember) {
@@ -65,19 +71,22 @@ const Accounts = (() => {
   /* Salasana: PBKDF2 (SHA-256) WebCryptolla. Suojaa vain saman koneen muilta käyttäjiltä, ei koneen ylläpitäjältä. */
   const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
   const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  async function hash(password, salt) {
+  // Vanhat salasanat on tiivistetty 150 000 kierroksella; uudet tallentavat kierrosmäärän tiliin
+  const ITER_OLD = 150000, ITER = 310000;
+  async function hash(password, salt, iterations = ITER_OLD) {
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-    return b64(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 150000 }, key, 256));
+    return b64(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256));
   }
   async function setPassword(acc, password) {
-    if (!password) { delete acc.salt; delete acc.hash; return; }
+    if (!password) { delete acc.salt; delete acc.hash; delete acc.iter; return; }
     const salt = crypto.getRandomValues(new Uint8Array(16));
     acc.salt = b64(salt);
-    acc.hash = await hash(password, salt);
+    acc.iter = ITER;
+    acc.hash = await hash(password, salt, ITER);
   }
   async function verify(acc, password) {
     if (!acc.hash) return true;
-    return (await hash(password || "", unb64(acc.salt))) === acc.hash;
+    return (await hash(password || "", unb64(acc.salt), acc.iter || ITER_OLD)) === acc.hash;
   }
 
   async function create({ name, password, avatar, remember = true }) {
@@ -140,12 +149,39 @@ const Accounts = (() => {
     return { format: BACKUP_FORMAT, version: 1, exported: new Date().toISOString(),
       profile: acc ? { name: acc.name, avatar: acc.avatar, bio: acc.bio || "", created: acc.created } : null, data };
   }
+  // Tuodun tiedoston oma palkkiofunktion koodi ei saa käynnistyä itsestään: nn.js kysyy ensin luvan
+  function distrustCode(json) {
+    const s = JSON.parse(json);
+    for (const p of Object.values(s.projects || {})) for (const k of ["nn2d", "nn3d"]) {
+      const t = p?.tools?.[k];
+      if (t && typeof t.taskCode === "string") t.taskCodeUntrusted = true;
+    }
+    return JSON.stringify(s);
+  }
   function importData(obj) {
     if (!obj || obj.format !== BACKUP_FORMAT || !obj.data || typeof obj.data !== "object") throw new Error("format");
     if (obj.version > 1) throw new Error("version");
     const entries = Object.entries(obj.data).filter(([k, v]) => isUserKey(k) && !NO_EXPORT.has(k) && typeof v === "string");
-    for (const k of userKeys()) if (!NO_EXPORT.has(k)) ls.removeItem(k);
-    for (const [k, v] of entries) ls.setItem(k, v);
+    // Pääavainten muoto tarkistetaan ennen kuin mitään poistetaan
+    const data = Object.fromEntries(entries);
+    try {
+      if (data["robolab-projects-v1"] != null) {
+        const p = JSON.parse(data["robolab-projects-v1"]);
+        if (!p || typeof p.projects !== "object" || !Object.keys(p.projects).length) throw 0;
+        data["robolab-projects-v1"] = distrustCode(data["robolab-projects-v1"]);
+      }
+      if (data["robolab-library-v1"] != null) { const l = JSON.parse(data["robolab-library-v1"]); if (!l || typeof l !== "object" || Array.isArray(l)) throw 0; }
+    } catch { throw new Error("format"); }
+    // Vanhat tiedot muistiin: jos tallennustila loppuu kesken, ne palautetaan
+    const old = userKeys().filter((k) => !NO_EXPORT.has(k)).map((k) => [k, ls.getItem(k)]);
+    try {
+      for (const [k] of old) ls.removeItem(k);
+      for (const [k, v] of Object.entries(data)) ls.setItem(k, v);
+    } catch {
+      for (const k of userKeys()) if (!NO_EXPORT.has(k)) ls.removeItem(k);
+      for (const [k, v] of old) try { ls.setItem(k, v); } catch {}
+      throw new Error("storage");
+    }
     const p = obj.profile;
     if (p && current()) update({ name: String(p.name || current().name).slice(0, 40), avatar: p.avatar || current().avatar, bio: String(p.bio || "").slice(0, 300) });
     return entries.length;

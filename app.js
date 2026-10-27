@@ -2,7 +2,7 @@
 
 const VERSION = ROBOLAB_RELEASES[0].version; // version.js
 const $ = (sel, root = document) => root.querySelector(sel);
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ===== Ikonit ===== */
 const ICONS = {
@@ -37,6 +37,7 @@ const ICONS = {
   keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>',
   chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 10h6v4H9zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
 };
 const icon = (name) => `<svg class="ico" viewBox="0 0 24 24">${ICONS[name] || ""}</svg>`;
@@ -52,6 +53,8 @@ const TOOLS = [
   { id: "dashboard", group: G.general, name: tr("Kojelauta", "Dashboard"), icon: "dashboard", desc: tr("Yleiskatsaus kaikkiin työkaluihin.", "Overview of all tools.") },
   { id: "learn", group: G.general, name: tr("Kurssit", "Courses"), icon: "book", status: "ready",
     desc: tr("Opi robotiikkaa vaihe vaiheelta oikeilla työkaluilla — tekoälyopettaja auttaa.", "Learn robotics step by step with the real tools — an AI tutor helps.") },
+  { id: "teach", group: G.general, name: tr("Opettajille", "For teachers"), icon: "cap", status: "ready",
+    desc: tr("Valmiit oppitunnit, tulostettavat monisteet ja ratkaisut sekä luokan edistyminen ilman oppilastilejä.", "Ready-made lessons, printable worksheets and solutions, and class progress without student accounts.") },
   { id: "projects", group: G.general, name: tr("Projektit", "Projects"), icon: "folder", status: "ready",
     desc: tr("Jokainen projekti tallentaa työkalujen syötteet erikseen. Vie ja tuo JSON-tiedostona.", "Each project stores tool inputs separately. Export and import as JSON.") },
   // Profiili avataan sivupalkin alaosan käyttäjästä, ei näy työkalulistoissa (account-ui.js)
@@ -67,7 +70,7 @@ const TOOLS = [
   { id: "power", group: G.design, name: tr("Sähköjärjestelmä", "Power system"), icon: "battery", status: "ready",
     desc: tr("Akun käyttöaika, virrat, säädin, johdot ja moottoriohjaimen rajat.", "Battery runtime, currents, regulator, wiring and motor driver limits.") },
 
-  { id: "fk", group: G.arm, name: tr("Eteenpäin kinematiikka", "Forward kinematics"), icon: "arm", status: "ready",
+  { id: "fk", group: G.arm, name: tr("Suora kinematiikka", "Forward kinematics"), icon: "arm", status: "ready",
     desc: tr("Liikuta niveliä ja näe, mihin robottikäsivarren työkalu päätyy.", "Move the joints and see where the arm's tool ends up.") },
   { id: "ik", group: G.arm, name: tr("Käänteiskinematiikka", "Inverse kinematics"), icon: "target", status: "ready",
     desc: tr("Raahaa kohdetta — nivelkulmat ratkaistaan automaattisesti.", "Drag the target — joint angles are solved automatically.") },
@@ -125,9 +128,9 @@ const AI_MODELS = [
 
 // Ilmaisen Voltin mallit (WebLLM): [asetuksen arvo, mallin perusnimi, nimi asetuksissa]
 const VOLT_MODELS = [
-  ["qwen0.5", "Qwen2.5-0.5B-Instruct", tr("Kevyt — noin 0,4 Gt, nopein", "Light — about 0.4 GB, fastest")],
-  ["qwen1.5", "Qwen2.5-1.5B-Instruct", tr("Normaali — noin 1 Gt (suositus)", "Normal — about 1 GB (recommended)")],
-  ["qwen3", "Qwen2.5-3B-Instruct", tr("Paras — noin 2 Gt, vaatii tehokkaan koneen", "Best — about 2 GB, needs a powerful computer")],
+  ["qwen0.5", "Qwen2.5-0.5B-Instruct", tr("Kevyt — noin 0,4 Gt, nopein (vastaa englanniksi)", "Light — about 0.4 GB, fastest")],
+  ["qwen1.5", "Qwen2.5-1.5B-Instruct", tr("Normaali — noin 1 Gt, suositus (vastaa englanniksi)", "Normal — about 1 GB (recommended)")],
+  ["qwen3", "Qwen2.5-3B-Instruct", tr("Paras — noin 2 Gt, vaatii tehokkaan koneen (vastaa englanniksi)", "Best — about 2 GB, needs a powerful computer")],
   ["off", "", tr("Pois — vain paikallinen opas", "Off — local guide only")],
 ];
 
@@ -198,7 +201,9 @@ const SECTIONS = [
     { key: "confirmReset", label: tr("Vahvista nollaukset", "Confirm resets"), desc: tr("Kysy ennen kuin simulaatio tai tiedot nollataan.", "Ask before a simulation or data is reset."), type: "toggle", default: true },
   ]},
   { id: "shortcuts", title: tr("Pikanäppäimet", "Keyboard shortcuts"), desc: tr("Näppäinoikotiet koko sovelluksessa. Paina ? missä tahansa nähdäksesi listan.", "Shortcuts across the app. Press ? anywhere to see this list."), custom: "shortcuts" },
-  { id: "data", title: tr("Tallennus ja tiedot", "Saving & data"), desc: tr("Asetukset tallennetaan tähän selaimeen.", "Settings are stored in this browser."), custom: "data", fields: [
+  { id: "data", title: tr("Tallennus ja tiedot", "Saving & data"),
+    desc: tr("Kaikki tietosi (projektit, kurssien eteneminen, omat robotit, asetukset, käyttäjätilit ja mahdollinen API-avain) tallentuvat vain tähän selaimeen tällä laitteella. RoboLab ei lähetä niitä mihinkään eikä käytä analytiikkaa, mainoksia tai seurantaa. Poikkeus: jos lisäät Claude API -avaimen, Voltille kirjoittamasi viestit (ja halutessasi avoimen työkalun arvot) lähetetään Anthropicille vastausta varten. Tallennus ei ole salattu: kuka tahansa tämän laitteen käyttäjä voi lukea sen selaimen kehitystyökaluilla. Jos tyhjennät selaimen tiedot tai käytät yksityistä ikkunaa, tiedot katoavat — tee siis varmuuskopio profiilista tai vie tärkeät projektit tiedostoiksi.",
+      "All your data (projects, course progress, your robots, settings, user accounts and any API key) is stored only in this browser on this device. RoboLab doesn't send it anywhere and uses no analytics, ads or tracking. Exception: if you add a Claude API key, the messages you write to Volt (and, if you allow it, the open tool's values) are sent to Anthropic to get an answer. The storage is not encrypted: anyone using this device can read it with the browser's developer tools. If you clear the browser's data or use a private window, the data is lost — so make a backup from your profile or export important projects as files."), custom: "data", fields: [
     { key: "autosave", label: tr("Tallenna automaattisesti", "Save automatically"), desc: tr("Muutokset tallentuvat heti.", "Changes are saved immediately."), type: "toggle", default: true },
     { key: "startPage", label: tr("Aloitussivu", "Start page"), type: "select", default: "dashboard", options: [["last", tr("Viimeksi avattu", "Last opened")], ...TOOLS.map((t) => [t.id, t.name])] },
   ]},
@@ -322,17 +327,31 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const newProject = (name) => ({ id: uid(), name, created: Date.now(), updated: Date.now(), notes: "", tools: {} });
 
 let projects = (() => {
+  let raw = null;
   try {
-    const s = JSON.parse(localStorage.getItem(PROJ_KEY));
-    if (s && s.version === PROJECT_VERSION && s.projects[s.active]) return s;
+    raw = localStorage.getItem(PROJ_KEY);
+    const s = JSON.parse(raw);
+    if (s && s.version === PROJECT_VERSION && s.projects && typeof s.projects === "object") {
+      // Korjataan puuttuva aktiivinen projekti tai työkalulohko sen sijaan, että kaikki projektit korvattaisiin uudella
+      for (const [id, p] of Object.entries(s.projects)) {
+        if (!p || typeof p !== "object") { delete s.projects[id]; continue; }
+        if (!p.tools || typeof p.tools !== "object") p.tools = {};
+        p.id = id; p.name = String(p.name || tr("Nimetön projekti", "Untitled project"));
+      }
+      const ids = Object.keys(s.projects);
+      if (ids.length) { if (!s.projects[s.active]) s.active = ids[0]; return s; }
+    }
   } catch {}
+  // Lukukelvoton tallennus säilytetään omaan avaimeensa, ettei seuraava tallennus pyyhi sitä lopullisesti
+  if (raw) try { localStorage.setItem(PROJ_KEY + "-broken-" + Date.now(), raw); } catch {}
   const p = newProject(tr("Oma projekti", "My project"));
   return { version: PROJECT_VERSION, active: p.id, projects: { [p.id]: p } };
 })();
 
+// Palauttaa false, jos tallennus epäonnistui (yleensä selaimen tallennustila täynnä)
 function saveProjects() {
-  try { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); markSaved(true); }
-  catch { markSaved(false); }
+  try { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); markSaved(true); return true; }
+  catch { markSaved(false); return false; }
 }
 
 // Tallennuksen tila tilarivillä: käyttäjä näkee, että muutokset ovat tallessa (tai että tallennus epäonnistui)
@@ -351,7 +370,15 @@ function saveStatusHtml() {
 const activeProject = () => projects.projects[projects.active];
 
 function getToolState(id, defaults) {
-  return { ...defaults, ...(activeProject().tools[id] || {}) };
+  const saved = activeProject().tools[id] || {};
+  const out = { ...defaults, ...saved };
+  // Kentät, joiden oletus on luku, pidetään lukuina: tuodusta tiedostosta tullut teksti päätyisi muuten HTML:ään
+  for (const k in defaults) {
+    if (typeof defaults[k] !== "number" || !(k in saved) || saved[k] === null || typeof saved[k] === "number") continue;
+    const v = Number(saved[k]);
+    out[k] = Number.isFinite(v) ? v : defaults[k];
+  }
+  return out;
 }
 // opts.undo === false: tallennetaan ilman kumoamisaskelta (esim. koulutuksen tulos joka sukupolven jälkeen)
 function saveToolState(id, state, opts = {}) {
@@ -454,13 +481,13 @@ function fieldsHtml(fields, state, showAdv) {
     const v = state[f.key];
     let ctl;
     if (f.type === "select") {
-      ctl = `<select data-f="${f.key}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(v) === String(val) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
+      ctl = `<select data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(v) === String(val) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
     } else if (f.type === "toggle") {
-      ctl = `<label class="switch"><input type="checkbox" data-f="${f.key}" ${v ? "checked" : ""}><span></span></label>`;
+      ctl = `<label class="switch"><input type="checkbox" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" ${v ? "checked" : ""}><span></span></label>`;
     } else {
       const shown = +(v / factor).toPrecision(6);
-      const slider = f.type === "slider" ? `<input type="range" data-f="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">` : "";
-      ctl = `${slider}<span class="num"><input type="number" data-f="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">${unit ? `<i>${unit}</i>` : ""}</span>`;
+      const slider = f.type === "slider" ? `<input type="range" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">` : "";
+      ctl = `${slider}<span class="num"><input type="number" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">${unit ? `<i>${unit}</i>` : ""}</span>`;
     }
     // info: pidempi selitys "?"-napin takana (mitä arvo tarkoittaa, tyypilliset arvot)
     const info = f.info ? `<button type="button" class="info-btn" data-info aria-expanded="false" aria-label="${tr("Selitys", "Explanation")}: ${esc(stripTags(f.label))}">?</button>` : "";
@@ -865,6 +892,13 @@ function router() {
     route = settings.startPage === "last" ? (localStorage.getItem("robolab-last") || "dashboard") : settings.startPage;
     history.replaceState(null, "", "#/" + route);
   }
+  // Oppilaslinkki #/course/<kurssi> avaa kurssin suoraan (opettaja jakaa sen Opettajille-sivulta)
+  const deep = route.match(/^course\/([\w-]+)$/);
+  if (deep) {
+    history.replaceState(null, "", "#/learn");
+    setTimeout(() => window.Courses?.start(deep[1]), 0);
+    route = "learn";
+  }
   let tool = TOOLS.find((t) => t.id === route);
   if (route !== "settings" && !tool) {
     route = "dashboard";
@@ -911,6 +945,9 @@ const GOALS = {
   learn: { name: tr("Opiskelen robotiikkaa", "I'm learning robotics"), desc: tr("Aloita perusteista ja kokeile, miten asiat toimivat.", "Start from the basics and see how things work."),
     tools: [["learn", tr("Ohjatut kurssit: paras tapa aloittaa", "Guided courses: the best way to start")], ["fk", tr("Näe, miten nivelkulmat liikuttavat käsivartta", "See how joint angles move an arm")], ["pid", tr("Opi säätötekniikan perusta liukusäätimillä", "Learn the basics of control with sliders")],
             ["path", tr("Katso reittihakualgoritmit animaationa", "Watch path-finding algorithms animate")], ["rot", tr("Ymmärrä kvaterniot ja Euler-kulmat", "Understand quaternions and Euler angles")]] },
+  teach: { name: tr("Opetan robotiikkaa", "I teach robotics"), desc: tr("Valmiit oppitunnit, monisteet ja luokan edistyminen ilman oppilastilejä.", "Ready lessons, worksheets and class progress without student accounts."),
+    tools: [["teach", tr("Kolme valmista oppituntia opettajan ohjeineen ja monisteineen", "Three ready lessons with teacher guides and worksheets")], ["learn", tr("Kymmenen kurssia, jotka toimivat itsenäisinä oppitunteina", "Ten courses that work as stand-alone lessons")],
+            ["build2d", tr("Oppilaat rakentavat oman robotin", "Students build their own robot")], ["pid", tr("Säätötekniikka kokeilemalla", "Control engineering by experimenting")]] },
   build: { name: tr("Rakennan robottia", "I'm building a robot"), desc: tr("Mitoita osat, laske virrat ja testaa oikealla laitteella.", "Size parts, compute currents and test real hardware."),
     tools: [["motor", tr("Riittävätkö moottorit robotillesi?", "Are your motors strong enough?")], ["power", tr("Kauanko akku kestää ja riittääkö säädin?", "How long does the battery last?")],
             ["serial", tr("Piirrä anturidata suoraan mikrokontrollerista", "Plot sensor data straight from your board")], ["sim2d", tr("Testaa ohjauslogiikka ennen oikeaa robottia", "Test control logic before the real robot")]] },
@@ -935,13 +972,17 @@ function dashboardPage() {
       <div class="goal-list">
         ${Object.entries(GOALS).map(([k, v]) => `<button class="goal" data-goal="${k}"><b>${v.name}</b><small>${v.desc}</small></button>`).join("")}
       </div>
+      <div class="first-step">
+        <button class="btn primary" data-resume="start">▶ ${tr("Aloita ensimmäinen kurssi: Miten robotti toimii (15 min)", "Start the first course: How a robot works (15 min)")}</button>
+        <span class="note">${tr("Ei vaadi ohjelmointia eikä tiliä. Robotti-opas neuvoo vaihe kerrallaan.", "No programming or account needed. A robot guide helps you step by step.")}</span>
+      </div>
       <button class="link-btn" data-goal="skip">${tr("Ohita — näytä vain kaikki työkalut", "Skip — just show all tools")}</button>
     </section>` : "";
   const rec = g && GOALS[g] ? `
     <h2 class="section-title">${tr("Suositellut sinulle", "Recommended for you")} · ${GOALS[g].name} <button class="link-btn" data-goal="reset" style="margin-left:8px">${tr("vaihda", "change")}</button></h2>
     <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${GOALS[g].tools.map(([id, why]) => card(byId(id), why)).join("")}</div>` : "";
   // Kurssinosto: kesken oleva kurssi jatketaan yhdellä klikkauksella
-  const ac = window.Courses?.active();
+  const ac = window.Courses?.resumable?.() || window.Courses?.active();
   const courseHtml = `
     <button class="card course-banner" ${ac ? `data-resume="${ac.id}"` : `data-learn`}>
       <div class="card-icon">${icon("book")}</div>
@@ -974,6 +1015,9 @@ function dashboardPage() {
     ${rec}${favHtml}${recentHtml}
     <h2 class="section-title">${tr("Kaikki työkalut", "All tools")} (${tools.length})</h2>
     <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${tools.map((t) => card(t)).join("")}</div>
+    <p class="note dash-links">${tr("Ohjeet ja tunnetut rajoitukset", "Docs and known limitations")}: <a href="https://github.com/0ippi/RoboLab#readme" target="_blank" rel="noopener">README</a>
+      · <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ilmoita ongelmasta tai ehdota parannusta", "Report a problem or suggest an improvement")}</a>
+      · ${tr("Tietosi pysyvät tässä selaimessa", "Your data stays in this browser")} (<a href="#/settings">${tr("lue lisää", "read more")}</a>)</p>
   `;
 }
 
@@ -1066,16 +1110,16 @@ function rowHtml(f) {
   let ctl = "";
   switch (f.type) {
     case "toggle":
-      ctl = `<label class="switch"><input type="checkbox" data-key="${f.key}" ${v ? "checked" : ""}><span></span></label>`;
+      ctl = `<label class="switch"><input type="checkbox" data-key="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" ${v ? "checked" : ""}><span></span></label>`;
       break;
     case "select":
-      ctl = `<select data-key="${f.key}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(v) === String(val) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
+      ctl = `<select data-key="${f.key}" aria-label="${esc(String(f.label ?? f.key))}">${f.options.map(([val, lab]) => `<option value="${esc(val)}" ${String(v) === String(val) ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select>`;
       break;
     case "range":
-      ctl = `<input type="range" data-key="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}"><span class="range-val" id="rv-${f.key}">${f.fmt(+v)}</span>`;
+      ctl = `<input type="range" data-key="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}"><span class="range-val" id="rv-${f.key}">${f.fmt(+v)}</span>`;
       break;
     case "number":
-      ctl = `<input type="number" data-key="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}">${f.suffix ? `<span class="range-val" style="min-width:0">${f.suffix}</span>` : ""}`;
+      ctl = `<input type="number" data-key="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${v}">${f.suffix ? `<span class="range-val" style="min-width:0">${f.suffix}</span>` : ""}`;
       break;
     case "swatches":
       ctl = `<div class="swatches">${ACCENTS.map((c) => `<button class="swatch ${c ? "" : "auto"} ${v === c ? "active" : ""}" data-accent="${c}" style="${c ? "background:" + c : ""}" title="${c || tr("Teeman oletus", "Theme default")}" aria-label="${c || tr("Teeman oletus", "Theme default")}"></button>`).join("")}</div>`;
@@ -1432,6 +1476,12 @@ $("#scrim").onclick = () => $("#app").classList.remove("mobile-open");
 // Tekstikentässä Ctrl+Z kuuluu selaimelle (tekstin kumoaminen); liukusäätimet ja valinnat eivät ole tekstikenttiä
 const isTextField = (el) => el?.tagName === "TEXTAREA"
   || (el?.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "file", "color"].includes(el.type));
+
+// Kirjautumisnäkymän ollessa auki sovelluksen pikanäppäimet eivät saa toimia (esim. Ctrl+E veisi lukitun käyttäjän projektin).
+// Kaappausvaiheessa pysäytetään vain leviäminen, joten kirjautumiskentän kirjoittaminen ja liittäminen toimivat.
+document.addEventListener("keydown", (e) => {
+  if (document.body.classList.contains("acc-locked") && (e.ctrlKey || e.metaKey || e.altKey || !e.target.closest?.(".acc-gate"))) e.stopImmediatePropagation();
+}, true);
 
 let gPressed = 0;
 document.addEventListener("keydown", (e) => {

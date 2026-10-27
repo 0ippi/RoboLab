@@ -10,10 +10,14 @@ const Library = (() => {
   const load = () => { try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && typeof d === "object") return d; } catch {} return {}; };
   const store = (d) => { try { localStorage.setItem(KEY, JSON.stringify(d)); return true; } catch { toast(tr("Tallennus epäonnistui: selaimen muisti on täynnä.", "Saving failed: browser storage is full.")); return false; } };
   const uid = () => Math.random().toString(36).slice(2, 10);
+  // Rikkinäiset merkinnät (esim. käsin muokatusta varmuuskopiosta) ohitetaan, etteivät ne kaada valitsimia
+  const valid = (kind, x) => !!x && typeof x.id === "string" && typeof x.name === "string" && !!x.data && typeof x.data === "object"
+    && (kind !== "arm" || Array.isArray(x.data.chain?.joints));
+  const items = (kind) => { const a = load()[kind]; return Array.isArray(a) ? a.filter((x) => valid(kind, x)) : []; };
 
   return {
-    list: (kind) => (load()[kind] || []).slice().sort((a, b) => a.name.localeCompare(b.name, LANG)),
-    get: (kind, id) => (load()[kind] || []).find((x) => x.id === id) || null,
+    list: (kind) => items(kind).sort((a, b) => a.name.localeCompare(b.name, LANG)),
+    get: (kind, id) => items(kind).find((x) => x.id === id) || null,
     add(kind, name, data) {
       const d = load(), item = { id: uid(), name: String(name).slice(0, 80), data: JSON.parse(JSON.stringify(data)), saved: new Date().toISOString() };
       (d[kind] ||= []).push(item);

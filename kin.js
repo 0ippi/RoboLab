@@ -277,6 +277,11 @@ const Kin = (() => {
     x -= (chain.base || {}).a || 0;
     const a1 = j1.a, a2 = j2.a;
     const r2 = x * x + y * y;
+    // Nollapituinen linkki: käytännössä 1R-ketju, jonka kärki on etäisyydellä a1 + a2. Toinen kulma ei vaikuta.
+    if (a1 * a2 === 0) {
+      const L = abs(a1 + a2);
+      return { q: [wrap(atan2(y, x) - j1.theta), wrap(-j2.theta)], reachable: abs(sqrt(r2) - L) < 1e-6 * Math.max(1, L) };
+    }
     let c2 = (r2 - a1 * a1 - a2 * a2) / (2 * a1 * a2);
     const reachable = c2 >= -1 - 1e-12 && c2 <= 1 + 1e-12;
     c2 = clamp(c2, -1, 1);

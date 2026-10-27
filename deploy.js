@@ -4,6 +4,9 @@
 
 RS.DEPLOY_HZ = 60; // simulaation ohjaustaajuus: aivot ajetaan kerran fysiikka-askelta kohden
 
+// Nimet päätyvät generoidun koodin kommentteihin: rivinvaihto tai kommentin loppu toisi nimestä suoritettavaa koodia
+RS.commentSafe = (s) => String(s ?? '').replace(/[\r\n\u2028\u2029]+/g, ' ').replace(/\*\//g, '* /');
+
 // Sisääntulojen ja ulostulojen kuvaus normalisoidusta mallista. Järjestys on sama kuin robot.js / robot3d.js observe().
 // Jokaisella sisääntulolla: id (koodin vakio), name, how (mittausohje) ja f (miten raaka-arvo M muunnetaan).
 RS.deployInfo = function (dim, m) {
@@ -11,7 +14,7 @@ RS.deployInfo = function (dim, m) {
   const joints = m.joints.filter((j) => j.motor !== false);
   const feet = m.bodies.filter((b) => b.foot);
   const rad = (d) => (d * Math.PI) / 180;
-  const jname = (j) => j.name || `${j.a}–${j.b}`;
+  const jname = (j) => RS.commentSafe(j.name || `${j.a}–${j.b}`);
   const inputs = [];
   const add = (id, name, how, f) => inputs.push({ id, name, how, f });
 
@@ -45,7 +48,7 @@ RS.deployInfo = function (dim, m) {
     add(`M${i}_SPEED`, tr(`Nivelen ${jname(j)} nopeus`, `Joint ${jname(j)} speed`),
       tr(`rad/s jaettuna maksiminopeudella ${j.speed ?? 6} rad/s, rajattu −1…1.`, `rad/s divided by the top speed ${j.speed ?? 6} rad/s, clamped to −1…1.`), { k: 'clamp', s: 1 / (j.speed ?? 6) });
   });
-  feet.forEach((b, i) => add(`FOOT${i}`, tr(`Osa ${b.id} koskettaa maata`, `Part ${b.id} touches the ground`),
+  feet.forEach((b, i) => add(`FOOT${i}`, tr(`Osa ${RS.commentSafe(b.id)} koskettaa maata`, `Part ${RS.commentSafe(b.id)} touches the ground`),
     tr('Kosketuskytkin tai voima-anturi: 1 = koskettaa maata, 0 = ilmassa.', 'Touch switch or force sensor: 1 = touching the ground, 0 = in the air.'), { k: 'raw' }));
 
   if (is3d) {
@@ -62,7 +65,8 @@ RS.deployInfo = function (dim, m) {
   }
   add('PHASE_SIN', tr('Rytmi, sin', 'Rhythm, sin'), tr('sin(2π·t), t = sekunteja käynnistyksestä. Koodi laskee tämän itse.', 'sin(2π·t), t = seconds since start. The code computes this itself.'), { k: 'phase', fn: 'sin' });
   add('PHASE_COS', tr('Rytmi, cos', 'Rhythm, cos'), tr('cos(2π·t). Koodi laskee tämän itse.', 'cos(2π·t). The code computes this itself.'), { k: 'phase', fn: 'cos' });
-  const tHow = tr('Kohteen suunta robotin koordinaateissa, metreinä. 0, jos tehtävässä ei ole kohdetta.', 'Direction to the target in robot coordinates, in metres. 0 if the task has no target.');
+  const tHow = is3d ? tr('Kohteen suunta robotin koordinaateissa, metreinä. 0, jos tehtävässä ei ole kohdetta.', 'Direction to the target in robot coordinates, in metres. 0 if the task has no target.')
+    : tr('Kohteen etäisyys vaaka- ja pystysuunnassa maailman koordinaateissa (ei käänny rungon mukana), metreinä. 0, jos tehtävässä ei ole kohdetta.', 'Offset to the target horizontally and vertically in world coordinates (not rotated with the body), in metres. 0 if the task has no target.');
   if (is3d) {
     add('TARGET_X', tr('Kohde eteen', 'Target forward'), tHow, { k: 'tanh', s: 1 / 3 });
     if (m.target) add('TARGET_Y', tr('Kohde ylös', 'Target up'), tHow, { k: 'tanh', s: 1 / 3 });
@@ -80,11 +84,11 @@ RS.deployInfo = function (dim, m) {
       ? { id: `M${i}`, name: jname(j), mode: 'position', lo: rad(j.lower), hi: rad(j.upper), speed,
         how: tr(`Servo: tavoitekulma ${j.lower}°…${j.upper}° (−1 → ${j.lower}°, 1 → ${j.upper}°). Simulaatiossa kulma muuttuu enintään ${speed} rad/s.`, `Servo: target angle ${j.lower}°…${j.upper}° (−1 → ${j.lower}°, 1 → ${j.upper}°). In the simulation the angle changes at most ${speed} rad/s.`) }
       : { id: `M${i}`, name: jname(j), mode: 'velocity', speed, torque: is3d ? j.strength ?? 10 : j.torque ?? 10,
-        how: tr(`Moottori: nopeus −1…1 × ${speed} rad/s (≈ ${Math.round(speed * 60 / (2 * Math.PI))} rpm). Simulaation maksimivääntö ${is3d ? j.strength ?? 10 : j.torque ?? 10}.`, `Motor: speed −1…1 × ${speed} rad/s (≈ ${Math.round(speed * 60 / (2 * Math.PI))} rpm). Simulation max torque ${is3d ? j.strength ?? 10 : j.torque ?? 10}.`) };
+        how: tr(`Moottori: nopeus −1…1 × ${speed} rad/s (≈ ${Math.round(speed * 60 / (2 * Math.PI))} rpm). Simulaation maksimivääntö ${is3d ? j.strength ?? 10 : j.torque ?? 10} N·m.`, `Motor: speed −1…1 × ${speed} rad/s (≈ ${Math.round(speed * 60 / (2 * Math.PI))} rpm). Simulation max torque ${is3d ? j.strength ?? 10 : j.torque ?? 10} N·m.`) };
   });
   // Roottorit (droonin potkurit): ulostulo −1…1 → työntövoima 0…100 %
   (m.thrusters || []).forEach((t, i) => outputs.push({
-    id: `T${i}`, name: tr(`roottori ${i + 1} (${t.body})`, `rotor ${i + 1} (${t.body})`), mode: 'thrust',
+    id: `T${i}`, name: tr(`roottori ${i + 1} (${RS.commentSafe(t.body)})`, `rotor ${i + 1} (${RS.commentSafe(t.body)})`), mode: 'thrust',
     how: tr('Roottori: −1 → ei työntöä, 0 → puolet, 1 → täysi työntövoima. Simulaatiossa puolet kaikista roottoreista kannattelee robotin painon.', 'Rotor: −1 → no thrust, 0 → half, 1 → full thrust. In the simulation half of all rotors carries the robot\'s weight.'),
   }));
   return { dim, inputs, outputs, hz: RS.DEPLOY_HZ };
@@ -122,8 +126,10 @@ RS.deployCode = function (target, o) {
   const base = String(o.name || 'robotti').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'robotti';
   const date = new Date().toISOString().slice(0, 10);
   const head = [
-    `RoboLab: ${o.name || ''} (${o.dim.toUpperCase()}), ${tr('tehtävä', 'task')}: ${o.task || '–'}, ${tr('sukupolvi', 'generation')} ${o.gen ?? 0}${o.fitness != null ? `, ${tr('paras pistemäärä', 'best score')} ${(+o.fitness).toFixed(1)}` : ''}. ${date}`,
+    `RoboLab: ${RS.commentSafe(o.name)} (${o.dim.toUpperCase()}), ${tr('tehtävä', 'task')}: ${RS.commentSafe(o.task || '–')}, ${tr('sukupolvi', 'generation')} ${o.gen ?? 0}${o.fitness != null ? `, ${tr('paras pistemäärä', 'best score')} ${(+o.fitness).toFixed(1)}` : ''}. ${date}`,
     `${tr('Verkko', 'Network')}: ${o.layers.join(' → ')}, tanh, ${params.length} ${tr('painoa', 'weights')}. ${tr('Aja aivot', 'Run the brain')} ${info.hz} ${tr('kertaa sekunnissa, kuten simulaatiossa.', 'times per second, as in the simulation.')}`,
+    `${tr('Painot vievät', 'The weights take')} ${(params.length * 4 / 1024).toFixed(1)} kt ${tr('muistia (float32). Arduino Uno (32 kt flash, 2 kt RAM) riittää noin 7000 painoon, ESP32 ja Pico paljon suurempiin.', 'of memory (float32). An Arduino Uno (32 kB flash, 2 kB RAM) fits about 7000 weights; an ESP32 or Pico far more.')}`,
+    tr('Koodin laskenta on tarkistettu itsetestillä simulaatiota vastaan. Oikealla laitteella sitä ei ole testattu: tarkista anturien suunnat, skaalaus ja moottorien napaisuus varovasti, robotti esim. pukilla.', 'The maths has been checked with a self-test against the simulation. It has not been tested on real hardware: check sensor directions, scaling and motor polarity carefully, e.g. with the robot on a stand.'),
   ];
   const inputDoc = info.inputs.map((x, i) => `[${i}] ${x.id}: ${x.name}. ${x.how}`);
   const outputDoc = info.outputs.map((x, i) => `[${i}] ${x.id} (${x.name}): ${x.how}`);
@@ -283,6 +289,7 @@ RS.deployCode = function (target, o) {
       '  unsigned long now = micros();',
       `  if ((long)(now - rlNext) < 0) return; // ${tr('ajetaan tasan', 'run exactly')} RL_HZ ${tr('kertaa sekunnissa', 'times per second')}`,
       '  rlNext += RL_PERIOD_US;',
+      `  if ((long)(now - rlNext) > (long)RL_PERIOD_US) rlNext = now + RL_PERIOD_US; // ${tr('laskenta ei ehdi RL_HZ-tahtiin: ei yritetä kiriä (silloin robotti toimii hitaammin kuin simulaatiossa)', 'the brain cannot keep up with RL_HZ: do not try to catch up (the robot then runs slower than in the simulation)')}`,
       '  float t = (now - rlStart) * 1e-6f;',
       '  readSensors(t);',
       '  robolab_brain(rlIn, rlOut);',
@@ -397,6 +404,8 @@ RS.deployCode = function (target, o) {
     '            time.sleep(next_t - now)',
     '            continue',
     '        next_t += 1.0 / HZ',
+    `        if now - next_t > 1.0 / HZ:  # ${tr('laskenta ei ehdi HZ-tahtiin: ei kiritä', 'the brain cannot keep up with HZ: do not catch up')}`,
+    '            next_t = now',
     '        drive_motors(brain(read_sensors(now - start)))',
     '',
     '',

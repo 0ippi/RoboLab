@@ -4,6 +4,9 @@
 (() => {
   const avatarSvg = (key, size) => (window.Robots ? Robots.svg(CHARACTER_KEYS.includes(key) ? key : "volt", "idle", { size }) : "");
   const reload = () => { location.hash = "#/dashboard"; location.reload(); };
+  // Tallennustilan loppuminen kesken käyttäjän vaihdon: tiedot on palautettu ennalleen (accounts.js), kerrotaan syy
+  const storageErr = () => toast(tr("Käyttäjän vaihto epäonnistui: selaimen tallennustila on täynnä. Tietoja ei muutettu.", "Switching users failed: browser storage is full. No data was changed."));
+  const guard = async (fn) => { try { return await fn(); } catch { storageErr(); return null; } };
 
   function avatarPicker(cur) {
     return `<div class="acc-avatars" role="radiogroup" aria-label="${tr("Hahmo", "Avatar")}">${CHARACTER_KEYS.map((k) =>
@@ -42,8 +45,8 @@
             ${accounts.length || mode === "create" ? `<button type="button" class="btn" data-back>${tr("Takaisin", "Back")}</button>` : ""}
             <button class="btn primary">${tr("Luo tili", "Create account")}</button>
           </div>
-          <p class="note small">${tr("Tilit ja tiedot ovat vain tällä koneella. Salasana estää muita saman koneen käyttäjiä avaamasta tiliäsi, mutta ei ole vahva suojaus. Siirrä tiedot toiselle koneelle profiilin varmuuskopiolla.",
-            "Accounts and data live only on this computer. A password stops other people on the same computer from opening your account, but it is not strong security. Move your data to another computer with the profile backup.")}</p>
+          <p class="note small">${tr("Tilit ja tiedot ovat vain tällä koneella. Salasana estää muita saman koneen käyttäjiä avaamasta tiliäsi, mutta ei ole vahva suojaus: tiedot itse eivät ole salattuja. Älä käytä samaa salasanaa kuin muissa palveluissa. Siirrä tiedot toiselle koneelle profiilin varmuuskopiolla.",
+            "Accounts and data live only on this computer. A password stops other people on the same computer from opening your account, but it is not strong security: the data itself is not encrypted. Don't reuse a password from other services. Move your data to another computer with the profile backup.")}</p>
         </form>`;
         bindAvatars(gate, (k) => { av = k; gate.querySelector(".acc-hero").innerHTML = avatarSvg(k, 72); });
         gate.querySelector("[data-back]")?.addEventListener("click", () => (mode === "create" ? close() : draw("list")));
@@ -54,7 +57,7 @@
           if (!name) return;
           if (Accounts.list().some((a) => a.name.toLowerCase() === name.toLowerCase())) { toast(tr("Tämän niminen tili on jo olemassa", "An account with this name already exists")); return; }
           const wasGuest = Accounts.active() === Accounts.GUEST;
-          await Accounts.create({ name, password: gate.querySelector("#acc-pw").value, avatar: av, remember: gate.querySelector("#acc-remember").checked });
+          if (!(await guard(() => Accounts.create({ name, password: gate.querySelector("#acc-pw").value, avatar: av, remember: gate.querySelector("#acc-remember").checked })))) return;
           if (wasGuest) { close(); renderUserChip(); toast(tr(`Tervetuloa, ${name}!`, `Welcome, ${name}!`)); if (currentRoute() === "profile") router(); }
           else reload();
         };
@@ -74,7 +77,8 @@
         gate.querySelector("#acc-pw").focus();
         gate.querySelector("#acc-login").onsubmit = async (e) => {
           e.preventDefault();
-          const r = await Accounts.login(pick, gate.querySelector("#acc-pw").value, gate.querySelector("#acc-remember").checked);
+          const r = await guard(() => Accounts.login(pick, gate.querySelector("#acc-pw").value, gate.querySelector("#acc-remember").checked));
+          if (r === null) return;
           if (!r) { gate.querySelector("#acc-err").hidden = false; gate.querySelector("#acc-pw").select(); return; }
           r.switched ? reload() : close();
         };
@@ -92,13 +96,16 @@
       gate.querySelectorAll("[data-uid]").forEach((b) => (b.onclick = async () => {
         pick = b.dataset.uid;
         if (Accounts.get(pick).hash) { draw("password"); return; }
-        const r = await Accounts.login(pick, "", true);
-        r.switched ? reload() : close();
+        const r = await guard(() => Accounts.login(pick, "", true));
+        if (r) r.switched ? reload() : close();
       }));
-      gate.querySelector("[data-guest]").onclick = () => { const r = Accounts.guest(); r.switched ? reload() : close(); };
+      gate.querySelector("[data-guest]").onclick = async () => { const r = await guard(() => Accounts.guest()); if (r) r.switched ? reload() : close(); };
       gate.querySelector("[data-new]").onclick = () => draw("create");
     };
-    const close = () => { gate.remove(); document.body.classList.remove("acc-locked"); renderUserChip(); };
+        // Lukitun käyttäjän sovellus ei saa olla käytettävissä näppäimistöllä eikä ruudunlukijalla kirjautumisen takana
+    const others = [...document.body.children].filter((c) => c !== gate);
+    const close = () => { gate.remove(); others.forEach((c) => (c.inert = false)); document.body.classList.remove("acc-locked"); renderUserChip(); };
+    others.forEach((c) => (c.inert = true));
     document.body.classList.add("acc-locked");
     draw(mode === "create" ? "create" : "list");
   }
@@ -179,7 +186,7 @@
         $q("#pf-name").onchange = (e) => { const v = e.target.value.trim(); if (v) { Accounts.update({ name: v }); renderUserChip(); toast(tr("Nimi tallennettu", "Name saved")); } };
         $q("#pf-bio").onchange = (e) => Accounts.update({ bio: e.target.value.slice(0, 300) });
         bindAvatars(el, (k) => { Accounts.update({ avatar: k }); $q(".profile-av").innerHTML = avatarSvg(k, 88); renderUserChip(); });
-        $q("#pf-logout").onclick = () => { Accounts.logout(); reload(); };
+        $q("#pf-logout").onclick = async () => { if (await guard(async () => (Accounts.logout(), true))) reload(); };
         $q("#pf-pw").onclick = async () => {
           if (a.hash) {
             const old = prompt(tr("Nykyinen salasana:", "Current password:"));
@@ -191,7 +198,7 @@
           if (prompt(tr("Kirjoita salasana uudelleen:", "Type the password again:")) !== pw) { toast(tr("Salasanat eivät täsmää", "The passwords don't match")); return; }
           const acc = { ...a };
           await Accounts.setPassword(acc, pw);
-          Accounts.update({ salt: acc.salt, hash: acc.hash });
+          Accounts.update({ salt: acc.salt, hash: acc.hash, iter: acc.iter });
           toast(tr("Salasana asetettu", "Password set"));
           router();
         };
@@ -199,7 +206,7 @@
           const old = prompt(tr("Nykyinen salasana:", "Current password:"));
           if (old === null) return;
           if (!(await Accounts.verify(a, old))) { toast(tr("Väärä salasana", "Wrong password")); return; }
-          Accounts.update({ salt: undefined, hash: undefined });
+          Accounts.update({ salt: undefined, hash: undefined, iter: undefined });
           toast(tr("Salasana poistettu", "Password removed"));
           router();
         });
@@ -217,7 +224,8 @@
         const target = Accounts.get(b.dataset.switch);
         let pw = "";
         if (target.hash) { pw = prompt(tr(`Käyttäjän ${target.name} salasana:`, `Password for ${target.name}:`)); if (pw === null) return; }
-        const r = await Accounts.login(target.id, pw, !target.hash);
+        const r = await guard(() => Accounts.login(target.id, pw, !target.hash));
+        if (r === null) return;
         if (!r) { toast(tr("Väärä salasana", "Wrong password")); return; }
         reload();
       }));
@@ -232,7 +240,7 @@
           if (!confirm(tr("Varmuuskopio korvaa tämän käyttäjän nykyiset projektit, kurssit, robotit ja asetukset. Jatketaanko?", "The backup replaces this user's current projects, courses, robots and settings. Continue?"))) return;
           Accounts.importData(JSON.parse(txt));
           reload();
-        }).catch((err) => toast(err.message === "version" ? tr("Varmuuskopio on uudemmasta RoboLab-versiosta", "The backup is from a newer RoboLab version") : tr("Tiedosto ei ole RoboLab-varmuuskopio", "The file is not a RoboLab backup")));
+        }).catch((err) => toast(err.message === "storage" ? tr("Tallennustila loppui kesken: varmuuskopiota ei tuotu ja nykyiset tiedot palautettiin.", "Storage ran out: the backup was not imported and your current data was restored.") : err.message === "version" ? tr("Varmuuskopio on uudemmasta RoboLab-versiosta", "The backup is from a newer RoboLab version") : tr("Tiedosto ei ole RoboLab-varmuuskopio", "The file is not a RoboLab backup")));
       };
     },
   };

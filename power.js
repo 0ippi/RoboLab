@@ -62,7 +62,11 @@
   function render(root, tool) {
     el = root;
     state = getToolState("power", DEFAULTS);
-    state.loads = state.loads.map((l) => ({ ...l }));
+    // Kuormataulukon rivit tarkistetaan: luvut luvuiksi ja tuntemattomat rivit pois (tuotu projekti voi olla mitä vain)
+    const num = (v, d) => (Number.isFinite(+v) ? +v : d);
+    state.loads = (Array.isArray(state.loads) ? state.loads : DEFAULTS.loads).filter((l) => l && typeof l === "object").map((l) => ({
+      ...l, name: String(l.name ?? ""), qty: num(l.qty, 1), avg: num(l.avg, 0), peak: num(l.peak, 0), rail: l.rail === "bat" ? "bat" : "reg",
+    }));
     el.innerHTML = `
       ${toolHead(tool, `<button class="btn" id="pw-reset">${tr("Palauta oletukset", "Reset defaults")}</button>`)}
       <div class="tool">

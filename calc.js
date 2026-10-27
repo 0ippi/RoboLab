@@ -52,29 +52,38 @@ const Calc = (() => {
       ? [p.m, p.b + p.kd, p.kp, p.ki]                         // m s³ + (b+Kd) s² + Kp s + Ki
       : [p.tau + p.K * p.kd, 1 + p.K * p.kp, p.K * p.ki];      // (τ+K·Kd) s² + (1+K·Kp) s + K·Ki
     while (c.length > 1 && Math.abs(c.at(-1)) < 1e-12) c.pop(); // s-tekijä (esim. Ki = 0) ei ole epästabiilisuutta
-    if (c.some((x) => x < 0) || c[0] <= 0) return false;
+    // Nolla välissä (esim. massa ilman vaimennusta ja D-termiä) = rajatapaus: värähtely ei koskaan vaimene
+    if (c.some((x) => x <= 0)) return false;
     if (c.length === 4) return c[1] * c[2] > c[0] * c[3];
     return true;
   }
 
-  // Askelvasteen tunnusluvut: nousuaika 10–90 %, ylitys, 2 %:n asettumisaika, pysyvä virhe.
+  // Askelvasteen tunnusluvut kuten oppikirjoissa: nousuaika 10–90 %, ylitys ja 2 %:n asettumisaika
+  // lasketaan loppuarvosta (ei asetusarvosta), jotta myös pysyvän virheen jättävä P-säätö saa ne.
+  // Pysyvä virhe = asetusarvo − loppuarvo. Vaste katsotaan asettuneeksi vain, jos se pysyy kaistalla
+  // simulaation loppuun ja kaistalla vietetty aika on vähintään 5 % kestosta (muuten simulaatio loppui kesken).
+  // Jos vaste ei asetu, loppuarvo on sattumanvarainen heilahduksen kohta, joten nousuaika ja ylitys lasketaan silloin asetusarvosta.
   function stepMetrics({ t, y }, r) {
+    const yf = y[y.length - 1];
+    const fin = Math.abs(yf) > 1e-9 ? yf : r;
+    const band = 0.02 * Math.abs(fin), T = t[t.length - 1] - t[0];
+    let settling = t[0];
+    for (let i = y.length - 1; i >= 0; i--) {
+      if (Math.abs(y[i] - fin) > band) { settling = i === y.length - 1 ? null : t[i + 1]; break; }
+    }
+    if (settling !== null && t[t.length - 1] - settling < 0.05 * T) settling = null;
+    const ref = settling === null ? r : fin;
     let t10 = null, t90 = null, peak = -Infinity;
     for (let i = 0; i < y.length; i++) {
-      if (t10 === null && y[i] >= 0.1 * r) t10 = t[i];
-      if (t90 === null && y[i] >= 0.9 * r) t90 = t[i];
+      if (t10 === null && y[i] >= 0.1 * ref) t10 = t[i];
+      if (t90 === null && y[i] >= 0.9 * ref) t90 = t[i];
       if (y[i] > peak) peak = y[i];
-    }
-    const band = 0.02 * Math.abs(r);
-    let settling = 0;
-    for (let i = y.length - 1; i >= 0; i--) {
-      if (Math.abs(y[i] - r) > band) { settling = i === y.length - 1 ? null : t[i + 1]; break; }
     }
     return {
       rise: t10 !== null && t90 !== null ? t90 - t10 : null,
-      overshoot: Math.max(0, ((peak - r) / r) * 100),
+      overshoot: Math.max(0, ((peak - ref) / Math.abs(ref)) * 100),
       settling,
-      sse: r - y[y.length - 1],
+      sse: r - yf,
     };
   }
 
@@ -105,7 +114,9 @@ const Calc = (() => {
     };
     const tractionSlope = Math.atan(Math.max(0, p.mu * p.driveShare - p.crr)) * 180 / Math.PI;
 
-    const iMotor = moves ? i0 + (iStall - i0) * load : iStall;
+    // Pito loppuu ennen moottorin voimaa: pyörät sutivat, joten moottori ei ole jumissa vaan kuormana on pitovoima
+    const slipping = !moves && Ftrac < Fres && Fres < Fs;
+    const iMotor = moves ? i0 + (iStall - i0) * load : slipping ? i0 + (iStall - i0) * (Ftrac / Fs) : iStall;
     const iTotal = p.motors * iMotor;
     return {
       v0, Fs, Ftrac, Fres, load, moves, vOp,
@@ -115,7 +126,7 @@ const Calc = (() => {
       t90: moves ? tau * Math.log(10) : null,
       maxSlope: Math.min(slopeFor(Fs), tractionSlope),
       contSlope: Math.min(slopeFor(0.3 * Fs), tractionSlope),
-      tractionLimited: Ftrac < Fs,
+      tractionLimited: Ftrac < Fs, slipping,
       iMotor, iTotal, iStallTotal: p.motors * iStall, iStall,
       pEl: p.vBat * iTotal,
       pMech: Fres * vOp,
@@ -207,7 +218,11 @@ const Calc = (() => {
         if (m.peak / 1000 > d.peakA) w("warn", tr(`${m.name}: käynnistys-/jumivirta ${(m.peak / 1000).toFixed(2)} A ylittää ohjaimen huippuvirran ${d.peakA} A.`, `${m.name}: start-up/stall current ${(m.peak / 1000).toFixed(2)} A exceeds the driver's peak current of ${d.peakA} A.`));
         if (m.rail === "reg") w("warn", tr(`${m.name} on kytketty säätimen perään — moottorit kannattaa syöttää suoraan akusta.`, `${m.name} is connected after the regulator — motors should be powered directly from the battery.`));
       }
+      // Litiumakku on täyteen ladattuna noin 4,2/3,7 kertaa nimellisjännitteensä (esim. 3S: 11,1 V → 12,6 V)
+      const cells = Math.round(b.v / 3.7), lipo = cells >= 1 && Math.abs(b.v - cells * 3.7) < 0.15;
+      const vFull = lipo ? cells * 4.2 : b.v;
       if (b.v > d.maxV) w("err", tr(`Akun jännite ${b.v} V ylittää moottoriohjaimen enimmäisjännitteen ${d.maxV} V.`, `Battery voltage ${b.v} V exceeds the motor driver's maximum voltage of ${d.maxV} V.`));
+      else if (vFull > d.maxV) w("warn", tr(`Täyteen ladattu ${cells}S-litiumakku antaa noin ${vFull.toFixed(1)} V, mikä ylittää moottoriohjaimen enimmäisjännitteen ${d.maxV} V.`, `A fully charged ${cells}S lithium pack gives about ${vFull.toFixed(1)} V, which exceeds the motor driver's maximum of ${d.maxV} V.`));
     }
     return res;
   }

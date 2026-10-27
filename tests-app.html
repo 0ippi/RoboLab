@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoboLab-sovellustestit</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: #0f1115; color: #e6e8eb; }
+  h1 { font-size: 20px; }
+  .pass { color: #3ecf8e; } .fail { color: #f2555a; } .run { color: #f5b84a; }
+  li { margin: 2px 0; } code { color: #a4abb6; }
+  iframe { width: 1200px; height: 800px; border: 1px solid #333; background: #fff; display: block; margin-top: 16px; }
+  .note { color: #a4abb6; max-width: 900px; }
+</style>
+</head>
+<body>
+<h1>RoboLab — sovellustestit</h1>
+<p class="note">Avaa sovelluksen alla olevaan kehykseen muistiin tallentavassa testitilassa (?memstore): selaimen oikeisiin projekteihin, tileihin ja asetuksiin ei kosketa.
+  Testit käyvät läpi tallennuksen, tuonnin ja viennin, tilit, kurssit, opettajan työkalut, kaikkien työkalujen avautumisen, puhelinasettelun ja offline-tiedostot. Kesto noin minuutti.</p>
+<p id="summary" class="run">Testit käynnissä…</p>
+<ul id="out"></ul>
+<iframe id="app" title="Testattava sovellus"></iframe>
+<script>
+"use strict";
+// Testattavan sovelluksen tallennus: index.html lukee nämä ?memstore-tilassa (ks. index.html:n alku)
+window.__robolabStores = { local: new Map(), session: new Map() };
+window.__robolabErrors = [];
+window.__robolabQuota = 0;
+
+const frame = document.getElementById("app");
+const results = [];
+// Sovelluksen const/let-globaalit eivät ole window-olion ominaisuuksia, joten ne luetaan eval-kutsulla
+const G = (name) => w.eval(name);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let n = 0, w = null;
+
+function near(a, e, tol, what = "") { if (!(Math.abs(a - e) <= tol)) throw new Error(`${what} odotettiin ${e} ± ${tol}, saatiin ${a}`); }
+function eq(a, e, what = "") { if (JSON.stringify(a) !== JSON.stringify(e)) throw new Error(`${what} odotettiin ${JSON.stringify(e)}, saatiin ${JSON.stringify(a)}`); }
+class Skip extends Error {}
+function ok(v, what = "") { if (!v) throw new Error(what || "ehto ei täyttynyt"); }
+
+async function waitFor(fn, ms = 5000, what = "odotus") {
+  const t0 = performance.now();
+  while (performance.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await sleep(50); }
+  throw new Error(what + ": aikakatkaisu");
+}
+
+// Käynnistää sovelluksen (tai lataa sen uudelleen säilyttäen muistitallennuksen)
+async function boot(hash = "#/dashboard", { width = 1200 } = {}) {
+  frame.style.width = width + "px";
+  frame.src = `index.html?nosw&memstore&r=${++n}${hash}`;
+  await new Promise((r) => (frame.onload = r));
+  w = frame.contentWindow;
+  await waitFor(() => w.document.querySelector("#content")?.children.length, 8000, "sovelluksen käynnistys");
+  await sleep(200);
+  return w;
+}
+function fresh() { window.__robolabStores.local.clear(); window.__robolabStores.session.clear(); window.__robolabErrors.length = 0; window.__robolabQuota = 0; }
+const ls = () => window.__robolabStores.local;
+const projCount = () => Object.keys(JSON.parse(ls().get("robolab-projects-v1")).projects).length;
+async function go(hash, ms = 400) { w.location.hash = hash; await sleep(ms); }
+const lastToast = () => w.document.querySelector("#toasts")?.lastElementChild?.textContent || "";
+async function importFile(obj) {
+  const before = w.document.querySelectorAll("#toasts > *").length;
+  w.importProject(new w.File([typeof obj === "string" ? obj : JSON.stringify(obj)], "t.json"), () => {});
+  await waitFor(() => w.document.querySelectorAll("#toasts > *").length > before, 3000, "tuonnin ilmoitus");
+  return lastToast();
+}
+const projectFile = (project, extra = {}) => ({ format: "robolab-project", version: 1, exported: new Date().toISOString(), project, ...extra });
+
+async function test(name, fn) {
+  const li = document.createElement("li");
+  li.className = "run"; li.textContent = "… " + name;
+  document.getElementById("out").appendChild(li);
+  const errBefore = window.__robolabErrors.length;
+  try {
+    await fn();
+    const errs = window.__robolabErrors.slice(errBefore);
+    if (errs.length) throw new Error("sovelluksen virhe: " + errs.join(" | "));
+    results.push({ name, ok: true }); li.className = "pass"; li.textContent = "✓ " + name;
+  } catch (e) {
+    if (e instanceof Skip) { results.push({ name, ok: true, skipped: true }); li.className = "run"; li.textContent = "– " + name + " (ohitettu: " + e.message + ")"; return; }
+    results.push({ name, ok: false, msg: e.message }); li.className = "fail";
+    li.innerHTML = `✗ ${name} — <code></code>`; li.querySelector("code").textContent = e.message;
+  }
+}
+
+(async () => {
+  /* ===== Projektit ===== */
+  await test("Ensimmäinen käynnistys luo yhden projektin ja tallentaa sen", async () => {
+    fresh(); await boot();
+    w.saveProjects();
+    eq(projCount(), 1, "projekteja");
+  });
+
+  await test("Projektin luonti, nimeäminen, avaaminen ja poisto säilyvät uudelleenlatauksessa", async () => {
+    await go("#/projects");
+    w.prompt = () => "Testiprojekti"; w.confirm = () => true;
+    w.document.querySelector("#p-new").click();
+    eq(projCount(), 2, "luonnin jälkeen");
+    eq(G("activeProject")().name, "Testiprojekti", "aktiivinen");
+    w.prompt = () => "Nimetty uudelleen";
+    w.document.querySelector(`.proj[data-id="${G("projects").active}"] [data-act="rename"]`).click();
+    await boot("#/projects");
+    eq(G("activeProject")().name, "Nimetty uudelleen", "nimi uudelleenlatauksen jälkeen");
+    const other = Object.values(G("projects").projects).find((p) => p.id !== G("projects").active);
+    w.document.querySelector(`.proj[data-id="${other.id}"]`).click();
+    eq(G("projects").active, other.id, "avattu projekti");
+    w.confirm = () => true;
+    const delId = Object.values(G("projects").projects).find((p) => p.name === "Nimetty uudelleen").id;
+    w.document.querySelector(`.proj[data-id="${delId}"] [data-act="delete"]`).click();
+    await boot("#/projects");
+    eq(projCount(), 1, "poiston jälkeen");
+    ok(!G("projects").projects[delId], "poistettu projekti on poissa");
+  });
+
+  await test("Viimeistä projektia ei voi poistaa", async () => {
+    ok(w.document.querySelector('.proj [data-act="delete"]').disabled, "poistonappi ei ole pois käytöstä");
+  });
+
+  await test("Lukukelvoton projektitallennus säilytetään eikä sitä pyyhitä", async () => {
+    fresh(); ls().set("robolab-projects-v1", "{rikki");
+    await boot();
+    const backup = [...ls().keys()].find((k) => k.startsWith("robolab-projects-v1-broken-"));
+    ok(backup, "varmuuskopioavain puuttuu");
+    eq(ls().get(backup), "{rikki", "alkuperäinen sisältö");
+    eq(Object.keys(G("projects").projects).length, 1, "uusi projekti");
+  });
+
+  await test("Puuttuva aktiivinen projekti korjataan menettämättä muita", async () => {
+    fresh();
+    ls().set("robolab-projects-v1", JSON.stringify({ version: 1, active: "eiole", projects: {
+      a: { id: "a", name: "A", created: 1, updated: 1, notes: "", tools: { pid: { kp: 3 } } },
+      b: { id: "b", name: "B", created: 1, updated: 2, notes: "" } } }));
+    await boot();
+    eq(Object.keys(G("projects").projects).sort(), ["a", "b"], "projektit");
+    ok(["a", "b"].includes(G("projects").active), "aktiivinen korjattu");
+    eq(G("projects").projects.b.tools, {}, "puuttuva työkalulohko lisätty");
+  });
+
+  /* ===== Vienti ja tuonti ===== */
+  await test("Projektin vienti ja tuonti palauttavat samat työkalutilat ja koulutetut aivot", async () => {
+    fresh(); await boot();
+    w.saveToolState("pid", { kp: 7, ki: 1, kd: 0.5, plant: "mass" });
+    w.saveToolState("nn2dBrain", { layers: [3, 2], params: [1, 2, 3, 4, 5, 6, 7, 8], gen: 5 }, { undo: false });
+    let file = null;
+    w.downloadFile = (name, text) => (file = { name, text });
+    await go("#/projects");
+    w.document.querySelector(`.proj[data-id="${G("projects").active}"] [data-act="export"]`).click();
+    ok(file && file.name.endsWith(".robolab.json"), "vientitiedosto");
+    const msg = await importFile(file.text);
+    ok(/tuotu|imported/i.test(msg), "ilmoitus: " + msg);
+    eq(projCount(), 2, "projekteja");
+    eq(G("activeProject")().tools.pid, { kp: 7, ki: 1, kd: 0.5, plant: "mass" }, "pid");
+    eq(G("activeProject")().tools.nn2dBrain.gen, 5, "aivot");
+  });
+
+  await test("Virheelliset tuontitiedostot hylätään eikä mitään muuteta", async () => {
+    const before = ls().get("robolab-projects-v1");
+    for (const bad of ["ei json", "[]", JSON.stringify({ format: "joku" }), JSON.stringify(projectFile({ name: "x", tools: [] })),
+      JSON.stringify(projectFile({ name: "x", tools: {} }, { version: 99 })), JSON.stringify({ format: "robolab-project", version: 1, project: null })]) {
+      const msg = await importFile(bad);
+      ok(!/tuotu:|imported:/i.test(msg), "hyväksyttiin: " + bad.slice(0, 40));
+    }
+    eq(ls().get("robolab-projects-v1"), before, "tallennus muuttui");
+  });
+
+  await test("Tuotu projekti ei voi ajaa koodia eikä syöttää HTML:ää", async () => {
+    w.__pwned = false;
+    const evilProject = projectFile({
+      name: '<img src=x onerror="window.__pwned=true">',
+      tools: {
+        nn2d: { taskKey: "custom", taskCode: "window.parent.__pwned = true; return 0;", speed: '1"><img src=x onerror="window.__pwned=true">' },
+        power: { usable: '<img src=x onerror="window.__pwned=true">', loads: [{ name: "<b>x</b>", qty: '"><img src=x onerror="window.__pwned=true">', avg: 1, peak: 1 }] },
+        motor: { slopeDeg: '<img src=x onerror="window.__pwned=true">' },
+        tuntematon: { a: 1 },
+      },
+    });
+    // __proto__ kirjoitetaan tekstiin käsin, koska olioliteraalissa se ei olisi oma avain
+    await importFile(JSON.stringify(evilProject).replace('"tuntematon"', '"__proto__":{"polluted":true},"tuntematon"'));
+    ok(G("activeProject")().tools.nn2d.taskCodeUntrusted === true, "koodia ei merkitty epäluotetuksi");
+    ok(!("tuntematon" in G("activeProject")().tools), "tuntematon työkalu hyväksyttiin");
+    ok(!({}).polluted && !w.Object.prototype.polluted, "prototyyppi saastui");
+    for (const r of ["#/projects", "#/power", "#/motor", "#/dashboard"]) await go(r, 300);
+    await go("#/nn2d", 2500);
+    eq(w.getToolState("nn2d", { speed: 1 }).speed, 1, "nopeus ei ole luku");
+    ok(w.document.querySelector("#nn-trust .alert.warn"), "varoitus tuodusta koodista puuttuu");
+    await sleep(500);
+    ok(!w.__pwned && !window.__pwned, "tuotu koodi tai HTML suoritettiin");
+  });
+
+  await test("Liian suuri tuonti perutaan eikä muu tallennus jää jumiin", async () => {
+    await go("#/dashboard");
+    const count = projCount();
+    window.__robolabQuota = ls().get("robolab-projects-v1").length + 5000;
+    const msg = await importFile(projectFile({ name: "Iso", notes: "x".repeat(20000), tools: {} }));
+    window.__robolabQuota = 0;
+    ok(/suuri|big/i.test(msg), "ilmoitus: " + msg);
+    eq(projCount(), count, "projekteja");
+    ok(w.saveProjects(), "tallennus ei toimi perumisen jälkeen");
+  });
+
+  /* ===== Asetukset ===== */
+  await test("Asetukset säilyvät ja virheelliset arvot hylätään", async () => {
+    w.set("theme", "midnight");
+    w.persist(true);
+    await boot();
+    eq(w.document.documentElement.dataset.theme, "midnight", "teema");
+    const s = JSON.parse(ls().get("robolab-settings-v1"));
+    s.theme = '<img src=x>'; s.scale = 999; s.density = 42;
+    ls().set("robolab-settings-v1", JSON.stringify(s));
+    await boot();
+    ok(G("settings").theme !== '<img src=x>', "teema hyväksyi roskaa");
+    ok(G("settings").scale <= 2, "skaala rajaamatta: " + G("settings").scale);
+  });
+
+  /* ===== Käyttäjätilit ===== */
+  await test("Käyttäjätilit: vieraan työ siirtyy uudelle tilille ja tilien tiedot pysyvät erillään", async () => {
+    fresh(); await boot();
+    G("activeProject")().name = "Vieraan projekti"; w.saveProjects();
+    await G("Accounts").create({ name: "Aino", remember: true });
+    await boot();
+    eq(G("activeProject")().name, "Vieraan projekti", "Ainon projekti");
+    await G("Accounts").create({ name: "Bea", remember: true });
+    await boot();
+    ok(G("activeProject")().name !== "Vieraan projekti", "Bea näkee Ainon projektin");
+    G("activeProject")().name = "Bean projekti"; w.saveProjects();
+    const aino = G("Accounts").list().find((a) => a.name === "Aino");
+    await G("Accounts").login(aino.id, "", true);
+    await boot();
+    eq(G("activeProject")().name, "Vieraan projekti", "Ainon projekti palasi");
+    const bea = G("Accounts").list().find((a) => a.name === "Bea");
+    await G("Accounts").login(bea.id, "", true);
+    await boot();
+    eq(G("activeProject")().name, "Bean projekti", "Bean projekti palasi");
+  });
+
+  await test("Salasana: väärä hylätään, oikea hyväksytään", async () => {
+    const acc = { ...G("Accounts").current() };
+    await G("Accounts").setPassword(acc, "kissa123");
+    ok(acc.iter >= 300000, "kierroksia liian vähän");
+    eq(await G("Accounts").verify(acc, "väärä"), false, "väärä salasana");
+    eq(await G("Accounts").verify(acc, "kissa123"), true, "oikea salasana");
+  });
+
+  await test("Tallennustilan loppuminen käyttäjän vaihdossa ei hukkaa tietoja", async () => {
+    const before = new Map(ls());
+    const activeBefore = G("Accounts").active();
+    const aino = G("Accounts").list().find((a) => a.name === "Aino");
+    // Suurin käyttäjän avain ei mahdu: siirto katkeaa kesken, kun osa avaimista on jo siirretty
+    const sys = ["robolab-accounts", "robolab-active", "robolab-remember"];
+    const sizes = [...ls()].filter(([k]) => k.startsWith("robolab-") && !k.startsWith("robolab-u:") && !sys.includes(k)).map(([, v]) => v.length);
+    window.__robolabQuota = Math.max(...sizes) - 1;
+    let err = null;
+    try { await G("Accounts").login(aino.id, "", true); } catch (e) { err = e; }
+    window.__robolabQuota = 0;
+    ok(err && err.message === "storage", "virhettä ei ilmoitettu");
+    eq(G("Accounts").active(), activeBefore, "aktiivinen käyttäjä vaihtui");
+    for (const [k, v] of before) eq(ls().get(k), v, "avain muuttui: " + k);
+    eq(ls().size, before.size, "avainten määrä");
+  });
+
+  await test("Varmuuskopio: vienti ja palautus; virheellinen tiedosto ei muuta mitään", async () => {
+    const backup = G("Accounts").exportData();
+    ok(!("robolab-ai-key" in backup.data), "API-avain päätyi varmuuskopioon");
+    G("activeProject")().name = "Muutettu"; w.saveProjects();
+    G("Accounts").importData(JSON.parse(JSON.stringify(backup)));
+    eq(JSON.parse(ls().get("robolab-projects-v1")).projects[G("projects").active].name, "Bean projekti", "palautettu nimi");
+    const snap = new Map(ls());
+    for (const bad of [{ format: "x" }, { format: "robolab-account", version: 1, data: { "robolab-projects-v1": "{rikki" } },
+      { format: "robolab-account", version: 1, data: { "robolab-library-v1": "[1,2]" } }, { format: "robolab-account", version: 9, data: {} }]) {
+      let threw = false;
+      try { G("Accounts").importData(bad); } catch { threw = true; }
+      ok(threw, "hyväksyttiin: " + JSON.stringify(bad).slice(0, 60));
+    }
+    for (const [k, v] of snap) eq(ls().get(k), v, "avain muuttui: " + k);
+  });
+
+  await test("Varmuuskopion palautus perutaan, jos tallennustila loppuu", async () => {
+    const snap = new Map(ls());
+    const big = G("Accounts").exportData();
+    big.data["robolab-notes-big"] = "x".repeat(50000);
+    window.__robolabQuota = 40000;
+    let err = null;
+    try { G("Accounts").importData(big); } catch (e) { err = e; }
+    window.__robolabQuota = 0;
+    eq(err?.message, "storage", "virhe");
+    for (const [k, v] of snap) eq(ls().get(k), v, "avain muuttui: " + k);
+  });
+
+  await test("Varmuuskopion palkkiokoodi merkitään tarkistettavaksi", async () => {
+    const b = G("Accounts").exportData();
+    const p = JSON.parse(b.data["robolab-projects-v1"]);
+    p.projects[p.active].tools.nn3d = { taskKey: "custom", taskCode: "return 1;" };
+    b.data["robolab-projects-v1"] = JSON.stringify(p);
+    G("Accounts").importData(b);
+    eq(JSON.parse(ls().get("robolab-projects-v1")).projects[p.active].tools.nn3d.taskCodeUntrusted, true, "merkintä");
+  });
+
+  await test("Kirjautumisnäkymä estää pikanäppäimet ja taustan käytön", async () => {
+    await boot();
+    w.AccountsUI.showLogin();
+    let exported = false;
+    w.exportActiveProject = () => (exported = true);
+    w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: "e", ctrlKey: true, bubbles: true }));
+    ok(!exported, "Ctrl+E toimi lukituksen läpi");
+    ok(w.document.querySelector("#app").inert, "sovellus ei ole inert");
+    w.document.querySelector(".acc-gate").remove(); w.document.body.classList.remove("acc-locked");
+    [...w.document.body.children].forEach((c) => (c.inert = false));
+  });
+
+  /* ===== Kurssit ja opettaja ===== */
+  await test("Kurssin eteneminen tallentuu ja jatkuu uudelleenlatauksen jälkeen", async () => {
+    fresh(); await boot();
+    w.saveProjects();
+    const projBefore = projCount();
+    w.Courses.start("start");
+    await sleep(600);
+    eq(projCount(), projBefore + 1, "kurssille oma projekti");
+    ok(w.document.querySelector("#lesson:not([hidden]) .lesson-title"), "oppituntipaneeli");
+    w.Courses.stop();
+    await boot();
+    eq(w.Courses.resumable()?.id, "start", "jatkettava kurssi");
+    ok(w.document.querySelector('.course-banner[data-resume="start"]'), "kojelaudan jatka-nappi");
+    const s = w.Courses.summary().find((c) => c.id === "start");
+    eq([s.done, s.finished], [0, false], "yhteenveto");
+  });
+
+  await test("Oppilaslinkki #/course/<id> avaa kurssin", async () => {
+    await boot("#/course/pid");
+    await waitFor(() => w.location.hash === "#/pid", 3000, "siirtyminen työkaluun");
+    ok(/PID/.test(w.document.querySelector(".lesson-title")?.textContent), "oppitunti");
+    w.Courses.stop();
+  });
+
+  await test("Opettajan edistymistiedosto: rakenne, tarkistus ja CSV-turva", async () => {
+    const f = w.Education.buildProgress({ code: "7B", alias: "oppilas 3" });
+    eq(f.format, "robolab-class-progress", "muoto");
+    ok(!JSON.stringify(f).includes("refl"), "pohdintavastaukset mukana");
+    const r = w.Education.parseProgress(JSON.stringify(f));
+    eq([r.alias, r.classCode, Object.keys(r.courses).length], ["oppilas 3", "7B", 10], "jäsennys");
+    for (const bad of ["x", "{}", JSON.stringify({ ...f, version: 9 }), JSON.stringify({ ...f, courses: "x" })]) {
+      let threw = false; try { w.Education.parseProgress(bad); } catch { threw = true; } ok(threw, "hyväksyttiin: " + bad.slice(0, 30));
+    }
+    const odd = w.Education.parseProgress(JSON.stringify({ ...f, courses: [{ id: "start", steps: 4, done: 99, hints: -5 }, { id: "__proto__" }] }));
+    eq(odd.courses.start.done, 4, "tehdyt rajattu"); eq(odd.courses.start.hints, 0, "vihjeet rajattu");
+    eq(w.Education.csvCell("=1+1"), "'=1+1", "kaava"); eq(w.Education.csvCell('a;"b"'), '"a;""b"""', "lainaus");
+  });
+
+  await test("Opettajille-sivu: oppitunnit, materiaalit ja tulostus", async () => {
+    await go("#/teach");
+    eq(w.document.querySelectorAll(".edu-lesson").length, 3, "oppitunteja");
+    for (const L of w.Education.LESSONS) {
+      for (const k of ["goals", "materials", "plan", "tasks", "solutions", "rubric", "extension", "offline"]) ok(L[k]?.length, `${L.id}: ${k} puuttuu`);
+      ok(w.Courses._courses.some((c) => c.id === L.course), `${L.id}: kurssi ${L.course} puuttuu`);
+    }
+    w.document.querySelector('[data-edu="open"][data-id="A"]').click();
+    let printed = "";
+    w.print = () => (printed = w.document.querySelector("#print-area").textContent);
+    w.document.querySelector('[data-edu="print-sheet"][data-id="A"]').click();
+    ok(/200/.test(printed) && printed.length > 500, "moniste");
+  });
+
+  /* ===== Työkalut ===== */
+  await test("Jokainen työkalu avautuu ilman virheitä", async () => {
+    fresh(); await boot();
+    const slow = new Set(["nn2d", "nn3d", "build2d", "build3d", "sim3d", "arm", "fk", "ik", "dh", "rot", "scene3d"]);
+    const failed = [];
+    for (const t of G("TOOLS")) {
+      await go("#/" + t.id, slow.has(t.id) ? 2500 : 500);
+      if (w.document.querySelector("#tool-reset")) failed.push(t.id);
+      if (!w.document.querySelector("#content").textContent.trim()) failed.push(t.id + " (tyhjä)");
+    }
+    await go("#/settings");
+    eq(failed, [], "epäonnistuneet työkalut");
+  });
+
+  await test("Rikkinäinen työkalutila ei lukitse työkalua", async () => {
+    await go("#/dashboard");
+    G("activeProject")().tools.pid = { kp: "abc", plant: 5, T: null };
+    w.saveProjects();
+    await go("#/pid", 500);
+    ok(w.document.querySelector("#pid-results") && !w.document.querySelector("#tool-reset"), "työkalu ei avautunut rikkinäisellä tilalla");
+  });
+
+  await test("PID-työkalu: pelkkä P massalle ei väitä Ki:tä tarpeelliseksi", async () => {
+    G("activeProject")().tools.pid = { plant: "mass", m: 1, b: 2, kp: 4, ki: 0, kd: 0, T: 30 };
+    w.saveProjects();
+    await go("#/dashboard", 200); await go("#/pid", 500);
+    const txt = w.document.querySelector("#pid-alerts").textContent;
+    ok(!/Ki = 0/.test(txt), "väärä Ki-ilmoitus: " + txt);
+  });
+
+  await test("Mobiilirobotti 2D ajaa maaliin ja nollautuu", async () => {
+    await go("#/sim2d", 800);
+    // Piilossa olevassa välilehdessä selain pysäyttää animaatiot, jolloin simulaatio ei etene
+    let frames = 0;
+    const tick = () => { frames++; if (frames < 5) w.requestAnimationFrame(tick); };
+    w.requestAnimationFrame(tick);
+    await sleep(500);
+    if (frames < 2) throw new Skip("selain ei piirrä tätä ikkunaa (piilossa), joten animaatio ei etene");
+    const a0 = w.sim2dStatus().arrivals;
+    w.document.querySelector("#mb-goal").click();
+    await waitFor(() => w.sim2dStatus().arrivals > a0, 30000, "maaliin pääsy");
+    w.document.querySelector("#mb-reset").click();
+    await sleep(300);
+    ok(w.mobileSim(), "simulaatio puuttuu nollauksen jälkeen");
+  });
+
+  await test("Esimerkkiprojekti luodaan ja palautetaan", async () => {
+    await go("#/projects");
+    w.confirm = () => true;
+    w.document.querySelector("#p-example").click();
+    const id1 = G("projects").active;
+    ok(G("activeProject")().example && G("activeProject")().notes.length > 50, "esimerkki");
+    G("activeProject")().tools.motor.wheelD = 999; w.saveProjects();
+    w.document.querySelector("#p-example").click();
+    eq(Object.values(G("projects").projects).filter((p) => p.example).length, 1, "esimerkkejä");
+    ok(G("projects").active !== id1 && G("activeProject")().tools.motor.wheelD === 65, "palautus");
+  });
+
+  /* ===== Puhelin ja offline ===== */
+  await test("Puhelinleveys (375 px): ei vaakavieritystä ja valikko aukeaa", async () => {
+    await boot("#/dashboard", { width: 375 });
+    const bad = [];
+    for (const r of ["#/dashboard", "#/learn", "#/teach", "#/pid", "#/motor", "#/projects", "#/settings"]) {
+      await go(r, 500);
+      const d = w.document.documentElement;
+      const c = w.document.querySelector("#content");
+      if (d.scrollWidth > d.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1) bad.push(`${r} (${c.scrollWidth}/${c.clientWidth})`);
+    }
+    w.document.querySelector("#sidebar-toggle").click();
+    await sleep(200);
+    ok(w.document.querySelector("#app").classList.contains("mobile-open"), "valikko ei auennut");
+    eq(bad, [], "vaakavieritys");
+  });
+
+  await test("Offline: jokainen index.html:n tiedosto ja kirjasto on service workerin listalla", async () => {
+    const [html, sw] = await Promise.all([fetch("index.html").then((r) => r.text()), fetch("sw.js").then((r) => r.text())]);
+    const local = [...html.matchAll(/(?:src|href)="([^"#?]+\.(?:js|css|webmanifest|png))"/g)].map((m) => m[1]).filter((u) => !/^https?:/.test(u));
+    const missing = local.filter((u) => !sw.includes(`"${u}"`));
+    const cdn = [...html.matchAll(/"(https:\/\/cdn\.jsdelivr\.net\/[^"]+\.(?:m?js))"/g)].map((m) => m[1]);
+    const missingCdn = cdn.filter((u) => !sw.includes(u));
+    eq([missing, missingCdn], [[], []], "puuttuvat");
+  });
+
+  const failed = results.filter((r) => !r.ok);
+  const sum = document.getElementById("summary");
+  sum.className = failed.length ? "fail" : "pass";
+  const skipped = results.filter((r) => r.skipped).length;
+  sum.textContent = (failed.length ? `${failed.length} / ${results.length} testiä epäonnistui` : `Kaikki ${results.length - skipped} testiä läpäisty`) + (skipped ? `, ${skipped} ohitettu` : "");
+  window.testResults = { passed: results.length - failed.length - skipped, skipped, failed: failed.map((f) => f.name + ": " + f.msg) };
+})();
+</script>
+</body>
+</html>

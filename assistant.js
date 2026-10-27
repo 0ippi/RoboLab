@@ -80,7 +80,7 @@ const Assistant = (() => {
   function offerDownload(text) {
     local.pending = text;
     const size = { "qwen0.5": "0,4", "qwen1.5": "1", "qwen3": "2" }[voltModel()[0]];
-    push("assistant", md(tr(`Hei! Jotta voin vastata ilmaiseksi, lataan aivoni (noin ${size} Gt) tälle koneelle. Lataus tehdään vain kerran, ja sen jälkeen toimin myös ilman nettiä.`,
+    push("assistant", md(tr(`Hei! Jotta voin keskustella ilmaiseksi, lataan aivoni (noin ${size} Gt) tälle koneelle. Lataus tehdään vain kerran, ja sen jälkeen toimin myös ilman nettiä. **Huom:** ilmainen malli vastaa englanniksi, koska pienet kielimallit osaavat suomea huonosti. Suomeksi vastaa paikallinen opas tai Claude API -avain.`,
       `Hi! To answer for free I need to download my brain (about ${size.replace(",", ".")} GB) to this computer. It only happens once, and after that I also work offline.`))
       + `<div class="ai-chips"><button class="chip" data-local="download">${icon("download")} ${tr("Lataa Volt", "Download Volt")}</button><button class="chip" data-local="guide">${tr("Ei nyt — vastaa oppaalla", "Not now — answer from the guide")}</button></div>`);
   }
@@ -103,8 +103,11 @@ const Assistant = (() => {
     : tr("Tämä selain ei tue WebGPU:ta, joten ilmainen malli ei toimi täällä. Käytä Chromea tai Edgeä — paikallinen opas toimii silti.", "This browser doesn't support WebGPU, so the free model can't run here. Use Chrome or Edge — the local guide still works.");
 
   // Järjestelmäkehote pysyy samana koko keskustelun ajan: silloin malli jatkaa edellisestä eikä lue kaikkea uudelleen
-  const LOCAL_SYSTEM = `You are Volt, the friendly little robot assistant inside RoboLab, a robotics learning app. Answer in ${LANG === "en" ? "English" : "Finnish (suomeksi)"} unless the user writes in another language.
-Be short, clear and correct: at most 100 words, simple words, a short list when it helps. If you are not sure, say so. Never invent features.
+  // Pienet ilmaiset mallit kirjoittavat heikkoa suomea (testattu: Qwen 2.5 1.5B tuotti epäkieliopillista tekstiä),
+  // joten ilmainen Volt vastaa aina englanniksi. Suomenkieliset vastaukset: Claude-avain tai paikallinen opas.
+  const LOCAL_SYSTEM = `You are Volt, the friendly little robot tutor inside RoboLab, a robotics learning app for beginners and schools. Always answer in simple English, even if the user writes in Finnish.
+Be short, clear and correct: at most 100 words, simple words, a short list when it helps. If you are not sure, say so. Never invent features or tools that are not listed below.
+Teach, don't just answer: explain new ideas with an everyday example. If the user is working on a task or quiz, give a hint or ask what they have tried before giving the full solution. When the message has tool values, help the user read what the numbers mean.
 To open a tool for the user, write its marker on its own line, for example [[open:pid]]. Only use these ids:
 ${TOOLS.filter((t) => t.id !== "dashboard" && t.nav !== false).map((t) => `${t.id} = ${t.name}`).join("; ")}.`;
   const localSystem = () => LOCAL_SYSTEM;
@@ -478,7 +481,8 @@ Useful app facts: Ctrl+K searches, Ctrl+Z/Ctrl+Y undo/redo, Ctrl+I opens you. Ea
 How to answer:
 - Reply in the language the user writes in (the app UI language is ${LANG === "en" ? "English" : "Finnish"}).
 - Be concise and practical. Start with the direct answer, then the reasoning if useful. Use short lists and formulas with units where they help; avoid long essays.
-- Match the user's level: plain words for beginners, precise terms and equations when the user is clearly an expert.
+- Match the user's level: plain words for beginners, precise terms and equations when the user is clearly an expert. If you can't tell what the user already knows and it matters, ask one short question first.
+- Only refer to tools, settings and courses listed above; never describe features RoboLab does not have.
 - When the message includes <app_context>, use it: it describes the page the user is on and that tool's current inputs (SI units). Refer to concrete values from it when diagnosing a problem.
 - You can only navigate; you cannot change values in the tools. Tell the user exactly which input to change and to what.
 - For electrical and mechanical sizing, give estimates and remind the user to check component datasheets; never present an estimate as a safety guarantee.

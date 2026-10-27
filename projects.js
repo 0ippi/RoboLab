@@ -10,13 +10,14 @@ TOOL_IMPL.projects = {
       el.innerHTML = `
         ${toolHead(tool, `
           <label class="btn">${tr("Tuo…", "Import…")}<input type="file" id="p-import" accept="application/json,.json" hidden></label>
+          <button class="btn" id="p-example" title="${tr("Luo tai palauta valmis esimerkkiprojekti", "Create or restore a ready example project")}">${tr("Esimerkkiprojekti", "Example project")}</button>
           <button class="btn primary" id="p-new">${tr("+ Uusi projekti", "+ New project")}</button>`)}
         <div class="tool">
           <div class="col">
             <div class="proj-list">
               ${list.map((p) => {
                 const used = Object.keys(p.tools);
-                return `<div class="card proj ${p.id === projects.active ? "active" : ""}" data-id="${p.id}">
+                return `<div class="card proj ${p.id === projects.active ? "active" : ""}" data-id="${esc(p.id)}">
                   <div class="card-icon">${icon("folder")}</div>
                   <div class="meta"><b>${esc(p.name)}</b>
                     <span>${used.length ? used.map((id) => esc(toolName(id))).join(", ") : tr("Ei vielä tallennettuja työkaluja", "No saved tools yet")} · ${tr("muokattu", "modified")} ${date(p.updated)}</span></div>
@@ -49,6 +50,16 @@ TOOL_IMPL.projects = {
         projects.active = p.id;
         saveProjects(); draw(); refreshCrumbs();
         toast(tr("Projekti luotu", "Project created"));
+      };
+      el.querySelector("#p-example").onclick = () => {
+        const old = Object.values(projects.projects).filter((x) => x.example);
+        if (old.length && !confirm(tr("Palautetaanko esimerkkiprojekti alkuperäiseksi? Siihen tehdyt muutokset korvataan.", "Restore the example project to its original state? Changes made to it will be replaced."))) return;
+        const p = exampleProject();
+        projects.projects[p.id] = p;
+        projects.active = p.id;
+        for (const x of old) delete projects.projects[x.id];
+        saveProjects(); draw(); refreshCrumbs();
+        toast(tr("Esimerkkiprojekti avattu — katso muistiinpanot oikealta.", "Example project opened — see the notes on the right."));
       };
       el.querySelector("#p-import").onchange = (e) => importProject(e.target.files[0], draw);
       el.querySelector("#p-notes").oninput = (e) => {
@@ -88,6 +99,19 @@ TOOL_IMPL.projects = {
   },
 };
 
+// Valmis esimerkki: pienen kaksipyöräisen robotin moottori- ja säätöarvot sekä ohjeet, mitä kokeilla
+function exampleProject() {
+  const p = newProject(tr("Esimerkki: pieni kaksipyöräinen robotti", "Example: small two-wheeled robot"));
+  p.example = true;
+  p.notes = tr("Tämä esimerkki kuvaa pientä kaksipyöräistä robottia (0,8 kg, 65 mm pyörät, kaksi 6 V:n vaihdemoottoria).\n\nKokeile:\n1. Moottori ja voimansiirto: kuinka nopeasti robotti kulkee? Muuta pyörän halkaisijaa.\n2. Sähköjärjestelmä: kauanko akku kestää? Hae moottorien virrat napilla.\n3. PID-viritin: moottorin nopeuden säätö on valmiiksi viritetty. Muuta Kp:tä ja katso vastetta.\n4. Mobiilirobotti 2D: paina Aja maaliin.\n\nVoit palauttaa esimerkin alkuperäiseksi Projektit-sivun Esimerkkiprojekti-napista.",
+    "This example describes a small two-wheeled robot (0.8 kg, 65 mm wheels, two 6 V gear motors).\n\nTry:\n1. Motor & drivetrain: how fast does the robot go? Change the wheel diameter.\n2. Power system: how long does the battery last? Fetch the motor currents with the button.\n3. PID tuner: the motor speed control is already tuned. Change Kp and watch the response.\n4. Mobile robot 2D: press Drive to goal.\n\nYou can restore the example with the Example project button on the Projects page.");
+  p.tools = {
+    motor: { mass: 0.8, wheelD: 65, motors: 2, rpm: 200, stallTorque: 0.078, stallCurrent: 1.5, noLoadCurrent: 0.15, vNom: 6, vBat: 6, crr: 0.03, mu: 0.7, driveShare: 80 },
+    pid: { plant: "first", K: 1, tau: 0.5, kp: 4, ki: 8, kd: 0, T: 2 },
+  };
+  return p;
+}
+
 function refreshCrumbs() {
   const a = document.querySelector(".crumb-proj");
   if (a) a.textContent = activeProject().name;
@@ -95,18 +119,32 @@ function refreshCrumbs() {
 
 function importProject(file, done) {
   if (!file) return;
-  file.text().then((txt) => {
+  (file.size > 20 * 1024 * 1024 ? Promise.reject(new Error("size")) : file.text()).then((txt) => {
     const data = JSON.parse(txt);
     const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     if (data.format !== PROJECT_FORMAT || !isObj(data.project) || !isObj(data.project.tools)) throw new Error("format");
     if (data.version > PROJECT_VERSION) throw new Error("version");
     // Vain tunnetut työkalutilat, ja jokaisen pitää olla objekti
-    const known = new Set([...TOOLS.map((t) => t.id), "arm", "occ"]);
+    // Koulutetut aivot ja koulutuksen tilastot tallentuvat omiin lohkoihinsa (nn2dBrain, nn2dStats…)
+    const known = new Set([...TOOLS.map((t) => t.id), "arm", "occ", "nn2dBrain", "nn3dBrain", "nn2dStats", "nn3dStats"]);
     const tools = Object.fromEntries(Object.entries(data.project.tools).filter(([k, v]) => known.has(k) && isObj(v)));
+    // Tiedoston oma palkkiofunktio on koodia: se ajetaan vasta, kun käyttäjä on tarkistanut sen (tools/nn.js)
+    for (const k of ["nn2d", "nn3d"]) if (typeof tools[k]?.taskCode === "string") tools[k].taskCodeUntrusted = true;
     const p = { ...newProject(String(data.project.name || tr("Tuotu projekti", "Imported project")).slice(0, 120)), notes: String(data.project.notes || ""), tools };
+    const prevActive = projects.active;
     projects.projects[p.id] = p;
     projects.active = p.id;
-    saveProjects(); done(); refreshCrumbs();
+    if (!saveProjects()) {
+      // Liian iso tiedosto: perutaan, ettei koko projektitallennus jää jumiin
+      delete projects.projects[p.id];
+      projects.active = prevActive;
+      saveProjects();
+      throw new Error("storage");
+    }
+    done(); refreshCrumbs();
     toast(tr("Projekti tuotu: ", "Project imported: ") + p.name);
-  }).catch((e) => toast(e.message === "version" ? tr("Tiedosto on uudemmasta RoboLab-versiosta", "The file is from a newer RoboLab version") : tr("Tiedosto ei ole RoboLab-projekti", "The file is not a RoboLab project")));
+  }).catch((e) => toast(e.message === "version" ? tr("Tiedosto on uudemmasta RoboLab-versiosta", "The file is from a newer RoboLab version")
+    : e.message === "storage" ? tr("Projekti on liian suuri selaimen tallennustilaan, eikä sitä tuotu.", "The project is too big for the browser's storage and was not imported.")
+    : e.message === "size" ? tr("Tiedosto on liian suuri (yli 20 Mt).", "The file is too big (over 20 MB).")
+    : tr("Tiedosto ei ole RoboLab-projekti", "The file is not a RoboLab project")));
 }

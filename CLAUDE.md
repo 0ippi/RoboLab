@@ -5,7 +5,8 @@ Selainpohjainen robotiikan työkalupakki (vanilla JS, ei build-vaihetta). Käytt
 ## Ajaminen
 - `serve.ps1` palvelee kansion osoitteessa http://localhost:8080/ (myös `.claude/launch.json` → "testisivu").
 - Käyttäjällä on RoboLab asennettuna: työpöydän ja Käynnistä-valikon pikakuvake ajaa `RoboLab.ps1`:n (käynnistää palvelimen taustalle ja avaa Edgen `--app`-ikkunan). Älä siirrä tai nimeä kansiota uudelleen päivittämättä pikakuvakkeita.
-- Testit: `tests.html` (kaikkien pitää mennä läpi).
+- Testit: `tests.html` (laskenta) ja `tests-app.html` (koko sovellus kehyksessä `?memstore`-tilassa: tallennus muistiin, ei koske selaimen oikeisiin tietoihin). Kaikkien pitää mennä läpi. Sovelluksen `const`/`let`-globaalit luetaan testeissä `w.eval("nimi")`-kutsulla.
+- Piilossa olevassa esikatseluselaimessa requestAnimationFrame ei etene, joten simulaatioiden ajotesti ohitetaan siellä.
 
 ## Jokainen muutos = uusi versio
 Sovellus huomaa päivitykset `version.js`:stä ja näyttää käyttäjälle "Päivitä nyt" -palkin ja "Mitä uutta" -ikkunan.
@@ -27,8 +28,14 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Uusi `robolab-*`-avain kuuluu siis automaattisesti käyttäjälle. Laitekohtainen tieto tarvitsee muun etuliitteen tai SYSTEM-listan.
 - Älä testaa tilien vaihtoa ilman varmuuskopiota pane-selaimen tallennuksesta.
 
+## Opettajille ja tietoturva
+- `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–C (`LESSONS`), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
+- Tuotu koodi (nn2d/nn3d `taskCode`) merkitään `taskCodeUntrusted`: sitä ei ajeta ennen kuin käyttäjä hyväksyy sen editorissa. Kaikki tuodut tai tallennetut arvot `esc()`:llä HTML:ään; `getToolState` pakottaa numero-oletusten kentät luvuiksi.
+- Käyttäjän vaihto siirtää avaimet yksi kerrallaan ja peruu kaiken, jos tallennustila loppuu (`accounts.js` `switchTo`).
+- Koulujen tuotteistusluonnos: `docs/koulut-ja-tuotteistus.md` (ei maksumuuria, ei palvelintilejä ilman selvitystä).
+
 ## Volt (tekoäly)
-`assistant.js`: Claude API -avain voittaa aina; muuten ilmainen WebLLM-malli (`VOLT_MODELS` app.js:ssä, kirjasto `@mlc-ai/web-llm@0.2.82` jsDelivristä) jos WebGPU löytyy; muuten paikallinen opas (KB). Ilmainen malli ladataan vasta käyttäjän luvalla.
+`assistant.js`: Claude API -avain voittaa aina; muuten ilmainen WebLLM-malli (`VOLT_MODELS` app.js:ssä, kirjasto `@mlc-ai/web-llm@0.2.82` jsDelivristä) jos WebGPU löytyy; muuten paikallinen opas (KB). Ilmainen malli ladataan vasta käyttäjän luvalla. Ilmainen malli vastaa aina englanniksi (pienet mallit tuottivat testissä virheellistä suomea); suomeksi vastaavat opas ja Claude.
 
 ## Laitteet
 `robosim/core/usb.js`: MicroPython-lataus (raw REPL, main.py) ja live-linkki (`S:`/`M:`-rivit) Web Serialilla. Testattu simuloidulla laitteella, ei oikealla.

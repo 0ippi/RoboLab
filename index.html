@@ -10,6 +10,37 @@
 <link rel="icon" type="image/png" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="styles.css">
+<script>
+// Automaattitestit (tests-app.html) avaavat sovelluksen osoitteella ?memstore: tallennus menee muistiin
+// (testisivun omaan Map-olioon), joten testit eivät koske selaimen oikeisiin projekteihin. Muuten ei vaikutusta.
+if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window.parent.__robolabStores) {
+  const fake = (m) => {
+    const api = {
+      getItem: (k) => (m.has(String(k)) ? m.get(String(k)) : null),
+      setItem: (k, v) => {
+        const q = window.parent.__robolabQuota;
+        if (q && String(v).length > q) throw new DOMException("quota", "QuotaExceededError");
+        m.set(String(k), String(v));
+      },
+      removeItem: (k) => { m.delete(String(k)); },
+      clear: () => m.clear(),
+      key: (i) => [...m.keys()][i] ?? null,
+      get length() { return m.size; },
+    };
+    return new Proxy(api, {
+      ownKeys: () => [...m.keys()],
+      getOwnPropertyDescriptor: (t, k) => (m.has(k) ? { value: m.get(k), enumerable: true, configurable: true } : undefined),
+      get: (t, k) => (k in t ? t[k] : m.get(k)),
+    });
+  };
+  const errs = window.parent.__robolabErrors;
+  window.addEventListener("error", (e) => errs.push(String(e.message || e.error)));
+  window.addEventListener("unhandledrejection", (e) => errs.push("promise: " + String(e.reason?.message || e.reason)));
+  const s = window.parent.__robolabStores;
+  Object.defineProperty(window, "localStorage", { value: fake(s.local), configurable: true });
+  Object.defineProperty(window, "sessionStorage", { value: fake(s.session), configurable: true });
+}
+</script>
 <!-- 3D-kirjastot ladataan vasta tarvittaessa. Kaikki 3D-näkymät käyttävät samaa Three.js-versiota. -->
 <script type="importmap">
 {
@@ -142,6 +173,7 @@
 <script src="tools/nn.js"></script>
 <script src="tools/builder.js"></script>
 <script src="courses.js"></script>
+<script src="education.js"></script>
 <script src="assistant.js"></script>
 </body>
 </html>

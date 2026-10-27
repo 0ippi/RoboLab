@@ -1134,3 +1134,70 @@ body.acc-locked .ai-fab { display: none; }
 .cv-views figcaption { font-size: .8rem; color: var(--text-3); text-align: center; }
 .code-box { margin: 0; padding: 10px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); font: .76rem/1.5 ui-monospace, Consolas, monospace; overflow: auto; max-height: 320px; white-space: pre; }
 .ai-note { font-size: .8rem; color: var(--text-2); margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+/* ===== Opettajille (education.js) ===== */
+.edu-intro { margin-bottom: calc(var(--pad) * 1.5); border-color: var(--accent); background: linear-gradient(135deg, var(--accent-soft), var(--surface) 60%); }
+.edu-intro-row { display: flex; gap: var(--pad); align-items: center; }
+.edu-intro h2 { margin: 0 0 4px; font-size: 1.15rem; }
+.edu-intro p { margin: 0; color: var(--text-2); }
+.edu-lessons { display: grid; gap: var(--pad); grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-bottom: calc(var(--pad) * 1.5); }
+.edu-lesson { display: flex; flex-direction: column; gap: 8px; }
+.edu-lesson p { margin: 0; }
+.edu-lesson .row-actions { margin-top: auto; }
+.edu-lesson-top { display: flex; gap: 12px; align-items: center; }
+.edu-lesson-top h3 { margin: 2px 0; font-size: 1.05rem; }
+.edu-lesson-top small { color: var(--text-3); }
+.edu-detail { margin-bottom: calc(var(--pad) * 1.5); scroll-margin-top: 12px; }
+.edu-detail-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.edu-detail-head h2 { margin: 0; font-size: 1.15rem; }
+.edu-doc { max-width: 900px; line-height: 1.55; }
+.edu-doc h1 { font-size: 1.2rem; margin: 6px 0; }
+.edu-doc h2 { font-size: 1rem; margin: 18px 0 6px; }
+.edu-doc ul, .edu-doc ol { margin: 4px 0; padding-left: 22px; }
+.edu-doc details { margin-top: 14px; }
+.edu-doc summary { cursor: pointer; font-weight: 600; color: var(--accent); min-height: 32px; }
+.doc-meta { color: var(--text-2); }
+.edu-table-wrap { overflow-x: auto; }
+.edu-table-wrap > .card, .card.edu-table-wrap { margin-bottom: calc(var(--pad) * 1.5); }
+.ws-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: 6px 0; }
+.ws-table th, .ws-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.ws-table th { background: var(--surface-2); font-weight: 600; }
+.ws-table.plan td:first-child { white-space: nowrap; }
+.edu-courses small { color: var(--text-3); }
+.edu-roster td, .edu-roster th { text-align: center; white-space: nowrap; }
+.edu-roster td:first-child, .edu-roster th:first-child { text-align: left; }
+.class-card { margin-top: calc(var(--pad) * 1.5); }
+.class-card h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.class-fields { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 10px; }
+.class-fields label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--text-2); }
+.class-fields input { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; min-width: 180px; }
+.stage-title { margin: calc(var(--pad) * 1.5) 0 2px; font-size: 1rem; }
+.stage-note { margin: 0 0 10px; }
+.first-step { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 10px; }
+@media (max-width: 600px) { .edu-intro-row { flex-direction: column; align-items: flex-start; } .class-fields input { min-width: 0; width: 100%; } .class-fields label { flex: 1 1 100%; } }
+
+/* Tulostettavat materiaalit: vain #print-area näkyy tulosteessa */
+#print-area { display: none; }
+@media print {
+  html.print-mode body > *:not(#print-area) { display: none !important; }
+  html.print-mode #print-area { display: block !important; color: #000; background: #fff; font: 11pt/1.45 system-ui, sans-serif; }
+  .print-doc header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 12px; }
+  .print-doc footer { margin-top: 18px; border-top: 1px solid #999; padding-top: 4px; font-size: 8pt; color: #555; }
+  .print-doc h1 { font-size: 16pt; margin: 0 0 6px; }
+  .print-doc h2 { font-size: 12.5pt; margin: 14px 0 4px; break-after: avoid; }
+  .print-doc h3 { font-size: 11pt; margin: 12px 0 4px; break-after: avoid; }
+  .print-doc .ws-table { font-size: 10pt; }
+  .print-doc .ws-table th, .print-doc .ws-table td { border: 1px solid #000; padding: 6px; height: 1.6em; }
+  .print-doc .ws-table th { background: #eee; }
+  .print-doc .ws-task { break-inside: avoid; }
+  .print-doc .ws-lines div { border-bottom: 1px solid #888; height: 2.1em; }
+  .print-doc .ws-checks { list-style: none; padding-left: 0; }
+  .print-doc .note { color: #333; }
+}
+
+/* Kosketusnäytöt: painikkeet ja linkit vähintään noin 40 px korkeiksi, jotta niihin osuu sormella */
+@media (pointer: coarse) {
+  .btn, .icon-btn, .chip, .seg button, .quiz-opt, .hint-btn, .nav-item { min-height: 40px; }
+  .link-btn { min-height: 36px; padding-block: 6px; }
+  .proj .acts button { min-height: 36px; padding: 6px 10px; }
+  input[type="range"] { min-height: 32px; }
+}

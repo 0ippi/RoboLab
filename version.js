@@ -3,6 +3,21 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.1.0", date: "2026-10-27",
+    fi: ["Uusi Opettajille-sivu: kolme valmista oppituntia (Ensimmäinen robotti, Robotti väistää esteitä, PID-säätö käytännössä) tunnin kulkuineen, tulostettavine monisteineen, ratkaisuineen ja arviointikriteereineen. Oppilaslinkki avaa kurssin suoraan, ja luokan edistymisen voi koota oppilaiden tiedostoista ilman tilejä tai nimiä.",
+      "Kurssit kolmella tasolla aloittelijan järjestyksessä. Kojelaudalta voi aloittaa ensimmäisen kurssin yhdellä napilla ja jatkaa keskeytettyä kurssia. Kurssiteksteistä korjattiin asiavirheitä (mm. A*-haku, anturien kantamat, virrankulutus).",
+      "Tietoturva: tuotu projekti tai aivotiedosto ei voi enää ajaa omaa koodiaan ilman lupaasi, tuodut arvot tarkistetaan, ja kirjautumisnäkymä estää pikanäppäimet. Käyttäjän vaihto ja varmuuskopion palautus eivät hukkaa tietoja, vaikka tallennustila loppuisi.",
+      "Laskennan korjaukset: PID-tunnusluvut lasketaan loppuarvosta kuten oppikirjoissa, rajatapauksen heiluva säätö tunnistetaan, luistavien pyörien virta, täyteen ladatun LiPon jännite, liikeratojen todelliset huippuarvot moottorille ja roll/pitch/yaw-nimet.",
+      "Projekteihin valmis esimerkkiprojekti, asetuksiin selitys siitä, mitä tallennetaan ja minne, ja lomakkeisiin ruudunlukijan nimet sekä isommat kosketuskohteet puhelimella.",
+      "Ilmainen Volt kertoo ennen latausta, että se vastaa englanniksi (pienet mallit osaavat suomea huonosti); suomeksi vastaavat opas ja Claude-avain. Generoitu robottikoodi kertoo muistitarpeen ja ettei sitä ole testattu oikealla laitteella."],
+    en: ["New For teachers page: three ready lessons (My first robot, A robot avoids obstacles, PID control in practice) with a lesson plan, printable worksheets, solutions and assessment criteria. A student link opens the course directly, and class progress can be collected from students' files without accounts or names.",
+      "Courses in three levels in beginner order. Start the first course from the dashboard with one click and continue a paused course. Factual errors in course texts were fixed (e.g. A* search, sensor ranges, current draw).",
+      "Security: an imported project or brain file can no longer run its own code without your permission, imported values are checked, and the sign-in screen blocks shortcuts. Switching users and restoring a backup no longer lose data if storage runs out.",
+      "Maths fixes: PID figures are measured from the final value as in textbooks, marginally stable loops are detected, current with slipping wheels, full-charge LiPo voltage, actual trajectory peaks for the motor tool and roll/pitch/yaw labels.",
+      "A ready example project, an explanation in settings of what is stored and where, screen-reader names for form fields and bigger touch targets on phones.",
+      "Free Volt says before downloading that it answers in English (small models write poor Finnish); the guide and a Claude key answer in Finnish. Generated robot code states its memory needs and that it has not been tested on real hardware."],
+  },
+  {
     version: "2.0.1", date: "2026-10-27",
     fi: ["Volt on nopeampi: malli käynnistyy taustalla heti, kun avaat keskustelun, jatkaa edellisestä viestistä lukematta kaikkea uudelleen, eikä jäädytä sovellusta vastatessaan.",
       "Volt näyttää vastausnopeutensa ja ehdottaa kevyttä mallia, jos kone on hidas. Jos selain ei löydä näytönohjainta, Volt kertoo sen eikä yritä ajaa mallia hitaasti."],

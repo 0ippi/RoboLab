@@ -42,12 +42,12 @@ const Courses = (() => {
       id: "arm", icon: "arm", minutes: 30, level: tr("Keskitaso", "Intermediate"),
       title: tr("Ensimmäinen robottikäsi", "Your first robot arm"),
       desc: tr("Suunnittele robottikäsivarsi alusta loppuun: nivelet, kinematiikka, liike ja moottorit.", "Design a robot arm from start to finish: joints, kinematics, motion and motors."),
-      outcomes: [tr("Ymmärrät nivelet, linkit ja eteenpäin kinematiikan", "Understand joints, links and forward kinematics"), tr("Osaat kuvata käsivarren DH-parametreilla", "Can describe an arm with DH parameters"),
+      outcomes: [tr("Ymmärrät nivelet, linkit ja suoran kinematiikan", "Understand joints, links and forward kinematics"), tr("Osaat kuvata käsivarren DH-parametreilla", "Can describe an arm with DH parameters"),
         tr("Tiedät, miten käänteiskinematiikka ja singulariteetti toimivat", "Know how inverse kinematics and singularities work"), tr("Osaat mitoittaa nivelen moottorin", "Can size a joint motor")],
       steps: [
         {
-          id: "fk", tool: "fk", title: tr("Nivelet ja eteenpäin kinematiikka", "Joints and forward kinematics"),
-          teach: tr("Robottikäsivarsi koostuu **linkeistä** (jäykät osat) ja **nivelistä**, jotka liikuttavat niitä. Kiertyvä nivel kääntyy kulman verran, liukuva nivel liikkuu suoraan.\n\n**Eteenpäin kinematiikka** vastaa kysymykseen: *kun tiedän nivelkulmat, missä työkalu on?* Se lasketaan ketjuttamalla jokaisen nivelen siirto ja kierto peräkkäin.\n\nAloitetaan yksinkertaisella kaksinivelisellä tasokädellä.",
+          id: "fk", tool: "fk", title: tr("Nivelet ja suora kinematiikka", "Joints and forward kinematics"),
+          teach: tr("Robottikäsivarsi koostuu **linkeistä** (jäykät osat) ja **nivelistä**, jotka liikuttavat niitä. Kiertyvä nivel kääntyy kulman verran, liukuva nivel liikkuu suoraan.\n\n**Suora kinematiikka** vastaa kysymykseen: *kun tiedän nivelkulmat, missä työkalu on?* Se lasketaan ketjuttamalla jokaisen nivelen siirto ja kierto peräkkäin.\n\nAloitetaan yksinkertaisella kaksinivelisellä tasokädellä.",
             "A robot arm is made of **links** (rigid parts) and **joints** that move them. A revolute joint turns by an angle, a prismatic joint slides in a straight line.\n\n**Forward kinematics** answers: *if I know the joint angles, where is the tool?* It is computed by chaining each joint's translation and rotation in turn.\n\nWe start with a simple two-joint planar arm."),
           tasks: [
             { id: "q1", text: tr("Liikuta q1-liukusäädintä ja katso, miten koko käsi kääntyy", "Move the q1 slider and watch the whole arm turn"), check: (c) => !near(arm().q[0], c.base.q[0], 1e-6) },
@@ -55,14 +55,14 @@ const Courses = (() => {
             { id: "neg", text: tr("Vie työkalun kärki vasemmalle puolelle (X negatiivinen)", "Move the tool tip to the left side (negative X)"), check: () => tipOf(arm())[0] < -0.02 },
           ],
           hints: [tr("Liukusäätimet ovat vasemmalla Nivelet-kortissa. Työkalun sijainti näkyy Työkalun asento -kortissa.", "The sliders are in the Joints card on the left. The tool position is shown in the Tool pose card."),
-            tr("X tulee negatiiviseksi, kun käsi osoittaa taaksepäin: kokeile q1 = 150°.", "X becomes negative when the arm points backwards: try q1 = 150°.")],
+            tr("X tulee negatiiviseksi, kun käsi osoittaa vasemmalle (taaksepäin): kokeile q1 = 150°.", "X becomes negative when the arm points left (backwards): try q1 = 150°.")],
           quiz: { q: tr("Miksi kyynärvarsi liikkuu, kun muutat q1:tä, vaikka q2 pysyy samana?", "Why does the forearm move when you change q1, even though q2 stays the same?"),
             options: [tr("Koska jokainen nivel liikuttaa kaikkea sen jälkeen tulevaa", "Because each joint moves everything that comes after it"), tr("Koska q2 muuttuu automaattisesti samalla", "Because q2 changes automatically too"), tr("Koska työkalu pysyy aina paikallaan", "Because the tool always stays in place")],
-            correct: 0, explain: tr("Nivelet muodostavat ketjun. Olkanivelen kierto kääntää koko ketjun sen jälkeen — siksi eteenpäin kinematiikassa muunnokset kerrotaan peräkkäin.", "Joints form a chain. Turning the shoulder rotates the whole chain after it — which is why forward kinematics multiplies the transforms in sequence.") },
+            correct: 0, explain: tr("Nivelet muodostavat ketjun. Olkanivelen kierto kääntää koko ketjun sen jälkeen — siksi suorassa kinematiikassa muunnokset kerrotaan peräkkäin.", "Joints form a chain. Turning the shoulder rotates the whole chain after it — which is why forward kinematics multiplies the transforms in sequence.") },
         },
         {
           id: "dh", tool: "dh", title: tr("Oma käsivarsi DH-taulukolla", "Your own arm with a DH table"),
-          teach: tr("Teollisuudessa käsivarret kuvataan **DH-parametreilla** (Denavit–Hartenberg). Jokainen rivi kuvaa yhden nivelen neljällä luvulla:\n\n- **θ** — kierto z-akselin ympäri (kiertyvän nivelen kulma)\n- **d** — siirto z-akselia pitkin (esim. kannan korkeus)\n- **a** — linkin pituus x-akselia pitkin\n- **α** — linkin kierre x-akselin ympäri\n\nKun jonkin nivelen α ei ole 0, seuraavat nivelet kääntyvät eri tasossa — näin tasokädestä tulee kolmiulotteinen. Muutokset näkyvät heti myös muissa kinematiikkatyökaluissa.",
+          teach: tr("Teollisuudessa käsivarret kuvataan **DH-parametreilla** (Denavit–Hartenberg). Jokainen rivi kuvaa yhden nivelen neljällä luvulla:\n\n- **θ** — kierto z-akselin ympäri (kiertyvän nivelen kulma)\n- **d** — siirto z-akselia pitkin (esim. kannan korkeus)\n- **a** — linkin pituus x-akselia pitkin\n- **α** — linkin kiertymä x-akselin ympäri\n\nKun jonkin nivelen α ei ole 0, seuraavat nivelet kääntyvät eri tasossa — näin tasokädestä tulee kolmiulotteinen. Muutokset näkyvät heti myös muissa kinematiikkatyökaluissa.",
             "In industry, arms are described with **DH parameters** (Denavit–Hartenberg). Each row describes one joint with four numbers:\n\n- **θ** — rotation about z (a revolute joint's angle)\n- **d** — offset along z (e.g. base height)\n- **a** — link length along x\n- **α** — link twist about x\n\nWhen a joint's α is not 0, the following joints turn in another plane — that is how a planar arm becomes three-dimensional. Changes show up immediately in the other kinematics tools too."),
           tasks: [
             { id: "three", text: tr("Lisää kolmas nivel", "Add a third joint"), check: () => arm().chain.joints.length >= 3 },
@@ -70,16 +70,24 @@ const Courses = (() => {
             { id: "look", text: tr("Kokeile Varjostettu-näkymää ja käännä kuvaa vetämällä", "Try the Shaded view and rotate it by dragging") },
           ],
           hints: [tr("Paina taulukon alla '+ Kiertyvä nivel'.", "Press '+ Revolute joint' below the table."),
-            tr("α kääntää seuraavan nivelen akselia. Hyvä alku: rivi 1: d = 0,1, a = 0, α = 90. Silloin ensimmäinen nivel kääntyy pystyakselin ympäri kuin oikean robotin kanta.", "α tilts the next joint's axis. A good start: row 1: d = 0.1, a = 0, α = 90. Then the first joint turns about the vertical axis like a real robot's base.")],
+            tr("α kääntää seuraavan nivelen akselia. Hyvä alku: rivi 1: d = 0,1, a = 0, α = 90. Silloin seuraavan nivelen akseli kääntyy vaakatasoon: ensimmäinen nivel toimii kuin oikean robotin kanta, ja seuraavat nivelet nostavat ja laskevat kättä.", "α tilts the next joint's axis. A good start: row 1: d = 0.1, a = 0, α = 90. Then the next joint's axis becomes horizontal: the first joint acts like a real robot's base and the following joints raise and lower the arm.")],
           quiz: { q: tr("Mikä DH-parametri kertoo linkin pituuden?", "Which DH parameter is the link length?"), options: ["θ", "d", "a", "α"], correct: 2,
             explain: tr("a on etäisyys x-akselia pitkin eli linkin pituus. d on siirto z-akselia pitkin — esimerkiksi kannan korkeus.", "a is the distance along x, i.e. the link length. d is the offset along z — for example the base height.") },
         },
         {
           id: "ik", tool: "ik", title: tr("Käänteiskinematiikka", "Inverse kinematics"),
-          teach: tr("**Käänteiskinematiikka** kääntää kysymyksen: *haluan työkalun tähän pisteeseen — mitkä nivelkulmat tarvitaan?* Se on vaikeampaa, koska ratkaisuja voi olla monta tai ei yhtään.\n\nTyökalu ratkaisee kulmat numeerisesti (DLS-menetelmä): se parantaa arvausta pienin askelin, kunnes kärki osuu kohteeseen.\n\n**Singulariteetissa** käsi on täysin suorana tai taitettuna. Silloin pieni liike kohteessa vaatii valtavia nivelliikkeitä.",
-            "**Inverse kinematics** flips the question: *I want the tool at this point — which joint angles do I need?* It is harder because there may be many solutions or none.\n\nThe tool solves the angles numerically (DLS method): it improves a guess in small steps until the tip reaches the target.\n\nAt a **singularity** the arm is fully stretched or folded. Then a small target motion needs huge joint motions."),
+          teach: tr("**Käänteiskinematiikka** kääntää kysymyksen: *haluan työkalun tähän pisteeseen — mitkä nivelkulmat tarvitaan?* Se on vaikeampaa, koska ratkaisuja voi olla monta tai ei yhtään.\n\nTyökalu ratkaisee kulmat numeerisesti (DLS-menetelmä eli vaimennettu pienimmän neliösumman menetelmä): se parantaa arvausta pienin askelin, kunnes kärki osuu kohteeseen.\n\n**Singulariteetissa** käsi on täysin suorana tai taitettuna. Silloin pieni liike kohteessa vaatii valtavia nivelliikkeitä.",
+            "**Inverse kinematics** flips the question: *I want the tool at this point — which joint angles do I need?* It is harder because there may be many solutions or none.\n\nThe tool solves the angles numerically (DLS, damped least squares): it improves a guess in small steps until the tip reaches the target.\n\nAt a **singularity** the arm is fully stretched or folded. Then a small target motion needs huge joint motions."),
           tasks: [
-            { id: "drag", text: tr("Raahaa kohdetta tai sen X-, Y- tai Z-nuolta", "Drag the target or its X, Y or Z arrow"), check: (c) => changed(c, "ik", (s) => s?.target) },
+            { id: "drag", text: tr("Raahaa kohdetta tai sen X-, Y- tai Z-nuolta", "Drag the target or its X, Y or Z arrow"), check: (c) => {
+              // Oletuskohde on käsivarren kärki vaiheen alussa: pelkkä muun asetuksen tallennus ei saa kuitata tehtävää
+              const t = tools().ik?.target;
+              if (!t) return false;
+              const b = c.base.tools.ik?.target;
+              if (b) return JSON.stringify(t) !== JSON.stringify(b);
+              const a = arm(), p = tipOf({ ...a, q: c.base.q?.length === a.q.length ? c.base.q : a.q });
+              return Math.hypot(t[0] - p[0], t[1] - p[1], (t[2] || 0) - p[2]) > 1e-3;
+            } },
             { id: "far", text: tr("Vie kohde niin kauas, ettei käsi yllä siihen", "Move the target so far that the arm cannot reach it"), check: () => { const t = tools().ik?.target, a = arm(); if (!t) return false; const p = tipOf(a); return Math.hypot(p[0] - t[0], p[1] - t[1], Kin.isPlanar(a.chain) ? 0 : p[2] - t[2]) > 0.005; } },
             { id: "back", text: tr("Tuo kohde takaisin ulottuville", "Bring the target back within reach"), after: "far", check: () => { const t = tools().ik?.target, a = arm(); if (!t) return false; const p = tipOf(a); return Math.hypot(p[0] - t[0], p[1] - t[1], Kin.isPlanar(a.chain) ? 0 : p[2] - t[2]) < 0.001; } },
           ],
@@ -91,8 +99,8 @@ const Courses = (() => {
         },
         {
           id: "traj", tool: "traj", title: tr("Sileä liike asennosta toiseen", "Smooth motion between poses"),
-          teach: tr("Robotti ei voi hypätä asennosta toiseen: nopeuden ja kiihtyvyyden pitää pysyä rajoissa. **Liikeprofiili** kertoo, miten nopeus muuttuu liikkeen aikana.\n\n- **Trapetsi**: kiihdytys, vakionopeus, jarrutus — nopein annetuilla rajoilla, mutta kiihtyvyys muuttuu hyppäyksellisesti (*nykäys*).\n- **S-käyrä**: rajoittaa myös nykäystä, joten liike on pehmeä ja tärinää on vähemmän.\n\nKäsivarren kaikki nivelet ajoitetaan niin, että ne lähtevät ja pysähtyvät yhtä aikaa.",
-            "A robot cannot jump between poses: velocity and acceleration must stay within limits. A **motion profile** says how velocity changes during the move.\n\n- **Trapezoid**: accelerate, cruise, brake — fastest for given limits, but acceleration jumps (*jerk*).\n- **S-curve**: also limits jerk, so the motion is smooth with less vibration.\n\nAll joints of the arm are timed to start and stop together."),
+          teach: tr("Robotti ei voi hypätä asennosta toiseen: nopeuden ja kiihtyvyyden pitää pysyä rajoissa. **Liikeprofiili** kertoo, miten nopeus muuttuu liikkeen aikana.\n\n- **Trapetsi**: kiihdytys, vakionopeus, jarrutus — nopein annetuilla rajoilla, mutta kiihtyvyys muuttuu hyppäyksellisesti, jolloin *nykäys* (kiihtyvyyden muutosnopeus) on hetkellisesti valtava.\n- **S-käyrä**: rajoittaa myös nykäystä, joten liike on pehmeä ja tärinää on vähemmän.\n\nKäsivarren kaikki nivelet ajoitetaan niin, että ne lähtevät ja pysähtyvät yhtä aikaa.",
+            "A robot cannot jump between poses: velocity and acceleration must stay within limits. A **motion profile** says how velocity changes during the move.\n\n- **Trapezoid**: accelerate, cruise, brake — fastest for given limits, but acceleration jumps, so the *jerk* (rate of change of acceleration) spikes.\n- **S-curve**: also limits jerk, so the motion is smooth with less vibration.\n\nAll joints of the arm are timed to start and stop together."),
           tasks: [
             { id: "arm", text: tr("Valitse 'Mitä liikutetaan': Robottikäsivarsi", "Choose 'What moves': Robot arm"), check: () => tools().traj?.mode === "arm" },
             { id: "s", text: tr("Vaihda profiiliksi S-käyrä ja vertaa kiihtyvyyskuvaajaa trapetsiin", "Switch the profile to S-curve and compare the acceleration plot with the trapezoid"), check: () => tools().traj?.profile === "scurve" },
@@ -105,8 +113,8 @@ const Courses = (() => {
         },
         {
           id: "motor", tool: "motor", title: tr("Riittääkö moottori?", "Is the motor strong enough?"),
-          teach: tr("Pahin hetki nivelelle on, kun varsi on **vaakasuorassa**: painovoiman vipuvarsi on silloin pisin. Momentti = voima × vipuvarsi, eli kuorma kärjessä painaa sitä enemmän, mitä pidempi varsi on.\n\nMoottorin **jumimomentti** on suurin momentti, jonka se antaa juuri ennen pysähtymistä — se ei kestä sitä jatkuvasti. Nyrkkisääntö: jatkuva kuorma enintään **~30 %** jumimomentista.\n\n**Välityssuhde** kasvattaa momenttia ja pienentää nopeutta samassa suhteessa.",
-            "The worst moment for a joint is when the arm is **horizontal**: gravity's lever arm is then longest. Torque = force × lever arm, so a payload at the tip weighs more the longer the arm is.\n\nA motor's **stall torque** is the largest torque it gives just before stopping — it cannot sustain it. Rule of thumb: keep the continuous load below **~30 %** of stall torque.\n\nA **gear ratio** multiplies torque and divides speed by the same factor."),
+          teach: tr("Pahin hetki nivelelle on, kun varsi on **vaakasuorassa**: painovoiman vipuvarsi on silloin pisin. Momentti = voima × vipuvarsi, eli kärjen kuorma rasittaa niveltä sitä enemmän, mitä pidempi varsi on.\n\nMoottorin **jumimomentti** on suurin momentti, jonka se antaa juuri ennen pysähtymistä — se ei kestä sitä jatkuvasti. Nyrkkisääntö: jatkuva kuorma enintään **~30 %** jumimomentista.\n\n**Välityssuhde** kasvattaa momenttia ja pienentää nopeutta samassa suhteessa.",
+            "The worst moment for a joint is when the arm is **horizontal**: gravity's lever arm is then longest. Torque = force × lever arm, so a payload at the tip needs more torque the longer the arm is.\n\nA motor's **stall torque** is the largest torque it gives just before stopping — it cannot sustain it. Rule of thumb: keep the continuous load below **~30 %** of stall torque.\n\nA **gear ratio** multiplies torque and divides speed by the same factor."),
           tasks: [
             { id: "joint", text: tr("Valitse 'Mitä mitoitetaan': Robottikäsivarren nivel", "Choose 'What are you sizing': Robot arm joint"), check: () => tools().motor?.kind === "joint" },
             { id: "len", text: tr("Hae varren pituus omasta käsivarsimallistasi napilla", "Fetch the arm length from your own arm model with the button"), check: () => !!tools().motor?.jFromArm },
@@ -122,8 +130,8 @@ const Courses = (() => {
         {
           id: "wrap", tool: "ik", title: tr("Kertaus omin sanoin", "Recap in your own words"),
           teach: tr("Hienoa — olet suunnitellut käsivarren, ratkaissut sen liikkeet ja mitoittanut moottorin. Oppiminen vahvistuu, kun selität asian itse.", "Great — you have designed an arm, solved its motion and sized a motor. Learning sticks when you explain it yourself."),
-          reflect: { q: tr("Selitä omin sanoin: mitä eroa on eteenpäin- ja käänteiskinematiikalla, ja miksi käänteiskinematiikka on vaikeampi?", "In your own words: what is the difference between forward and inverse kinematics, and why is inverse kinematics harder?"),
-            model: tr("Eteenpäin kinematiikka laskee nivelkulmista työkalun asennon: tulos on aina yksikäsitteinen ja laskenta suoraviivaista (matriisit kerrotaan peräkkäin). Käänteiskinematiikka etsii nivelkulmat halutulle asennolle. Se on vaikeampaa, koska ratkaisuja voi olla useita (kyynärpää ylös/alas), ei yhtään (kohde ulottumattomissa) tai äärettömästi, ja yhtälöt ovat epälineaarisia — siksi käytetään usein iteratiivisia menetelmiä. Singulariteetin lähellä ratkaisu muuttuu epävakaaksi.",
+          reflect: { q: tr("Selitä omin sanoin: mitä eroa on suoralla ja käänteisellä kinematiikalla, ja miksi käänteiskinematiikka on vaikeampi?", "In your own words: what is the difference between forward and inverse kinematics, and why is inverse kinematics harder?"),
+            model: tr("Suora kinematiikka laskee nivelkulmista työkalun asennon: tulos on aina yksikäsitteinen ja laskenta suoraviivaista (matriisit kerrotaan peräkkäin). Käänteiskinematiikka etsii nivelkulmat halutulle asennolle. Se on vaikeampaa, koska ratkaisuja voi olla useita (kyynärpää ylös/alas), ei yhtään (kohde ulottumattomissa) tai äärettömästi, ja yhtälöt ovat epälineaarisia — siksi käytetään usein iteratiivisia menetelmiä. Singulariteetin lähellä ratkaisu muuttuu epävakaaksi.",
               "Forward kinematics computes the tool pose from the joint angles: the result is always unique and the computation is straightforward (matrices multiplied in sequence). Inverse kinematics finds joint angles for a desired pose. It is harder because there may be several solutions (elbow up/down), none (target out of reach) or infinitely many, and the equations are nonlinear — so iterative methods are often used. Near a singularity the solution becomes unstable.") },
           tasks: [],
         },
@@ -165,8 +173,8 @@ const Courses = (() => {
         },
         {
           id: "d", tool: "pid", title: tr("D-termi vaimentaa", "The D term adds damping"),
-          teach: tr("Vaihdetaan järjestelmäksi **massa**, esimerkiksi kärryn asento. Massalla on hitautta: kun se kerran liikkuu, se jatkaa liikettään, ja pelkällä P-säädöllä se heiluu asetusarvon ympärillä.\n\n**D-termi** (derivaatta) reagoi muutosnopeuteen: se jarruttaa, kun vaste lähestyy nopeasti. Se toimii kuin iskunvaimennin.",
-            "Let's switch the system to a **mass**, for example the position of a cart. A mass has inertia: once moving, it keeps moving, and with P control alone it swings around the setpoint.\n\nThe **D term** (derivative) reacts to the rate of change: it brakes when the response approaches fast. It works like a shock absorber."),
+          teach: tr("Vaihdetaan järjestelmäksi **massa**: säädetään esimerkiksi kärryn asentoa. Massalla on hitautta: kun se kerran liikkuu, se jatkaa liikettään, ja pelkällä P-säädöllä se heiluu asetusarvon ympärillä.\n\n**D-termi** (derivaatta) reagoi muutosnopeuteen: se jarruttaa, kun vaste lähestyy nopeasti. Se toimii kuin iskunvaimennin.",
+            "Let's switch the system to a **mass**: for example, controlling a cart's position. A mass has inertia: once moving, it keeps moving, and with P control alone it swings around the setpoint.\n\nThe **D term** (derivative) reacts to the rate of change: it brakes when the response approaches fast. It works like a shock absorber."),
           tasks: [
             { id: "mass", text: tr("Vaihda Ohjattava järjestelmä -valikosta massa (asento)", "Choose the mass (position) system in the System menu"), check: () => pid()?.s.plant === "mass" },
             { id: "pd", text: tr("Aseta Ki = 0 ja lisää Kd:tä, kunnes ylitys on alle 10 %", "Set Ki = 0 and add Kd until the overshoot is below 10 %"), check: () => { const r = pid(); return r && r.s.plant === "mass" && r.s.ki === 0 && r.s.kd > 0 && !r.unstable && r.m.overshoot < 10; } },
@@ -213,8 +221,8 @@ const Courses = (() => {
       steps: [
         {
           id: "grid", tool: "path", title: tr("Kartta ja reitinhaku", "Maps and path search"),
-          teach: tr("Robotti näkee maailman usein **ruudukkona**: jokainen solu on vapaa tai este. Reitinhaku etsii vapaiden solujen ketjun lähdöstä maaliin.\n\n**A*** tutkii ensin soluja, jotka ovat lähellä maalia arvion (*heuristiikan*) mukaan. Siksi se löytää lyhimmän reitin tutkimalla vähemmän soluja kuin sokea haku.",
-            "Robots often see the world as a **grid**: each cell is free or an obstacle. Path search finds a chain of free cells from start to goal.\n\n**A*** first explores cells that look close to the goal according to an estimate (*heuristic*). That is why it finds the shortest path while exploring fewer cells than a blind search."),
+          teach: tr("Robotti näkee maailman usein **ruudukkona**: jokainen solu on vapaa tai este. Reitinhaku etsii vapaiden solujen ketjun lähdöstä maaliin.\n\n**A*** tutkii ensin soluja, joissa kuljettu matka + arvio (*heuristiikka*) jäljellä olevasta matkasta on pienin. Siksi se löytää lyhimmän reitin tutkimalla vähemmän soluja kuin sokea haku.",
+            "Robots often see the world as a **grid**: each cell is free or an obstacle. Path search finds a chain of free cells from start to goal.\n\n**A*** first explores the cells where the distance travelled plus an estimate (*heuristic*) of the remaining distance is smallest. That is why it finds the shortest path while exploring fewer cells than a blind search."),
           tasks: [
             { id: "wall", text: tr("Piirrä hiirellä uusi seinä niin, että reitti joutuu kiertämään", "Draw a new wall with the mouse so that the path has to go around"), check: (c) => changed(c, "map", (m) => m?.occ, GridMap.defaultMap()) },
             { id: "goal", text: tr("Siirrä maali uuteen paikkaan Maali-työkalulla", "Move the goal to a new place with the Goal tool"), check: (c) => changed(c, "map", (m) => m?.goal, GridMap.defaultMap()) },
@@ -227,8 +235,8 @@ const Courses = (() => {
         },
         {
           id: "compare", tool: "path", title: tr("Algoritmien vertailu", "Comparing algorithms"),
-          teach: tr("Ruudukkohaut (A*, Dijkstra) ovat tarkkoja, mutta hidastuvat suurissa tiloissa. **RRT** kasvattaa satunnaista puuta jatkuvassa tilassa: se on nopea suurissa ja monimutkaisissa tiloissa (esim. robottikäsivarret), mutta sen reitti ei ole lyhin.",
-            "Grid searches (A*, Dijkstra) are exact but slow down in large spaces. **RRT** grows a random tree in continuous space: it is fast in large and complex spaces (e.g. robot arms), but its path is not the shortest."),
+          teach: tr("Ruudukkohaut (A*, Dijkstra) ovat tarkkoja, mutta hidastuvat suurissa tiloissa. **RRT** kasvattaa satunnaista puuta jatkuvassa tilassa: se on nopea suurissa ja moniulotteisissa tiloissa (esim. robottikäsivarren nivelkulmat), mutta sen reitti ei ole lyhin.",
+            "Grid searches (A*, Dijkstra) are exact but slow down in large spaces. **RRT** grows a random tree in continuous space: it is fast in large and high-dimensional spaces (e.g. a robot arm's joint angles), but its path is not the shortest."),
           tasks: [
             { id: "rrt", text: tr("Valitse algoritmiksi RRT ja katso, miltä reitti näyttää", "Choose RRT as the algorithm and look at its path"), check: () => tools().path?.algo === "rrt" },
             { id: "cmp", text: tr("Paina Vertaile kaikkia ja tutki taulukkoa", "Press Compare all and study the table") },
@@ -246,7 +254,7 @@ const Courses = (() => {
             "A path is only a plan: the robot must also **follow** it. The **Pure Pursuit** controller looks at a point one *lookahead distance* ahead on the path and steers towards it — like a driver looking a little ahead.\n\nWhen planning, obstacles are 'inflated' by the robot's radius so that the robot fits through."),
           tasks: [
             { id: "goal", text: tr("Paina Aja maaliin ja odota, että robotti on perillä", "Press Drive to goal and wait until the robot arrives"), check: newArrival },
-            { id: "la", text: tr("Kokeile katseluetäisyyksiä 0,1 ja 0,6 ja vertaa, miten robotti kääntyy mutkissa", "Try lookahead distances 0.1 and 0.6 and compare how the robot turns in corners") },
+            { id: "la", text: tr("Kokeile katseluetäisyyksiä 0,1 m ja 0,6 m ja vertaa, miten robotti kääntyy mutkissa", "Try lookahead distances 0.1 m and 0.6 m and compare how the robot turns in corners") },
           ],
           hints: [tr("Jos robotti ei pääse perille, Reittisuunnittelussa piirtämäsi seinät voivat tehdä käytävistä liian kapeita. Oletuskartta-nappi palauttaa kartan.", "If the robot cannot get there, the walls you drew in Path planning may make corridors too narrow. The Default map button restores the map.")],
           quiz: { q: tr("Mitä tapahtuu, jos katseluetäisyys on hyvin pitkä?", "What happens if the lookahead distance is very long?"),
@@ -272,7 +280,7 @@ const Courses = (() => {
             "What if there is no map? The robot can make one. A **lidar** measures distances in every direction: cells a beam passes through are free, hit points are obstacles.\n\nAn **occupancy grid** stores a probability (log-odds) for each cell. Each scan adds confidence, so even noisy data produces a clear map."),
           tasks: [
             { id: "explore", text: tr("Käynnistä 'Tutki automaattisesti' ja anna robotin kartoittaa vähintään 90 %", "Start 'Explore automatically' and let the robot map at least 90 %"), check: () => (window.occCoverage?.() || 0) >= 0.9 },
-            { id: "truth", text: tr("Laita 'Vertaa todellisiin seiniin' päälle ja etsi kohdat, joissa kartta on väärin", "Turn on 'Compare with true walls' and look for places where the map is wrong") },
+            { id: "truth", text: tr("Laita 'Vertaa todellisiin seiniin' päälle ja etsi kohdat, joissa kartta on väärin", "Turn on 'Compare to true walls' and look for places where the map is wrong") },
           ],
           hints: [tr("Kartoitus kestää noin minuutin. Robotti hakeutuu aina lähimpään tutkimattomaan reunaan (frontier exploration).", "Mapping takes about a minute. The robot always heads to the nearest unexplored edge (frontier exploration).")],
           quiz: { q: tr("Miksi kohinainenkin lidar tuottaa selkeän kartan?", "Why does even a noisy lidar produce a clear map?"),
@@ -328,7 +336,7 @@ const Courses = (() => {
         },
         {
           id: "tf", tool: "sim3d", title: tr("TF-puu", "The TF tree"),
-          teach: tr("Robotilla on monta koordinaatistoa: alusta (base_link), lidar, kamera, käsivarsi… Jokainen kehys kerrotaan suhteessa **vanhempaansa**, ja yhdessä ne muodostavat **TF-puun** (ROS:n tf2).\n\nKun tiedät puun, voit laskea minkä tahansa kahden kehyksen välisen muunnoksen — esimerkiksi missä kameran näkemä kohde on robotin alustaan nähden.",
+          teach: tr("Robotilla on monta koordinaatistoa: alusta (base_link), lidar, kamera, käsivarsi… Jokaisen kehyksen paikka ilmoitetaan suhteessa **vanhempaansa**, ja yhdessä ne muodostavat **TF-puun** (ROS:n tf2).\n\nKun tiedät puun, voit laskea minkä tahansa kahden kehyksen välisen muunnoksen — esimerkiksi missä kameran näkemä kohde on robotin alustaan nähden.",
             "A robot has many frames: the base (base_link), lidar, camera, arm… Each frame is given relative to its **parent**, and together they form a **TF tree** (ROS's tf2).\n\nKnowing the tree, you can compute the transform between any two frames — for example where an object seen by the camera is relative to the robot base."),
           tasks: [
             { id: "add", text: tr("Lisää uusi kehys (esim. gripper) ja anna sille vanhempi", "Add a new frame (e.g. gripper) and give it a parent"), check: (c) => (tools().sim3d?.frames?.length || 6) > (c.base.tools.sim3d?.frames?.length || 6) },
@@ -392,8 +400,8 @@ const Courses = (() => {
         },
         {
           id: "three", tool: "nn3d", title: tr("3D: robotti-imuri etsii kohteita", "3D: a robot vacuum finds targets"),
-          teach: tr("3D-simulaatiossa fysiikka on raskaampaa mutta todellisempaa: robotti voi kääntyä, kaatua sivulle ja liikkua mihin suuntaan tahansa. Robotti-imuri kääntyy paikallaan pyörien nopeuseron avulla — aivan kuten oikea imuri.",
-            "In 3D the physics is heavier but more realistic: the robot can turn, tip over sideways and move in any direction. The robot vacuum turns in place using the wheel speed difference — just like a real one."),
+          teach: tr("3D-simulaatiossa fysiikkaa on raskaampi laskea, mutta se on todellisempaa: robotti voi kääntyä, kaatua sivulle ja liikkua mihin suuntaan tahansa. Robotti-imuri kääntyy paikallaan pyörien nopeuseron avulla — aivan kuten oikea imuri.",
+            "In 3D the physics is heavier to compute but more realistic: the robot can turn, tip over sideways and move in any direction. The robot vacuum turns in place using the wheel speed difference — just like a real one."),
           tasks: [
             { id: "rover", text: tr("Valitse Esimerkit → Dusty etsii kohteita", "Choose Examples → Dusty finds targets"), check: () => tools().nn3d?.modelKey === "dusty" && tools().nn3d?.taskKey === "target" },
             { id: "train", text: tr("Kouluta vähintään 10 sukupolvea ja katso, alkaako Dusty kääntyä kohdetta kohti", "Train for at least 10 generations and see whether Dusty starts turning toward the target"), check: () => tools().nn3d?.modelKey === "dusty" && (tools().nn3dStats?.generation || 0) >= 10 },
@@ -458,8 +466,8 @@ const Courses = (() => {
         },
         {
           id: "speed", tool: "motor", title: tr("Kuinka nopea robottisi on?", "How fast is your robot?"),
-          teach: tr("Robotin nopeus tulee moottorin **kierrosnopeudesta** (rpm) ja **pyörän koosta**: yksi kierros vie robottia pyörän ympärysmitan verran eteenpäin.\n\nnopeus = rpm / 60 × π × halkaisija\n\nIsompi pyörä = nopeampi, mutta vetovoima pienenee samassa suhteessa. Siksi raskas robotti tarvitsee pienet pyörät tai vahvemman moottorin.",
-            "A robot's speed comes from the motor's **rotation speed** (rpm) and the **wheel size**: one revolution moves the robot one wheel circumference forward.\n\nspeed = rpm / 60 × π × diameter\n\nA bigger wheel = faster, but the pulling force drops by the same factor. That's why a heavy robot needs small wheels or a stronger motor."),
+          teach: tr("Robotin nopeus tulee moottorin **kierrosnopeudesta** (rpm) ja **pyörän koosta**: yksi kierros vie robottia pyörän ympärysmitan verran eteenpäin.\n\nnopeus (m/s) = rpm / 60 × π × halkaisija (m)\n\nIsompi pyörä = nopeampi, mutta vetovoima pienenee samassa suhteessa. Siksi raskas robotti tarvitsee pienet pyörät tai vahvemman moottorin.",
+            "A robot's speed comes from the motor's **rotation speed** (rpm) and the **wheel size**: one revolution moves the robot one wheel circumference forward.\n\nspeed (m/s) = rpm / 60 × π × diameter (m)\n\nA bigger wheel = faster, but the pulling force drops by the same factor. That's why a heavy robot needs small wheels or a stronger motor."),
           tasks: [
             { id: "wheel", text: tr("Muuta pyörän halkaisijaa ja katso, mitä ajonopeudelle tapahtuu", "Change the wheel diameter and watch the driving speed"), check: (c) => changed(c, "motor", (s) => s?.wheelD, { wheelD: 65 }) },
             { id: "fast", text: tr("Saa ajonopeus yli 1 m/s niin, että robotti jaksaa yhä liikkua", "Get the driving speed above 1 m/s while the robot can still move"), check: () => { const m = window.motorWheelResult?.(); return !!m && m.r.moves && m.r.vOp > 1; } },
@@ -509,13 +517,13 @@ const Courses = (() => {
         },
         {
           id: "loads", tool: "power", title: tr("Mikä vie virran?", "What draws the current?"),
-          teach: tr("Elektroniikka kuluttaa yllättävän vähän: mikrokontrolleri ehkä 50–100 mA. **Moottorit** vievät lähes kaiken — ja käynnistyessään tai jumittuessaan moninkertaisesti (**jumivirta**). Akun ja moottoriohjaimen pitää kestää nämä piikit.",
-            "Electronics draw surprisingly little: a microcontroller maybe 50–100 mA. **Motors** take almost everything — and many times more when starting or stalled (**stall current**). The battery and the motor driver must survive these spikes."),
+          teach: tr("Elektroniikka kuluttaa yllättävän vähän: mikrokontrolleri ehkä 50–250 mA (Raspberry Pi jopa 0,5–1 A). **Moottorit** vievät lähes kaiken — ja käynnistyessään tai jumittuessaan moninkertaisesti (**jumivirta**). Akun ja moottoriohjaimen pitää kestää nämä piikit.",
+            "Electronics draw surprisingly little: a microcontroller maybe 50–250 mA (a Raspberry Pi up to 0.5–1 A). **Motors** take almost everything — and many times more when starting or stalled (**stall current**). The battery and the motor driver must survive these spikes."),
           tasks: [
             { id: "add", text: tr("Lisää kuormataulukkoon uusi osa (esim. servo tai kamera)", "Add a new part to the loads table (e.g. a servo or a camera)"), check: (c) => (tools().power?.loads?.length || 3) > (c.base.tools.power?.loads?.length || 3) },
             { id: "peak", text: tr("Vertaa Keskivirta- ja Huippuvirta-lukuja: kumpi ratkaisee akun valinnan?", "Compare the Average and Peak current: which one decides the battery choice?") },
           ],
-          hints: [tr("Kuormataulukon alla on nappi uuden rivin lisäämiseen. Servon keskivirta on tyypillisesti 100–300 mA ja huippu 1 A.", "Below the loads table there is a button for adding a row. A servo typically averages 100–300 mA and peaks at 1 A.")],
+          hints: [tr("Kuormataulukon alla on nappi uuden rivin lisäämiseen. Servon keskivirta on tyypillisesti 100–300 mA ja huippu 1–2,5 A (esim. MG996R).", "Below the loads table there is a button for adding a row. A servo typically averages 100–300 mA and peaks at 1–2.5 A (e.g. MG996R).")],
           quiz: { q: tr("Miksi moottoriohjaimen huippuvirta on tärkeä, vaikka moottori ottaa ajossa vain vähän?", "Why does the motor driver's peak current matter even if the motor draws little while driving?"),
             options: [tr("Koska käynnistyessä ja jumissa moottori ottaa moninkertaisen virran", "Because a starting or stalled motor draws many times more current"), tr("Koska huippuvirta kasvattaa nopeutta", "Because peak current increases speed"), tr("Sillä ei ole väliä", "It doesn't matter")], correct: 0,
             explain: tr("Jumivirta voi olla 5–10× ajovirta. Jos ohjain ei kestä sitä, se ylikuumenee tai rikkoutuu juuri silloin, kun robotti törmää seinään.", "Stall current can be 5–10× the running current. If the driver can't take it, it overheats or breaks exactly when the robot hits a wall.") },
@@ -559,8 +567,8 @@ const Courses = (() => {
         },
         {
           id: "range", tool: "map", title: tr("Etäisyysanturit", "Distance sensors"),
-          teach: tr("Robotti näkee esteet etäisyysantureilla:\n\n- **Ultraääni** (esim. HC-SR04): halpa, 2 cm – 4 m, leveä keila\n- **ToF-laser** (esim. VL53L0X): pieni ja tarkka, 1–4 m, kapea säde\n- **Lidar**: pyörivä laser, satoja mittauksia kierroksessa, 6–12 m\n\nKantama ja säteiden määrä ratkaisevat, kuinka nopeasti robotti oppii ympäristönsä.",
-            "A robot sees obstacles with distance sensors:\n\n- **Ultrasonic** (e.g. HC-SR04): cheap, 2 cm – 4 m, wide beam\n- **ToF laser** (e.g. VL53L0X): small and precise, 1–4 m, narrow beam\n- **Lidar**: a spinning laser, hundreds of readings per turn, 6–12 m\n\nRange and the number of beams decide how quickly the robot learns its surroundings."),
+          teach: tr("Robotti näkee esteet etäisyysantureilla:\n\n- **Ultraääni** (esim. HC-SR04): halpa, 2 cm – 4 m, leveä keila\n- **ToF-laser** (esim. VL53L0X): pieni ja tarkka, kantama noin 1–2 m (VL53L1X jopa 4 m), kapea keila\n- **Lidar**: pyörivä laser, satoja mittauksia kierroksessa, 6–12 m\n\nKantama ja säteiden määrä ratkaisevat, kuinka nopeasti robotti kartoittaa ympäristönsä.",
+            "A robot sees obstacles with distance sensors:\n\n- **Ultrasonic** (e.g. HC-SR04): cheap, 2 cm – 4 m, wide beam\n- **ToF laser** (e.g. VL53L0X): small and precise, range about 1–2 m (VL53L1X up to 4 m), narrow beam\n- **Lidar**: a spinning laser, hundreds of readings per turn, 6–12 m\n\nRange and the number of beams decide how quickly the robot maps its surroundings."),
           tasks: [
             { id: "beams", text: tr("Muuta lidar-säteiden määrää", "Change the number of lidar beams"), check: (c) => changed(c, "occ", (s) => s?.beams, { beams: 90 }) },
             { id: "short", text: tr("Aseta kantamaksi alle 1 m (kuin halpa ToF-anturi) ja paina Tutki", "Set the range below 1 m (like a cheap ToF sensor) and press Explore"), check: () => (tools().occ?.range ?? 2.5) < 1 },
@@ -623,7 +631,7 @@ const Courses = (() => {
         },
         {
           id: "urdf", tool: "sim3d", title: tr("URDF: robotin kuvaus", "URDF: describing the robot"),
-          teach: tr("**URDF** on XML-tiedosto, joka kuvaa robotin **linkkeinä** (jäykät osat: muoto, massa) ja **niveliä** (joint: tyyppi, akseli, rajat). Nivelen tyyppi voi olla esim. `revolute` (kääntyy rajojen välillä), `continuous` (pyörä), `prismatic` (liukuu) tai `fixed` (kiinteä, esim. anturi).\n\nROS laskee URDF:stä ja nivelkulmista TF-puun automaattisesti (robot_state_publisher).",
+          teach: tr("**URDF** on XML-tiedosto, joka kuvaa robotin **linkkeinä** (jäykät osat: muoto, massa) ja **nivelinä** (joint: tyyppi, akseli, rajat). Nivelen tyyppi voi olla esim. `revolute` (kääntyy rajojen välillä), `continuous` (pyörä), `prismatic` (liukuu) tai `fixed` (kiinteä, esim. anturi).\n\nROS laskee URDF:stä ja nivelkulmista TF-puun automaattisesti (robot_state_publisher).",
             "**URDF** is an XML file that describes a robot as **links** (rigid parts: shape, mass) and **joints** (type, axis, limits). A joint type can be e.g. `revolute` (turns between limits), `continuous` (a wheel), `prismatic` (slides) or `fixed` (rigid, e.g. a sensor).\n\nROS computes the TF tree from the URDF and the joint angles automatically (robot_state_publisher)."),
           tasks: [
             { id: "open", text: tr("Avaa työkalun URDF-osio ja lataa esimerkki tai oma URDF-tiedosto", "Open the tool's URDF section and load the example or your own URDF file") },
@@ -650,7 +658,7 @@ const Courses = (() => {
         {
           id: "map", tool: "map", title: tr("Kartat ROS:ssa", "Maps in ROS"),
           teach: tr("ROS:n navigointi (Nav2) käyttää **varauskarttaa**: PGM-kuva (valkoinen = vapaa, musta = este, harmaa = tuntematon) ja YAML-tiedosto, joka kertoo solun koon (`resolution`) ja kartan alkupisteen (`origin`). `map_server` julkaisee kartan `/map`-topiciin.\n\nKartta tehdään yleensä SLAMilla: robotti ajaa ympäriinsä ja piirtää kartan lidarilla — juuri kuten tässä työkalussa.",
-            "ROS navigation (Nav2) uses an **occupancy map**: a PGM image (white = free, black = obstacle, gray = unknown) and a YAML file giving the cell size (`resolution`) and the map's origin (`origin`). `map_server` publishes the map on the `/map` topic.\n\nThe map is usually made with SLAM: the robot drives around and draws the map with its lidar — just like in this tool."),
+            "ROS navigation (Nav2) uses an **occupancy grid** map: a PGM image (white = free, black = obstacle, gray = unknown) and a YAML file giving the cell size (`resolution`) and the map's origin (`origin`). `map_server` publishes the map on the `/map` topic.\n\nThe map is usually made with SLAM: the robot drives around and draws the map with its lidar — just like in this tool."),
           tasks: [
             { id: "explore", text: tr("Paina Tutki ja anna robotin kartoittaa", "Press Explore and let the robot map the area") },
             { id: "export", text: tr("Vie kartta PGM- ja YAML-tiedostoina", "Export the map as PGM and YAML files") },
@@ -673,7 +681,7 @@ const Courses = (() => {
       steps: [
         {
           id: "pixels", tool: "cv", title: tr("Kuva on lukuja", "An image is numbers"),
-          teach: tr("Kamerakuva on ruudukko **pikseleitä**. Jokaisella on kolme lukua 0–255: punainen, vihreä ja sininen (RGB). 320 × 240 kuvassa on 76 800 pikseliä — joka ruudulla!\n\nUsein ensimmäinen askel on **harmaasävy**: kolme lukua yhdistetään yhdeksi kirkkaudeksi. Käsiteltävää on silloin kolme kertaa vähemmän.",
+          teach: tr("Kamerakuva on ruudukko **pikseleitä**. Jokaisella on kolme lukua 0–255: punainen, vihreä ja sininen (RGB). 320 × 240 kuvassa on 76 800 pikseliä — jokaisessa kuvassa!\n\nUsein ensimmäinen askel on **harmaasävy**: kolme lukua yhdistetään yhdeksi kirkkaudeksi. Käsiteltävää on silloin kolme kertaa vähemmän.",
             "A camera image is a grid of **pixels**. Each has three numbers 0–255: red, green and blue (RGB). A 320 × 240 image has 76,800 pixels — every frame!\n\nOften the first step is **grayscale**: the three numbers are combined into one brightness. That leaves three times less to process."),
           tasks: [
             { id: "gray", text: tr("Vaihda käsittelyksi 2. Harmaasävy", "Switch the processing to 2. Grayscale"), check: () => tools().cv?.mode === "gray" },
@@ -686,8 +694,8 @@ const Courses = (() => {
         },
         {
           id: "line", tool: "cv", title: tr("Kynnystys ja viivanseuraaja", "Thresholds and a line follower"),
-          teach: tr("**Kynnystys** muuttaa harmaasävykuvan mustavalkoiseksi: rajaa tummemmat pikselit ovat kohdetta, muut taustaa. Viivanseuraaja etsii näin mustan viivan vaalealta lattialta.\n\nKun valkoisten pikselien **keskipiste** lasketaan, saadaan viivan paikka. Jos se on kuvan vasemmalla puolella, robotin pitää kääntyä vasemmalle: ohjaus = (x − keskikohta) / puolikas leveys.",
-            "**Thresholding** turns a grayscale image into black and white: pixels darker than the limit are the object, the rest is background. A line follower finds a black line on a light floor this way.\n\nThe **centroid** of the white pixels gives the line's position. If it's on the left side of the image, the robot has to turn left: steering = (x − centre) / half width."),
+          teach: tr("**Kynnystys** muuttaa harmaasävykuvan mustavalkoiseksi: rajaa tummemmat pikselit ovat kohdetta, muut taustaa. Viivanseuraaja etsii näin mustan viivan vaalealta lattialta.\n\nKohde näytetään valkoisena. Kun valkoisten pikselien **keskipiste** lasketaan, saadaan viivan paikka. Jos se on kuvan vasemmalla puolella, robotin pitää kääntyä vasemmalle: ohjaus = (x − keskikohta) / (puolet kuvan leveydestä); negatiivinen = käänny vasemmalle.",
+            "**Thresholding** turns a grayscale image into black and white: pixels darker than the limit are the object, the rest is background. A line follower finds a black line on a light floor this way.\n\nThe object is shown in white. The **centroid** of the white pixels gives the line's position. If it's on the left side of the image, the robot has to turn left: steering = (x − centre) / half width; negative = turn left."),
           tasks: [
             { id: "ex", text: tr("Valitse Esimerkit → Viivanseuraaja", "Choose Examples → Line follower"), check: () => tools().cv?.source === "line" && tools().cv?.mode === "threshold" },
             { id: "thr", text: tr("Muuta kynnystä niin, että vain viiva jää valkoiseksi ja kohde löytyy", "Adjust the threshold so that only the line stays white and the object is found"), check: () => tools().cv?.source === "line" && tools().cv?.mode === "threshold" && (tools().cv?.thr ?? 90) !== 90 && !!window.cvResult?.()?.found }, // 90 = esimerkin arvo
@@ -712,8 +720,8 @@ const Courses = (() => {
         },
         {
           id: "edges", tool: "cv", title: tr("Reunat", "Edges"),
-          teach: tr("**Reuna** on kohta, jossa kirkkaus muuttuu jyrkästi. **Sobel**-suodin vertaa jokaisen pikselin vasenta ja oikeaa sekä ylä- ja alanaapuria: mitä suurempi ero, sitä vahvempi reuna. Reunoista saadaan esineiden muodot riippumatta niiden väristä.",
-            "An **edge** is where brightness changes sharply. The **Sobel** filter compares each pixel's left and right and upper and lower neighbours: the bigger the difference, the stronger the edge. Edges give objects' shapes regardless of their colour."),
+          teach: tr("**Reuna** on kohta, jossa kirkkaus muuttuu jyrkästi. **Sobel**-suodin vertaa jokaisen pikselin vasenta ja oikeaa sekä ylä- ja alanaapuria: mitä suurempi ero, sitä vahvempi reuna. Reunoista saadaan esineiden muodot, kunhan esine erottuu taustasta kirkkaudeltaan.",
+            "An **edge** is where brightness changes sharply. The **Sobel** filter compares each pixel's left and right and upper and lower neighbours: the bigger the difference, the stronger the edge. Edges give objects' shapes as long as the object differs from the background in brightness."),
           tasks: [
             { id: "edges", text: tr("Valitse Esimerkit → Reunat liukuhihnalla", "Choose Examples → Edges on a conveyor"), check: () => tools().cv?.mode === "edges" },
             { id: "blur", text: tr("Kokeile pehmennystä 0 ja 3: miten kohina ja reunat muuttuvat?", "Try blur 0 and 3: how do the noise and the edges change?"), check: () => tools().cv?.mode === "edges" && (tools().cv?.blur ?? 1) !== 1 },
@@ -727,7 +735,7 @@ const Courses = (() => {
           id: "wrap", tool: "cv", title: tr("Kertaus: robotti seuraa palloa", "Recap: a robot follows a ball"),
           teach: tr("Nyt tiedät koko ketjun: kamera → pikselit → kohteen erottelu → keskipiste → ohjauskomento. Juuri näin pallorobotit, viivanseuraajat ja lajittelurobotit toimivat. Oikeassa robotissa sama koodi ajetaan esim. Raspberry Pi:llä OpenCV:llä — työkalu näyttää sen valmiina.",
             "Now you know the whole chain: camera → pixels → separating the object → centroid → steering command. This is exactly how ball-chasing robots, line followers and sorting robots work. On a real robot the same code runs e.g. on a Raspberry Pi with OpenCV — the tool shows it ready-made."),
-          reflect: { q: tr("Selitä omin sanoin, miten robotti voisi seurata punaista palloa kameran avulla. Mitä tapahtuu, jos pallo katoaa kuvasta?", "In your own words: how could a robot follow a red ball with a camera? What should happen if the ball leaves the image?"),
+          reflect: { q: tr("Selitä omin sanoin, miten robotti voisi seurata punaista palloa kameran avulla. Mitä robotin pitäisi tehdä, jos pallo katoaa kuvasta?", "In your own words: how could a robot follow a red ball with a camera? What should happen if the ball leaves the image?"),
             model: tr("Kamera ottaa kuvan, joka muutetaan HSV:ksi. Pikselit, joiden sävy on punainen ja kylläisyys riittävä, merkitään kohteeksi. Niiden keskipisteen x-koordinaatista lasketaan ohjaus: keskipiste vasemmalla → käänny vasemmalle, oikealla → oikealle, ja pinta-alasta voi päätellä etäisyyden (iso = lähellä → hidasta). Jos pallo katoaa, robotin pitää pysähtyä tai alkaa etsiä kääntymällä hitaasti paikallaan, eikä jatkaa sokkona.",
               "The camera takes an image that is converted to HSV. Pixels with a red hue and enough saturation are marked as the object. The x coordinate of their centroid gives the steering: centroid on the left → turn left, on the right → turn right, and the area tells the distance (large = close → slow down). If the ball disappears, the robot should stop or start searching by slowly turning in place, not keep driving blind.") },
           tasks: [],
@@ -737,7 +745,13 @@ const Courses = (() => {
   ];
 
   // Oppimispolku: suositeltu järjestys. needs = kurssi, joka kannattaa tehdä ensin.
-  const ORDER = ["start", "nav", "pid", "sensors", "power", "vision", "frames", "ros", "arm", "ai"];
+  // Aloittelijan polku: robotti ja elektroniikka → liike ja ohjaus → koordinaatit, käsivarsi, ROS ja tekoäly
+  const ORDER = ["start", "sensors", "power", "nav", "pid", "vision", "frames", "arm", "ros", "ai"];
+  const STAGES = [
+    { from: "start", title: tr("Taso 1 · Perusteet", "Level 1 · Basics"), desc: tr("Mikä robotti on, moottorit, anturit ja sähkö. Ei vaadi esitietoja.", "What a robot is, motors, sensors and power. No prior knowledge needed.") },
+    { from: "nav", title: tr("Taso 2 · Liike, ohjaus ja näkö", "Level 2 · Motion, control and vision"), desc: tr("Reitinhaku, esteet, PID-säätö ja konenäkö.", "Path planning, obstacles, PID control and computer vision.") },
+    { from: "frames", title: tr("Taso 3 · Edistyneet", "Level 3 · Advanced"), desc: tr("Koordinaatistot, robottikäsivarsi, ROS ja tekoäly. Lukio- ja ammattitaso.", "Frames, robot arms, ROS and AI. Upper secondary and vocational level.") },
+  ];
   COURSES.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
   const NEEDS = { arm: "frames", ai: "start", ros: "frames", sensors: "start" };
 
@@ -753,12 +767,12 @@ const Courses = (() => {
     "sensors.usb": L("Koulutetut aivot ja oikea robotti samaan piiriin! Katsotaan, miten ne kytketään USB:llä.", "A trained brain and a real robot in the same loop! Let's see how they connect over USB.", "neura"),
     "ros.tf": L("Oikeat robottikädet puhuvat usein ROS:ia. Aloitetaan siitä, miten ROS:n ohjelmat juttelevat keskenään.", "Real robot arms often speak ROS. Let's start with how ROS programs talk to each other."),
     "ros.urdf": L("URDF on minun henkilökorttini: siinä lukee jokainen linkkini ja niveleni.", "URDF is my ID card: it lists every link and joint I have."),
-    "ros.quat": L("ROS tallentaa asentoni kvaterniona. Lennetään 90° vasemmalle ja katsotaan luvut!", "ROS stores my orientation as a quaternion. Let's fly 90° left and look at the numbers!", "zippy"),
+    "ros.quat": L("ROS tallentaa asentoni kvaterniona. Käännytään 90° vasemmalle ja katsotaan luvut!", "ROS stores my orientation as a quaternion. Let's turn 90° left and look at the numbers!", "zippy"),
     "ros.map": L("Minun karttani ROS:ssa on kuva ja pieni tekstitiedosto. Tehdään sellainen!", "My map in ROS is an image plus a small text file. Let's make one!", "dusty"),
     "vision.pixels": L("Minulla on kamera nokassa! Mutta kamera näkee vain lukuja. Katsotaan, millaisia.", "I've got a camera on my nose! But a camera only sees numbers. Let's see what kind."),
     "vision.line": L("Minä seuraan lattialla teippiviivaa kotiin latauslaitteelle. Näin se tehdään!", "I follow a tape line on the floor back to my charger. This is how!", "dusty"),
     "vision.color": L("Etsitään sininen pallo! Värit kannattaa etsiä sävynä, ei RGB-lukuina.", "Let's find the blue ball! Colours are best searched by hue, not by RGB numbers."),
-    "vision.edges": L("Lajittelen osia liukuhihnalta. Reunoista näen, mikä on neliö ja mikä pallo.", "I sort parts off a conveyor. The edges tell me which is a square and which a circle.", "grip"),
+    "vision.edges": L("Lajittelen osia liukuhihnalta. Reunoista näen, mikä on neliö ja mikä ympyrä.", "I sort parts off a conveyor. The edges tell me which is a square and which a circle.", "grip"),
     "vision.wrap": L("Nyt osaat saman kuin minä: nähdä kohteen ja kääntyä sitä kohti. Kerro omin sanoin, miten se toimii!", "Now you can do what I do: see a target and turn toward it. Tell me in your own words how it works!"),
     "start.parts": L("Hei, olen Volt! Jokaisella robotilla on aistit, aivot ja lihakset. Rakennetaan ensin keho: runko ja kaksi pyörää.", "Hi, I'm Volt! Every robot has senses, a brain and muscles. Let's build the body first: a chassis and two wheels."),
     "start.test": L("Ennen kuin ruuvataan mitään oikeasti kiinni, kokeillaan fysiikalla. Pysyykö robotti pystyssä ja kääntyykö se?", "Before screwing anything together for real, let's try it with physics. Does the robot stay upright, and can it turn?"),
@@ -775,10 +789,10 @@ const Courses = (() => {
     "arm.motor": L("Jaksanko nostaa? Tarkistetaan, onko moottorini tarpeeksi vahva.", "Can I lift it? Let's check whether my motor is strong enough."),
     "arm.wrap": L("Hienoa työtä! Kerro vielä omin sanoin, mitä opit — niin se jää varmasti mieleen.", "Great work! Now tell me in your own words what you learned — that's how it sticks."),
     "pid.p": L("Olen Wobbly. Pysyn pystyssä vain, koska säädin korjaa minua koko ajan. Aloitetaan P-termistä!", "I'm Wobbly. I only stay upright because a controller keeps correcting me. Let's start with the P term!"),
-    "pid.i": L("P jättää aina pienen virheen. I-termi korjaa sen laskemalla virhettä yhteen.", "P always leaves a small error. The I term fixes it by adding the error up over time."),
+    "pid.i": L("P jättää usein pienen virheen. I-termi korjaa sen laskemalla virhettä yhteen.", "P often leaves a small error. The I term fixes it by adding the error up over time."),
     "pid.d": L("Hups, heilun! D-termi toimii minulle kuin iskunvaimennin.", "Whoa, I'm swinging! The D term works like a shock absorber for me."),
-    "pid.unstable": L("Tehdään minusta tahallaan epävakaa — simulaatiossa se on turvallista!", "Let's make me unstable on purpose — it's safe in the simulation!"),
-    "pid.dist": L("Joku tönäisi minua! Katsotaan, mikä termi palauttaa minut paikalleni.", "Someone bumped me! Let's see which term brings me back."),
+    "pid.unstable": L("Tehdään minusta tahallaan epästabiili — simulaatiossa se on turvallista!", "Let's make me unstable on purpose — it's safe in the simulation!"),
+    "pid.dist": L("Joku ripusti minuun lisäpainon! Katsotaan, mikä termi palauttaa minut paikalleni.", "Someone hung an extra weight on me! Let's see which term brings me back."),
     "nav.grid": L("Moi, olen Dusty! Näen kotisi ruudukkona. Piirrä seinä ja katso, miten löydän kiertotien.", "Hi, I'm Dusty! I see your home as a grid. Draw a wall and watch me find a way around."),
     "nav.compare": L("Reitin voi etsiä monella tavalla. Kokeillaan, mikä tapa on paras.", "There are many ways to find a path. Let's see which one is best."),
     "nav.drive": L("Reitti on vasta suunnitelma — nyt ajetaan se oikeasti! Palautin kartan väljäksi, jotta mahdun kulkemaan.", "A path is just a plan — now let's actually drive it! I put the roomy map back so I fit through."),
@@ -803,7 +817,11 @@ const Courses = (() => {
     try { const p = JSON.parse(localStorage.getItem(KEY)); if (p && p.c) return p; } catch {}
     return { active: null, c: {} };
   }
-  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(P)); } catch {} };
+  let persistWarned = false;
+  const persist = () => {
+    try { localStorage.setItem(KEY, JSON.stringify(P)); }
+    catch { if (!persistWarned) { persistWarned = true; toast(tr("Kurssin edistymistä ei voitu tallentaa: selaimen tallennustila on täynnä.", "Course progress could not be saved: browser storage is full.")); } }
+  };
   const byId = (id) => COURSES.find((c) => c.id === id);
   const cp = (id) => (P.c[id] ||= { step: 0, steps: {}, project: null, finished: false });
   const sp = (cid, sid) => (cp(cid).steps[sid] ||= { tasks: {}, quiz: null, hint: 0, refl: "", base: null, done: false });
@@ -872,7 +890,7 @@ const Courses = (() => {
       delete P.c[id];
     }
     const switched = ensureProject(course);
-    P.active = id;
+    P.active = id; P.last = id;
     persist();
     openPanel();
     goStep(cp(id).step, switched);
@@ -1179,7 +1197,9 @@ const Courses = (() => {
       </div>
       <h2 class="path-title">${tr("Oppimispolku", "Learning path")}</h2>
       <p class="note path-note">${tr("Kurssit on järjestetty niin, että jokainen rakentaa edellisten päälle. Voit silti aloittaa mistä tahansa.", "The courses are ordered so each one builds on the previous ones. You can still start anywhere.")}</p>
-      <div class="course-grid">${COURSES.map(courseCard).join("")}</div>`;
+      ${COURSES.map((c, i) => { const st = STAGES.find((x) => x.from === c.id); return (st ? `${i ? "</div>" : ""}<h3 class="stage-title">${st.title}</h3><p class="note stage-note">${st.desc}</p><div class="course-grid">` : "") + courseCard(c, i); }).join("")}</div>
+      ${window.Education ? Education.studentCardHtml() : ""}`;
+    window.Education?.bindStudentCard(root);
     root.onclick = (e) => {
       const b = e.target.closest("[data-course]");
       if (!b) return;
@@ -1226,6 +1246,19 @@ const Courses = (() => {
   return {
     list: () => COURSES.map((c) => ({ id: c.id, title: c.title, progress: progressOf(c) })),
     active: () => (P.active ? { id: P.active, title: byId(P.active).title, step: cp(P.active).step + 1, steps: byId(P.active).steps.length } : null),
+    // Keskeytetty kurssi jatkettavaksi kojelaudalta: aktiivinen tai viimeksi aloitettu keskeneräinen
+    resumable: () => {
+      const id = P.active || P.last;
+      const c = id && byId(id), p = c && P.c[id];
+      return c && p && !p.finished ? { id, title: c.title, step: p.step + 1, steps: c.steps.length } : null;
+    },
+    // Opettajalle vietävä yhteenveto: vain eteneminen, ei vastauksia eikä projekteja
+    summary: () => COURSES.map((c) => {
+      const p = P.c[c.id];
+      const done = p ? c.steps.filter((st) => p.steps[st.id]?.done).length : 0;
+      const skipped = p ? c.steps.slice(0, p.finished ? c.steps.length : p.step).filter((st) => !p.steps[st.id]?.done).length : 0;
+      return { id: c.id, steps: c.steps.length, done, finished: !!p?.finished, hints: p ? Object.values(p.steps).reduce((a, s) => a + (s.hint || 0), 0) : 0, skipped };
+    }),
     start, stop, context, _courses: COURSES,
   };
 })();
