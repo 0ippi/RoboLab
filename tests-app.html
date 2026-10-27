@@ -799,6 +799,10 @@ async function test(name, fn) {
 
   await test("Aloita tästä -kurssi: rungon ja pyöräparin rakentaminen kuittaa tehtävät, Mobiilirobotti näyttää pyörien nopeudet", async () => {
     useDevice("A"); fresh(); await boot();
+    try { await startCourseFlow(); }
+    finally { w.Courses.stop(); fresh(); await boot(); } // seuraavat testit aloittavat puhtaasta projektista
+  });
+  async function startCourseFlow() {
     w.Courses.start("start");
     await waitFor(() => w.location.hash === "#/build2d" && w.document.querySelector('#rb-parts button[data-type="box"]'), 6000, "rakentaja");
     await sleep(800);
@@ -821,9 +825,7 @@ async function test(name, fn) {
     await waitFor(() => w.location.hash === "#/sim2d" && w.document.querySelector("#mb-stats"), 4000, "mobiilirobotti");
     await sleep(500);
     ok(/Vasen pyörä|Left wheel/.test(w.document.querySelector("#mb-stats").textContent), "pyörien nopeudet puuttuvat");
-    w.Courses.stop();
-    fresh(); await boot(); // seuraavat testit aloittavat puhtaasta projektista
-  });
+  }
 
   await test("Loppukoe: viimeisen vaiheen jälkeen kolme kysymystä, pisteet ensimmäisistä vastauksista", async () => {
     const start = w.Courses._courses.find((c) => c.id === "start"), exam = w.Courses.exams.start;
@@ -882,6 +884,7 @@ async function test(name, fn) {
   });
 
   await test("Rakentaja 2D: valintalaatikko valitsee osat vetämällä", async () => {
+    fresh(); await boot(); // tyhjä robotti: aiempien testien osat eivät vaikuta
     await go("#/build2d", 2500);
     const d = w.document, q = (id) => d.querySelector("#rb-" + id), B = w.__builder;
     q("parts").querySelector('[data-type="box"]').click(); await sleep(150);
