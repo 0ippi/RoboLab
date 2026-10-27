@@ -208,50 +208,111 @@
 
   /* ----- Reitin suunnittelu ----- */
 
-  // Esteitä paisutetaan robotin säteellä, jotta reitti ei kulje seinien vierestä
-  function inflated(margin = 0) {
-    const g = map.grid, n = Math.ceil((st.radius + margin) / map.cell - 0.5);
-    if (n <= 0) return g;
-    const occ = new Uint8Array(g.occ.length);
-    for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
-      // Kartan reuna on seinä: reunan vieressä olevat solut ovat robotille yhtä ahtaita
-      if (x < n || y < n || x >= g.w - n || y >= g.h - n) occ[y * g.w + x] = 1;
-      if (!g.occ[y * g.w + x]) continue;
-      for (let dy = -n; dy <= n; dy++) for (let dx = -n; dx <= n; dx++) {
-        const nx = x + dx, ny = y + dy;
-        if (nx >= 0 && ny >= 0 && nx < g.w && ny < g.h && dx * dx + dy * dy <= n * n + n) occ[ny * g.w + nx] = 1;
-      }
+  // Etäisyys lähimpään esteeseen jokaisen solun keskeltä metreinä (kartan reuna on seinä). Kaksivaiheinen
+  // etäisyysmuunnos 8-naapurustolla: tarkkuus riittää reitin pitämiseen erossa seinistä.
+  function clearance() {
+    const g = map.grid, c = map.cell, W = g.w, H = g.h, D = c * Math.SQRT2, d = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) d[y * W + x] = g.occ[y * W + x] ? 0 : Math.min(x + 1, y + 1, W - x, H - y) * c;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      let v = d[i];
+      if (x > 0) v = Math.min(v, d[i - 1] + c);
+      if (y > 0) { v = Math.min(v, d[i - W] + c); if (x > 0) v = Math.min(v, d[i - W - 1] + D); if (x < W - 1) v = Math.min(v, d[i - W + 1] + D); }
+      d[i] = v;
     }
-    return { w: g.w, h: g.h, occ };
+    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x;
+      let v = d[i];
+      if (x < W - 1) v = Math.min(v, d[i + 1] + c);
+      if (y < H - 1) { v = Math.min(v, d[i + W] + c); if (x < W - 1) v = Math.min(v, d[i + W + 1] + D); if (x > 0) v = Math.min(v, d[i + W - 1] + D); }
+      d[i] = v;
+    }
+    for (let i = 0; i < d.length; i++) d[i] = Math.max(0, d[i] - c / 2); // solun keskeltä esteen reunaan
+    return d;
   }
 
-  function planTo(goal) {
+  // Reitti kulkee mieluummin käytävän keskellä: seinän lähellä oleville soluille lisäkustannus, ja solut,
+  // joihin robotti ei mahdu, suljetaan. Seinän viereen asetettu maali siirretään lähimpään kohtaan, johon robotti mahtuu.
+  // replan = jumista palautuminen: sama maali, yrityslaskuri säilyy.
+  function planTo(goal, { replan = false } = {}) {
     const p = st.useOdom ? sim.odom : sim.pose;
-    const start = [Math.floor(p[0] / map.cell), Math.floor(p[1] / map.cell)];
-    // Ensin väljä reitti (turvamarginaali 1 solu), sitten pelkkä robotin säde, viimeisenä ilman paisutusta
-    const search = (g) => {
+    const W = map.w, H = map.h, start = [Math.floor(p[0] / map.cell), Math.floor(p[1] / map.cell)];
+    const clr = clearance(), fit = st.radius + 0.01, si = start[1] * W + start[0];
+    let target = goal, movedGoal = 0;
+    if (Plan.free(map.grid, goal[0], goal[1]) && clr[goal[1] * W + goal[0]] < fit) {
+      const seen = new Uint8Array(W * H), queue = [goal[1] * W + goal[0]];
+      seen[queue[0]] = 1;
+      for (let qi = 0; qi < queue.length && qi < 4000; qi++) {
+        const i = queue[qi];
+        if (clr[i] >= fit) { target = [i % W, (i / W) | 0]; movedGoal = Math.hypot(target[0] - goal[0], target[1] - goal[1]) * map.cell; break; }
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const x = (i % W) + dx, y = ((i / W) | 0) + dy, n = y * W + x;
+          if (x >= 0 && y >= 0 && x < W && y < H && !seen[n] && Plan.free(map.grid, x, y)) { seen[n] = 1; queue.push(n); }
+        }
+      }
+    }
+    // Auto kääntyy leveässä kaaressa (säde L / tan(ohjauskulma)), joten sen reitti pidetään kauempana seinistä
+    const comfort = st.radius + (st.model === "diff" ? 0.25 : Math.min(0.6, 0.25 + 0.5 * st.L / Math.tan(st.deltaMax)));
+    const cellCost = Float32Array.from(clr, (v) => 6 * Math.max(0, (comfort - v) / comfort) ** 2);
+    const blocked = (min) => ({ w: W, h: H, occ: Uint8Array.from(clr, (v) => (v < min ? 1 : 0)) });
+    const search = (g, cost) => {
       const occ = g.occ.slice();
-      occ[start[1] * g.w + start[0]] = 0;
-      return Plan.gridSearch({ ...g, occ }, start, goal, { algo: "astar", diagonal: true });
+      // Seinää koskettava robotti pääsee liikkeelle: lähtösolu ja sen vapaat naapurit avataan
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = start[0] + dx, y = start[1] + dy;
+        if (x >= 0 && y >= 0 && x < W && y < H && Plan.free(map.grid, x, y)) occ[y * W + x] = 0;
+      }
+      occ[si] = 0;
+      return Plan.gridSearch({ ...g, occ }, start, target, { algo: "astar", diagonal: true, cellCost: cost });
     };
-    let r = search(inflated(map.cell));
-    if (!r.found) r = search(inflated());
+    let r = search(blocked(fit), cellCost);
+    if (!r.found) r = search(blocked(st.radius * 0.6), cellCost);
     let tight = false;
-    if (!r.found) { r = search(map.grid); tight = r.found; }
+    if (!r.found) { r = search(map.grid, null); tight = r.found; }
     sim.pidState = {};
+    sim.recover = null;
+    sim.prog = { best: Infinity, t: 0, e: 0 };
+    if (!replan) sim.recoveries = 0;
     if (!r.found) { sim.path = []; sim.goal = null; sim.msg = tr("Kohteeseen ei ole reittiä.", "No path to the target."); sim.msgLevel = "warn"; return; }
-    sim.goal = goal;
-    sim.tripFrom = sim.dist;
+    sim.goal = target;
+    if (!replan) sim.tripFrom = sim.dist;
     sim.path = r.path.map((c) => [((c % map.w) + 0.5) * map.cell, (((c / map.w) | 0) + 0.5) * map.cell]);
+    sim.remain = new Array(sim.path.length).fill(0);
+    for (let i = sim.path.length - 2; i >= 0; i--) sim.remain[i] = sim.remain[i + 1] + Math.hypot(sim.path[i + 1][0] - sim.path[i][0], sim.path[i + 1][1] - sim.path[i][1]);
     sim.pathIdx = 0;
-    sim.stuckT = 0;
+    if (replan) return;
     sim.msg = tight
       ? tr(`Kartta on robotille liian ahdas: reitti kulkee kohdista, jotka ovat kapeampia kuin robotti (halkaisija ${fmtLen(st.radius * 2)} ${lenLabel()}). `
         + "Robotti yrittää, mutta juuttuu todennäköisesti. Valitse Reittisuunnittelussa \"Oletuskartta\" tai piirrä leveämmät käytävät.",
         `The map is too cramped for the robot: the path passes through spots narrower than the robot (diameter ${fmtLen(st.radius * 2)} ${lenLabel()}). `
         + "The robot will try but will probably get stuck. Choose \"Default map\" in Path planning or draw wider corridors.")
-      : "";
-    sim.msgLevel = "warn";
+      : movedGoal ? tr(`Maali oli liian lähellä seinää robotille, joten se siirrettiin ${fmtLen(movedGoal, 2)} ${lenLabel()} lähimpään kohtaan, johon robotti mahtuu.`,
+        `The goal was too close to a wall for the robot, so it was moved ${fmtLen(movedGoal, 2)} ${lenLabel()} to the nearest spot where the robot fits.`) : "";
+    sim.msgLevel = tight ? "warn" : "info";
+  }
+
+  // Jumista palautuminen: peruutetaan hetki ja suunnitellaan reitti uudelleen nykyisestä paikasta.
+  // Jos robotti ei pääse eteenpäin neljällä yrityksellä, reitinseuranta luovuttaa.
+  function startRecovery() {
+    sim.recoveries = (sim.recoveries || 0) + 1;
+    if (sim.recoveries > 4) {
+      sim.path = []; sim.goal = null; sim.recover = null;
+      sim.msg = st.useOdom && Math.hypot(sim.pose[0] - sim.odom[0], sim.pose[1] - sim.odom[1]) > 0.08
+        ? tr("Robotti ei pääse eteenpäin: odometrian virhe on kasvanut niin suureksi, että robotti luulee olevansa muualla kuin on, ja ajaa seinään. Paina Nollaa, niin arvio korjataan.",
+          "The robot can't make progress: the odometry error has grown so large that the robot thinks it is somewhere else and drives into a wall. Press Reset to correct the estimate.")
+        : st.model !== "diff"
+          ? tr("Auto ei pääse eteenpäin. Se ei voi kääntyä paikallaan, joten ahtaassa kulmassa tai seinän vieressä se ei aina mahdu kääntymään. Valitse kohde avoimemmasta paikasta tai kasvata ohjauskulmaa.",
+            "The car can't make progress. It cannot turn in place, so in a tight corner or next to a wall it doesn't always have room to turn. Pick a target in a more open spot or increase the steering angle.")
+          : tr("Robotti ei pääse eteenpäin, vaikka se yritti peruuttaa ja etsiä uuden reitin. Käytävä on luultavasti liian kapea: valitse Reittisuunnittelussa \"Oletuskartta\", piirrä leveämmät käytävät tai pienennä robotin sädettä.",
+            "The robot can't make progress even after backing up and finding a new route. The corridor is probably too narrow: choose \"Default map\" in Path planning, draw wider corridors or reduce the robot's radius.");
+      sim.msgLevel = "warn";
+      return;
+    }
+    // Differentiaalirobotti peruuttaa suoraan. Auto liikkuu siihen suuntaan, jossa on enemmän tilaa, ja ohjaa
+    // niin, että keula kääntyy kohti reittiä (peruuttaessa ohjaus on käänteinen).
+    const front = sim.ranges[1] - st.radius, dir = st.model === "diff" || sim.rear >= front ? -1 : 1;
+    const he = sim.lastHe || 0;
+    sim.recover = { t: st.model === "diff" ? 0.6 : 0.9, dir, delta: dir * Math.sign(he || 1) * st.deltaMax };
   }
 
   /* ----- Fysiikka ----- */
@@ -282,6 +343,7 @@
     const p = sim.pose;
     const ray = (a, max) => Plan.raycast(map.grid, p[0] / map.cell, p[1] / map.cell, a, max / map.cell).dist * map.cell;
     sim.ranges = SENSOR_ANGLES.map((a) => ray(p[2] + a, SENSOR_RANGE));
+    sim.rear = ray(p[2] + Math.PI, SENSOR_RANGE) - st.radius; // peruutuskäännöstä varten
     // Vapaa tila robotin ympärillä (8 suuntaa) — käytetään nopeuden rajoittamiseen ahtaissa paikoissa
     let clear = Infinity;
     for (let k = 0; k < 8; k++) clear = Math.min(clear, ray((k / 8) * Math.PI * 2, 1));
@@ -295,6 +357,11 @@
       const fwd = (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 0.6 : 0), turn = (keys.ArrowLeft ? 1 : 0) - (keys.ArrowRight ? 1 : 0);
       v = st.vmax * fwd;
       if (diff) w = st.wmax * turn; else delta = st.deltaMax * turn;
+    } else if (sim.recover) {
+      // Peruutus jumista; sen jälkeen uusi reitti nykyisestä paikasta samaan maaliin
+      sim.recover.t -= dt;
+      if (sim.recover.t <= 0) { const g = sim.goal; sim.recover = null; if (g) planTo(g, { replan: true }); }
+      else { v = sim.recover.dir * Math.min(0.12, st.vmax); if (!diff) delta = sim.recover.delta; }
     } else if (sim.path.length) {
       const pose = st.useOdom ? sim.odom : sim.pose;
       // Kohdepisteen pitää näkyä ilman seinää välissä, muuten pitkä katseluetäisyys oikaisee mutkat seinän läpi
@@ -307,7 +374,11 @@
       };
       const pp = Robot.purePursuit(pose, sim.path, st.lookahead, sim.pathIdx, visible);
       sim.pathIdx = pp.idx;
-      if (pp.distToGoal < 0.03 && pp.idx >= sim.path.length - 2) {
+      sim.lastHe = pp.headingError;
+      // Jäljellä oleva matka reittiä pitkin: edistymisen mittari jumiutumisen tunnistukseen
+      sim.distLeft = (sim.remain?.[pp.idx] ?? 0) + Math.hypot(sim.path[pp.idx][0] - pose[0], sim.path[pp.idx][1] - pose[1]);
+      // Auto ei pääse yhtä tarkasti solun keskelle kuin paikallaan kääntyvä robotti
+      if (pp.distToGoal < (diff ? 0.03 : 0.06) && pp.idx >= sim.path.length - 2) {
         sim.path = []; sim.goal = null;
         const offGoal = st.useOdom && Math.hypot(sim.pose[0] - sim.odom[0], sim.pose[1] - sim.odom[1]) > 0.05;
         sim.msg = offGoal
@@ -347,6 +418,20 @@
         }
         // Auto ei voi kääntyä paikallaan: pieni ryömintänopeus, ettei se jää seisomaan
         if (!diff) v = Math.max(v, Math.min(0.05, st.vmax));
+        // Kohde auton takana: peruutuskäännös (kolmen pisteen käännös). Peruutetaan ohjaus toiseen suuntaan,
+        // jolloin keula kääntyy kohti reittiä; jos takana on seinä, ajetaan eteenpäin täydellä ohjauksella.
+        if (!diff) {
+          const he = pp.headingError;
+          if (Math.abs(he) > 1.7) sim.kTurn = true;
+          else if (Math.abs(he) < 0.6) sim.kTurn = false;
+          if (sim.kTurn) {
+            // Suunta vaihtuu, kun tila loppuu: peruutus niin kauan kuin takana on tilaa, sitten eteen (kuten kolmen pisteen käännöksessä)
+            const front = sim.ranges[1] - st.radius;
+            if (sim.kDir == null || (sim.kDir < 0 && sim.rear < 0.05) || (sim.kDir > 0 && front < 0.05)) sim.kDir = sim.rear > front ? -1 : 1;
+            v = sim.kDir * Math.min(sim.kDir < 0 ? 0.15 : 0.1, st.vmax);
+            delta = sim.kDir * Math.sign(he) * st.deltaMax;
+          } else sim.kDir = null;
+        }
       }
     }
     return { v, w, delta };
@@ -389,28 +474,22 @@
     if (!next) {
       sim.colliding = true;
       sim.v = 0; sim.w = 0;
-      // Reitinseuranta luovuttaa, jos robotti on jumissa seinää vasten yli sekunnin
-      if (sim.path.length && (sim.stuckT = (sim.stuckT || 0) + dt) > 1) {
-        sim.path = []; sim.goal = null; sim.stuckT = 0;
-        sim.msg = tr("Robotti juuttui seinään eikä mahdu reitille. Valitse Reittisuunnittelussa \"Oletuskartta\" tai piirrä leveämmät käytävät.",
-          "The robot got stuck against a wall and does not fit the path. Choose \"Default map\" in Path planning or draw wider corridors.");
-        sim.msgLevel = "warn";
-      }
     } else {
       const moved = Math.hypot(next[0] - sim.pose[0], next[1] - sim.pose[1]);
-      // Liukuessa lasketaan jumiutumista, jos eteneminen on lähes pysähtynyt
-      sim.stuckT = contact && moved < Math.abs(v) * dt * 0.2 ? (sim.stuckT || 0) + dt : 0;
-      if (sim.path.length && sim.stuckT > 1) {
-        sim.path = []; sim.goal = null; sim.stuckT = 0;
-        sim.msg = tr("Robotti juuttui seinään eikä mahdu reitille. Valitse Reittisuunnittelussa \"Oletuskartta\" tai piirrä leveämmät käytävät.",
-          "The robot got stuck against a wall and does not fit the path. Choose \"Default map\" in Path planning or draw wider corridors.");
-        sim.msgLevel = "warn";
-      }
       sim.colliding = contact;
       sim.dist += moved;
       sim.pose = next;
       sim.v = contact ? moved / dt : v; sim.w = w;
       odometry(v, w, dt);
+    }
+
+    // Jumiutumisen tunnistus reitinseurannassa: jos jäljellä oleva matka ei lyhene 2,5 sekuntiin tai hätäjarru
+    // pitää robottia paikallaan yli 0,6 s (esim. seinän kulma edessä), peruutetaan ja haetaan uusi reitti
+    if (st.control === "follow" && sim.path.length && !sim.recover) {
+      const pr = (sim.prog ||= { best: Infinity, t: 0, e: 0 });
+      if ((sim.distLeft ?? Infinity) < pr.best - 0.02) { pr.best = sim.distLeft; pr.t = 0; } else pr.t += dt;
+      pr.e = sim.estopped || (!next && vCmd > 0) ? pr.e + dt : 0;
+      if (pr.t > 2.5 || pr.e > 0.6) { pr.t = 0; pr.e = 0; pr.best = Infinity; startRecovery(); }
     }
 
     sim.t += dt;
@@ -633,4 +712,6 @@
   // Kurssit lukevat simulaation tilan tästä (maaliin pääsyt, törmäykset)
   window.sim2dStatus = () => ({ arrivals, offGoalArrivals, collisions: sim?.collisions || 0 });
   window.mobileSim = () => sim;
+  // Automaattitestit (?memstore): simulaatiota voi ajaa askel kerrallaan ilman animaatiota
+  if (/[?&]memstore\b/.test(location.search)) window.__sim2d = { step: (dt) => step(dt), planTo: (g) => planTo(g), reset: () => resetSim(), get st() { return st; }, get map() { return map; } };
 })();
