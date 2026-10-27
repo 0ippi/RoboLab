@@ -105,6 +105,59 @@
     },
   };
 
+  /* ===== Rinnakkaiskoulutus =====
+     Sukupolven robotit jaetaan Web Workereille: jokainen laskee oman osuutensa omassa fysiikkamaailmassaan
+     samalla siemenellä (sama maasto ja kohteet). Pääsäie piirtää vain parhaan robotin, joten iso populaatio
+     ei hidasta näkymää, ja koulutus käyttää kaikkia prosessoriytimiä. */
+  class TrainPool {
+    constructor(dim) {
+      this.dim = dim;
+      this.size = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+      this.workers = null;
+      this.jobs = new Map();
+      this.seq = 0;
+    }
+    start() {
+      if (this.starting) return this.starting;
+      const url = this.dim === "2d" ? "robosim/core/worker2d.js" : "robosim/3d/worker3d.js";
+      const map = JSON.parse(document.querySelector('script[type="importmap"]')?.textContent || "{}").imports || {};
+      const init = { type: "init", lang: LANG, planck: RS.PLANCK_URL, rapier: map["@dimforge/rapier3d-compat"] };
+      this.workers = Array.from({ length: this.size }, () => new Worker(url, this.dim === "3d" ? { type: "module" } : undefined));
+      this.starting = Promise.all(this.workers.map((w) => new Promise((resolve, reject) => {
+        w.onmessage = (e) => {
+          const d = e.data;
+          if (d.type === "ready") { if (d.error) reject(new Error(d.error)); else resolve(); return; }
+          const job = this.jobs.get(d.id);
+          if (!job) return;
+          this.jobs.delete(d.id);
+          if (d.error) job.reject(new Error(d.error)); else job.resolve(d.fitness);
+        };
+        w.onerror = (e) => { e.preventDefault(); reject(new Error(e.message || tr("Rinnakkaiskoulutus ei käynnistynyt.", "Parallel training did not start."))); };
+        w.postMessage(init);
+      })));
+      return this.starting;
+    }
+    // Laskee koko populaation kunto-arvot jakamalla sen työläisille tasaisesti
+    async run(cfg) {
+      await this.start();
+      const pop = cfg.population, n = this.workers.length, per = Math.ceil(pop.length / n);
+      const parts = [];
+      for (let w = 0; w < n && w * per < pop.length; w++) {
+        const id = ++this.seq, chunk = pop.slice(w * per, (w + 1) * per);
+        parts.push(new Promise((resolve, reject) => {
+          this.jobs.set(id, { resolve, reject });
+          this.workers[w].postMessage({ ...cfg, type: "run", id, population: chunk });
+        }));
+      }
+      return (await Promise.all(parts)).flat();
+    }
+    terminate() {
+      this.workers?.forEach((w) => w.terminate());
+      for (const j of this.jobs.values()) j.reject(new Error("terminated"));
+      this.workers = null; this.starting = null; this.jobs.clear();
+    }
+  }
+
   /* ===== Yleiskäyttöinen editori-ikkuna (malli JSONina, palkkiofunktio) ===== */
   function editDialog({ title, help, text, apply }) {
     let dlg = document.getElementById("rs-edit");
@@ -131,6 +184,110 @@
     dlg.showModal();
   }
 
+  /* ===== Oman tavoitteen rakentaja =====
+     Käyttäjä valitsee tavoitteet ja niiden painot; niistä kootaan palkkiofunktion koodi.
+     Koodiin päätyy vain kiinteitä paloja ja lukuja, joten tallennettu tavoite ei voi tuoda omaa koodia. */
+  function goalParts(dim) {
+    const d3 = dim === "3d";
+    return [
+      { k: "move", name: tr("Liiku suuntaan", "Move in a direction"), desc: tr("Palkitaan etenemisestä valittuun suuntaan.", "Rewards progress in the chosen direction."),
+        dirs: d3 ? [["+x", tr("eteenpäin (+x)", "forward (+x)")], ["-x", tr("taaksepäin (−x)", "backward (−x)")], ["+z", tr("sivulle (+z)", "sideways (+z)")], ["-z", tr("toiselle sivulle (−z)", "other side (−z)")]]
+          : [["+x", tr("oikealle (+x)", "right (+x)")], ["-x", tr("vasemmalle (−x)", "left (−x)")]] },
+      { k: "speed", name: tr("Ole nopea", "Be fast"), desc: tr("Palkitaan vauhdista mihin tahansa suuntaan.", "Rewards speed in any direction.") },
+      { k: "target", name: tr("Mene kohteisiin", "Reach targets"), desc: tr("Kohde näkyy näkymässä; saavutettu kohde vaihtuu uuteen.", "The target shows in the view; a reached target is replaced by a new one.") },
+      { k: "upright", name: tr("Pysy pystyssä", "Stay upright"), desc: tr("Palkitaan joka hetki, jona robotti on pystyssä.", "Rewards every moment the robot is upright.") },
+      { k: "jump", name: tr("Hyppää korkealle", "Jump high"), desc: tr("Lopussa palkitaan korkeimmasta saavutetusta korkeudesta.", "At the end, rewards the highest point reached.") },
+      ...(d3 ? [{ k: "spin", name: tr("Pyöri", "Spin"), desc: tr("Palkitaan kääntymisestä vastapäivään.", "Rewards turning counter-clockwise.") }] : []),
+      { k: "still", name: tr("Pysy paikallaan", "Stay in place"), desc: tr("Rangaistaan liikkumisesta pois aloituspaikalta.", "Penalises drifting away from the start.") },
+      { k: "energy", name: tr("Säästä energiaa", "Save energy"), desc: tr("Rangaistaan moottorien turhasta käytöstä.", "Penalises needless motor use.") },
+    ];
+  }
+  const GOAL_DEFAULT = { move: { on: true, w: 1, dir: "+x" }, energy: { on: true, w: 1 }, fall: "end" };
+  const wnum = (v) => Math.min(3, Math.max(0.1, Math.round((+v || 1) * 10) / 10));
+  function goalCode(dim, g) {
+    const d3 = dim === "3d", parts = goalParts(dim), lines = [];
+    const on = (k) => g?.[k]?.on && parts.some((p) => p.k === k);
+    const w = (k) => { const v = wnum(g[k].w); return v === 1 ? "" : ` * ${v}`; };
+    const name = (k) => parts.find((p) => p.k === k).name;
+    if (on("move")) {
+      const dir = parts[0].dirs.some(([d]) => d === g.move.dir) ? g.move.dir : "+x";
+      const ax = dir[1] === "x" ? "X" : "Z", side = ax === "X" ? "Z" : "X", sign = dir[0] === "+";
+      lines.push(`// ${name("move")}: ${parts[0].dirs.find(([d]) => d === dir)[1]}`,
+        `r += (${sign ? `s.${ax.toLowerCase()} - s.prev${ax}` : `s.prev${ax} - s.${ax.toLowerCase()}`}) * 10${w("move")};`);
+      if (d3) lines.push(`r -= Math.abs(s.${side.toLowerCase()} - s.prev${side}) * 3${w("move")}; // ${tr("ei sivuttain ajautumista", "no sideways drift")}`);
+    }
+    if (on("speed")) lines.push(`// ${name("speed")}`, `r += ${d3 ? "Math.hypot(s.vx, s.vz)" : "Math.abs(s.vx)"} * 0.05${w("speed")};`);
+    if (on("target")) lines.push(`// ${name("target")}`, `r += (s.prevTargetDist - s.targetDist) * 10${w("target")};`,
+      `if (s.targetDist < ${d3 ? 0.8 : 0.4}) { r += 20${w("target")}; s.newTarget = true; }`);
+    if (on("upright")) lines.push(`// ${name("upright")}`, `r += 0.05 * s.upright${w("upright")};`);
+    if (on("spin")) lines.push(`// ${name("spin")}`, `r += s.yawRate * 0.05${w("spin")};`);
+    if (on("still")) lines.push(`// ${name("still")}`, `r -= ${d3 ? "Math.hypot(s.x - s.startX, s.z - s.startZ)" : "Math.abs(s.x - s.startX)"} * 0.02${w("still")};`);
+    if (on("energy")) lines.push(`// ${name("energy")}`, `r -= 0.002 * s.energy${w("energy")};`);
+    if (on("jump")) lines.push(`// ${name("jump")}`, "m.maxY = Math.max(m.maxY ?? s.y, s.y);");
+    if (!lines.length) throw new Error(tr("Valitse vähintään yksi tavoite.", "Choose at least one goal."));
+    const falls = { end: `if (s.fallen) { s.done = true; r -= 5; } // ${tr("kaatuminen lopettaa yrityksen", "a fall ends the attempt")}`,
+      penalty: `if (s.fallen) r -= 0.05; // ${tr("kaatuminen maksaa vähän", "falling costs a little")}`, ignore: "" };
+    const fall = falls[Object.hasOwn(falls, g.fall) ? g.fall : "end"];
+    if (fall) lines.push(fall);
+    if (on("jump")) lines.push(`if (s.done || s.last) r += (m.maxY - s.startY) * 20${w("jump")};`);
+    return [`// ${tr("Oma tavoite (luotu tavoitteen rakentajalla)", "Custom goal (made with the goal builder)")}`, "let r = 0;", ...lines, "return r;"].join("\n");
+  }
+
+  function goalDialog({ dim, goal, apply }) {
+    let dlg = document.getElementById("rs-goal");
+    if (!dlg) {
+      dlg = document.createElement("dialog");
+      dlg.id = "rs-goal";
+      dlg.className = "rs-dlg wide";
+      document.body.append(dlg);
+    }
+    const g = structuredClone(goal && typeof goal === "object" ? goal : GOAL_DEFAULT);
+    const parts = goalParts(dim);
+    dlg.innerHTML = `<h2>${tr("Oma tavoite", "Custom goal")}</h2>
+      <p class="goal-intro">${tr("Valitse, mitä robotin pitää oppia. Liukusäädin kertoo, kuinka tärkeä tavoite on muihin verrattuna. Tavoitteista tehdään palkkiofunktio, jota voit vielä muokata koodina.", "Choose what the robot should learn. The slider sets how important a goal is compared to the others. The goals become a reward function that you can still edit as code.")}</p>
+      <div class="goal-list">${parts.map((p) => {
+        const v = g[p.k] || {};
+        return `<label class="goal-row ${v.on ? "on" : ""}" data-k="${p.k}"><input type="checkbox" data-on ${v.on ? "checked" : ""}>
+          <span><b>${esc(p.name)}</b><small>${esc(p.desc)}</small></span>
+          <input type="range" data-w min="0.1" max="3" step="0.1" value="${wnum(v.w)}" aria-label="${esc(tr("Tärkeys", "Importance"))}: ${esc(p.name)}">
+          ${p.dirs ? `<span class="goal-extra"><select data-dir aria-label="${esc(tr("Suunta", "Direction"))}">${p.dirs.map(([d, lab]) => `<option value="${d}" ${(v.dir || "+x") === d ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select></span>` : ""}
+        </label>`;
+      }).join("")}</div>
+      <div class="goal-fall"><span>${tr("Kun robotti kaatuu:", "When the robot falls:")}</span>
+        <select data-fall>${[["end", tr("yritys loppuu ja tulee rangaistus", "the attempt ends with a penalty")], ["penalty", tr("pieni rangaistus, jatkaa", "small penalty, carries on")], ["ignore", tr("ei väliä", "doesn't matter")]]
+          .map(([k, lab]) => `<option value="${k}" ${(g.fall || "end") === k ? "selected" : ""}>${esc(lab)}</option>`).join("")}</select></div>
+      <pre class="rs-help" aria-label="${esc(tr("Palkkiofunktio", "Reward function"))}"></pre><p class="rs-err"></p>
+      <div class="row-actions rs-dlg-foot"><button class="btn" data-no>${tr("Peruuta", "Cancel")}</button><button class="btn primary" data-yes>${tr("Käytä tavoitetta", "Use this goal")}</button></div>`;
+    const read = () => {
+      const out = { fall: dlg.querySelector("[data-fall]").value };
+      dlg.querySelectorAll(".goal-row").forEach((row) => {
+        const o = { on: row.querySelector("[data-on]").checked, w: wnum(row.querySelector("[data-w]").value) };
+        const dir = row.querySelector("[data-dir]");
+        if (dir) o.dir = dir.value;
+        row.classList.toggle("on", o.on);
+        out[row.dataset.k] = o;
+      });
+      return out;
+    };
+    const update = () => {
+      const err = dlg.querySelector(".rs-err"), pre = dlg.querySelector(".rs-help");
+      try { pre.textContent = goalCode(dim, read()); err.textContent = ""; }
+      catch (e) { pre.textContent = ""; err.textContent = e.message; }
+    };
+    dlg.oninput = dlg.onchange = (e) => {
+      // Liukusäätimen siirto ottaa tavoitteen samalla käyttöön
+      if (e.target.matches("[data-w], [data-dir]")) e.target.closest(".goal-row").querySelector("[data-on]").checked = true;
+      update();
+    };
+    update();
+    dlg.querySelector("[data-no]").onclick = () => dlg.close();
+    dlg.querySelector("[data-yes]").onclick = () => {
+      try { const out = read(); apply(goalCode(dim, out), out); dlg.close(); }
+      catch (err) { dlg.querySelector(".rs-err").textContent = err.message; }
+    };
+    dlg.showModal();
+  }
+
   function pickFile() {
     return new Promise((resolve) => {
       const i = document.createElement("input");
@@ -144,7 +301,7 @@
   function makeTool(dim) {
     const key = "nn" + dim, brainKey = key + "Brain", statsKey = key + "Stats";
     const B = BACKENDS[dim];
-    let el, st, be, view, S, dead = true, raf = 0, chan = null, token = 0;
+    let el, st, be, view, S, dead = true, raf = 0, chan = null, token = 0, pool = null;
 
     const hiddenOf = () => { try { return RS.parseHidden(st.hidden); } catch { return [32, 32]; } };
     const modelRaw = () => (st.modelKey === "custom" ? st.modelRaw : be.MODELS[st.modelKey]);
@@ -237,8 +394,7 @@
 
     const confirmReset = () => S.gen === 0 || RS.ask(tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nVoit tallentaa ne ensin Vie aivot -painikkeella.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nYou can save it first with Export brain.`), tr("Nollaa ja jatka", "Reset and continue"));
 
-    function endGeneration() {
-      const fit = S.episode.fitness();
+    function finishGeneration(fit) {
       S.trainer.tell(fit);
       S.gen++;
       const best = Math.max(...fit), mean = fit.reduce((a, b) => a + b, 0) / fit.length;
@@ -247,7 +403,39 @@
       if (S.history.length > 1000) S.history.shift();
       drawChart();
       saveBrain();
+    }
+
+    // Tavallinen koulutus: koko populaatio simuloidaan ja piirretään pääsäikeessä
+    function endGeneration() {
+      finishGeneration(S.episode.fitness());
       setEpisode(S.trainer.ask());
+    }
+
+    // Rinnakkaiskoulutus: sukupolvi lasketaan työläisissä, näkymässä pyörii paras robotti
+    const useParallel = () => st.parallel !== false && !S.noParallel && typeof Worker !== "undefined";
+    async function trainParallel() {
+      const trainer = S.trainer, t0 = performance.now();
+      try {
+        pool ||= new TrainPool(dim);
+        const fit = await pool.run({ model: S.model, code: taskCode(), terrain: st.terrain, seed: (Math.random() * 1e9) | 0,
+          layers: S.layers, duration: st.duration, population: trainer.ask() });
+        if (dead || S.trainer !== trainer || S.mode !== "train" || !useParallel()) return;
+        finishGeneration(fit);
+        S.genMs = S.genMs ? S.genMs * 0.7 + (performance.now() - t0) * 0.3 : performance.now() - t0;
+        status(tr(`Koulutetaan ${pool.size} prosessoriytimellä, noin ${fmt(60000 / S.genMs, 0)} sukupolvea minuutissa. Näkymässä ajaa paras tähän mennessä löydetty robotti.`,
+          `Training on ${pool.size} processor cores, about ${fmt(60000 / S.genMs, 0)} generations a minute. The view shows the best robot found so far.`));
+      } catch (err) {
+        if (dead || err.message === "terminated") return;
+        if (err.message.startsWith(tr("Virhe tehtävän koodissa", "Error in the task code"))) { setMode("idle"); status(err.message, "err"); return; }
+        // Työläiset eivät käynnisty (esim. vanha selain tai kirjasto ei latautunut): jatketaan tavalliseen tapaan
+        console.warn(err);
+        S.noParallel = true;
+        pool?.terminate(); pool = null;
+        status(tr("Rinnakkaiskoulutus ei toimi tässä selaimessa, joten koulutetaan tavalliseen tapaan.", "Parallel training doesn't work in this browser, so training runs the usual way."), "warn");
+        if (S.mode === "train") setEpisode(S.trainer.ask());
+      } finally {
+        S.pending = null;
+      }
     }
 
     /* ----- Silmukat: fysiikka erikseen piirrosta, jotta maksiminopeudella koulutus jatkuu taustallakin ----- */
@@ -257,8 +445,11 @@
       const now = performance.now();
       const elapsed = Math.min(0.25, (now - lastStep) / 1000);
       lastStep = now;
-      const v = st.speed, max = v >= MAX_SPEED;
+      // Rinnakkaistilassa pääsäie vain näyttää parasta robottia (ei maksiminopeuden kiiresilmukkaa)
+      const par = S.mode === "train" && useParallel();
+      const v = par && st.speed >= MAX_SPEED ? 1 : st.speed, max = v >= MAX_SPEED;
       try {
+        if (par && !S.pending) S.pending = trainParallel();
         if (S.mode !== "idle" && S.episode) {
           stepDebt = max ? Infinity : Math.min(stepDebt + elapsed * 60 * v, 60 * v * 0.25);
           const t0 = performance.now();
@@ -266,7 +457,7 @@
             S.episode.step();
             stepDebt--;
             if (S.episode.finished) {
-              if (S.mode === "train") endGeneration();
+              if (S.mode === "train" && !par) endGeneration();
               else setEpisode([currentBest()]);
             }
           }
@@ -333,8 +524,10 @@
         train: [
           { key: "algo", label: tr("Algoritmi", "Algorithm"), type: "select", options: [["es", tr("Evoluutiostrategia (ES)", "Evolution strategy (ES)")], ["ga", tr("Geneettinen algoritmi (GA)", "Genetic algorithm (GA)")]],
             info: tr("ES kokeilee pieniä muutoksia ja siirtyy parempien suuntaan: tasainen ja luotettava (suositus). GA:ssa parhaat robotit saavat mutatoituja \"lapsia\": voi löytää yllättäviä ratkaisuja, mutta vaihtelee enemmän.", "ES tries small changes and moves toward the better ones: steady and reliable (recommended). In GA the best robots get mutated \"children\": it can find surprising solutions but varies more.") },
-          { key: "popSize", label: tr("Populaatio", "Population"), min: 4, max: dim === "3d" ? 200 : 400, step: 1,
-            info: tr(`Montako robottia kokeillaan yhdessä sukupolvessa. Isompi on vakaampi mutta hitaampi. Suositus ${dim === "3d" ? "15–33" : "24–64"}.`, `How many robots are tried per generation. Bigger is steadier but slower. Recommended ${dim === "3d" ? "15–33" : "24–64"}.`) },
+          { key: "parallel", label: tr("Nopea koulutus", "Fast training"), type: "toggle",
+            info: tr("Laskee sukupolven kaikilla prosessoriytimillä taustalla, ja näkymässä ajaa vain paras robotti. Moninkertaisesti nopeampi, ja isokin populaatio (satoja robotteja) onnistuu. Kytke pois, jos haluat nähdä koko populaation liikkeessä.", "Computes each generation on all processor cores in the background while the view shows only the best robot. Many times faster, and even a big population (hundreds of robots) works. Turn it off to watch the whole population move.") },
+          { key: "popSize", label: tr("Populaatio", "Population"), min: 4, max: dim === "3d" ? 1000 : 2000, step: 1,
+            info: tr(`Montako robottia kokeillaan yhdessä sukupolvessa. Isompi on vakaampi mutta hitaampi. Suositus ${dim === "3d" ? "15–100" : "24–200"}; nopealla koulutuksella satojakin.`, `How many robots are tried per generation. Bigger is steadier but slower. Recommended ${dim === "3d" ? "15–100" : "24–200"}; with fast training even hundreds.`) },
           { key: "duration", label: tr("Episodin pituus", "Episode length"), unit: "s", min: 2, max: 120, step: 1,
             info: tr("Kuinka kauan yksi yritys kestää. Lyhyt (5–10 s) nopeuttaa alkua; pidennä (15–30 s), kun robotti jo liikkuu, jotta se oppii myös kestävyyttä.", "How long one attempt lasts. Short (5–10 s) speeds up the start; lengthen it (15–30 s) once the robot moves so it also learns endurance.") },
           { key: "sigma", label: tr("Mutaatio σ", "Mutation σ"), adv: true, min: 0.001, max: 2, step: 0.01,
@@ -349,7 +542,7 @@
       el = root;
       dead = false;
       const my = ++token; // uudelleenpiirto kesken latauksen (esim. Ctrl+Z) ohittaa vanhan
-      st = getToolState(key, { ...B.defaults, showAll: true, follow: true, speed: MAX_SPEED });
+      st = getToolState(key, { ...B.defaults, showAll: true, follow: true, speed: MAX_SPEED, parallel: true });
       const adv = st._adv ?? settings.advanced;
       el.innerHTML = `
         ${toolHead(tool)}
@@ -371,7 +564,8 @@
             </div>
             <div class="card"><h3 class="card-title">${tr("Tehtävä ja maasto", "Task and terrain")}</h3>
               <div class="fields" id="nn-f-task"></div>
-              <div class="row-actions"><button class="btn" data-a="editTask" title="${tr("Kirjoita oma palkkiofunktio JavaScriptillä.", "Write your own reward function in JavaScript.")}">${tr("Muokkaa palkkiofunktiota", "Edit reward function")}</button></div>
+              <div class="row-actions"><button class="btn primary" data-a="goal" title="${tr("Valitse tavoitteet ja niiden tärkeys: palkkiofunktio tehdään puolestasi.", "Pick goals and how important they are: the reward function is made for you.")}">${icon("target")} ${tr("Oma tavoite", "Custom goal")}</button>
+                <button class="btn" data-a="editTask" title="${tr("Kirjoita oma palkkiofunktio JavaScriptillä.", "Write your own reward function in JavaScript.")}">${tr("Muokkaa palkkiofunktiota", "Edit reward function")}</button></div>
             </div>
             <div class="card"><h3 class="card-title">${tr("Koulutus", "Training")}</h3>
               <div class="fields" id="nn-f-train"></div>
@@ -465,8 +659,13 @@
       el.querySelector("#nn-follow").onchange = (e) => { st.follow = e.target.checked; if (st.follow) view.resumeFollow(); saveToolState(key, st, { undo: false }); };
       el.querySelector("#nn-train").onclick = () => {
         if (S.mode === "train") { setMode("idle"); status(tr("Koulutus tauolla. Paina Kouluta jatkaaksesi.", "Training paused. Press Train to continue.")); return; }
-        setEpisode(S.trainer.ask());
         setMode("train");
+        if (useParallel()) {
+          setEpisode([currentBest()]);
+          status(tr("Koulutus käynnistyy kaikilla prosessoriytimillä… Näkymässä ajaa paras tähän mennessä löydetty robotti.", "Training starts on all processor cores… The view shows the best robot found so far."));
+          return;
+        }
+        setEpisode(S.trainer.ask());
         status(tr("Koulutetaan… Koko populaatio näkyy haaleana ja kamera seuraa parasta. Koulutus jatkuu, vaikka vaihtaisit selaimen välilehteä — mutta pysähtyy, jos siirryt toiseen työkaluun.", "Training… The whole population is shown faded and the camera follows the best. Training continues if you switch browser tabs — but stops if you open another tool."));
       };
       el.querySelector("#nn-replay").onclick = () => {
@@ -583,6 +782,11 @@
       }
       if (k === "terrain") { save(); if (S.mode === "idle") preview(); return; }
       if (k === "algo" || k === "popSize") { save(); rebuildTrainer(); return; }
+      if (k === "parallel") {
+        save();
+        if (S.mode === "train") setEpisode(useParallel() ? [currentBest()] : S.trainer.ask());
+        return;
+      }
       save(); // sigma, lr, duration: otetaan käyttöön seuraavassa sukupolvessa
       Object.assign(S.trainer.opts, opts());
     }
@@ -621,11 +825,19 @@
         editDialog({ title: tr("Muokkaa palkkiofunktiota (JavaScript)", "Edit reward function (JavaScript)"), help: be.HELP, text: st.taskKey === "custom" && st.taskCodeUntrusted ? st.taskCode : taskCode(),
           apply: (text) => {
             S.taskFn = RS.compileTask(text); // heittää syntaksivirheen
-            st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; trustNote();
+            st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; delete st.goal; trustNote();
             forgetBest();
             save(); drawFields(); if (S.mode === "idle") preview();
             status(tr("Oma palkkiofunktio otettu käyttöön.", "Custom reward function in use."));
           } });
+      } else if (a === "goal") {
+        goalDialog({ dim, goal: st.goal, apply: (code, goal) => {
+          S.taskFn = RS.compileTask(code);
+          st.taskKey = "custom"; st.taskCode = code; st.goal = goal; delete st.taskCodeUntrusted; trustNote();
+          forgetBest();
+          save(); drawFields(); if (S.mode === "idle") preview();
+          status(tr("Oma tavoite otettu käyttöön. Paina Kouluta. Aivot säilyvät, joten robotti jatkaa nykyisestä osaamisestaan.", "Custom goal in use. Press Train. The brain is kept, so the robot builds on what it already knows."));
+        } });
       } else if (a === "exportModel") {
         RS.download(`${dim === "3d" ? "robotti3d" : "robotti"}-malli.json`, JSON.stringify(modelRaw(), null, 2));
       } else if (a === "importModel") {
@@ -781,7 +993,7 @@
       Object.assign(st, {
         modelKey: Object.hasOwn(be.MODELS, d.modelKey) ? d.modelKey : "custom", modelRaw: Object.hasOwn(be.MODELS, d.modelKey) ? undefined : raw,
         taskKey: Object.hasOwn(be.TASKS, d.taskKey) ? d.taskKey : "custom", taskCode: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : String(d.taskCode ?? ""),
-        taskCodeUntrusted: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : true,
+        taskCodeUntrusted: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : true, goal: undefined,
         terrain: d.terrain in be.TERRAINS ? d.terrain : "flat", algo: d.algo === "ga" ? "ga" : "es",
         popSize: d.opts?.popSize ?? st.popSize, sigma: d.opts?.sigma ?? st.sigma, lr: d.opts?.lr ?? st.lr,
         duration: d.duration || st.duration, hidden: (d.hidden || [32, 32]).join(","),
@@ -796,6 +1008,8 @@
     function unmount() {
       dead = true;
       cancelAnimationFrame(raf);
+      pool?.terminate();
+      pool = null;
       if (S?.episode && be) be.free(S.episode);
       if (S) S.episode = null;
       view?.dispose();
