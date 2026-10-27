@@ -22,6 +22,114 @@
     return (h >>> 0).toString(36);
   }
 
+  /* ===== Jakolinkki =====
+     Robotti, tehtävä ja opitut aivot pakataan linkin #-osaan: selain ei lähetä sitä palvelimelle, joten mitään
+     ei tallenneta mihinkään. Painot 16-bittisinä kokonaislukuina (suhteellinen tarkkuus 1/32767), koko pakattuna. */
+  const SHARE_VERSION = 1, SHARE_MAX_CHARS = 300000, SHARE_MAX_BYTES = 4e6;
+  const QR_URL = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js";
+  const PUBLIC_URL = "https://0ippi.github.io/RoboLab/index.html";
+  const b64url = (bytes) => {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  const unb64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+  // Virta läpi (pakkaus tai purku); purettaessa koko rajataan, ettei pieni linkki voi paisua valtavaksi
+  async function pipeBytes(bytes, stream, limit = Infinity) {
+    const reader = new Blob([bytes]).stream().pipeThrough(stream).getReader();
+    const parts = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > limit) { reader.cancel(); throw new Error("size"); }
+      parts.push(value);
+    }
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  }
+  // bits8: QR-koodiin mahtuva versio, jossa painot ovat 8-bittisiä ja jokaisella kerroksella on oma mittakaava
+  async function encodeShare(meta, params, bits8 = false) {
+    let body, extra;
+    if (bits8) {
+      const L = meta.layers, q = new Int8Array(params.length), scales = [];
+      let k = 0;
+      for (let i = 1; i < L.length; i++) {
+        const n = L[i] * (L[i - 1] + 1);
+        let max = 1e-9;
+        for (let j = k; j < k + n; j++) max = Math.max(max, Math.abs(params[j]));
+        for (let j = k; j < k + n; j++) q[j] = Math.round((params[j] / max) * 127);
+        scales.push(max / 127);
+        k += n;
+      }
+      body = new Uint8Array(q.buffer);
+      extra = { bits: 8, scales };
+    } else {
+      let max = 1e-9;
+      for (const v of params) max = Math.max(max, Math.abs(v));
+      const q = new Int16Array(params.length);
+      for (let i = 0; i < params.length; i++) q[i] = Math.round((params[i] / max) * 32767);
+      body = new Uint8Array(q.buffer);
+      extra = { scale: max / 32767 };
+    }
+    const json = new TextEncoder().encode(JSON.stringify({ ...meta, v: SHARE_VERSION, ...extra }));
+    const buf = new Uint8Array(4 + json.length + body.length);
+    new DataView(buf.buffer).setUint32(0, json.length, true);
+    buf.set(json, 4);
+    buf.set(body, 4 + json.length);
+    return b64url(await pipeBytes(buf, new CompressionStream("deflate-raw")));
+  }
+  async function decodeShare(data) {
+    if (data.length > SHARE_MAX_CHARS) throw new Error("size");
+    const buf = await pipeBytes(unb64url(data), new DecompressionStream("deflate-raw"), SHARE_MAX_BYTES);
+    const len = new DataView(buf.buffer).getUint32(0, true);
+    if (len > buf.length - 4) throw new Error("format");
+    const meta = JSON.parse(new TextDecoder().decode(buf.subarray(4, 4 + len)));
+    const rest = buf.slice(4 + len); // kopio: Int16Array vaatii parillisen alkukohdan
+    if (meta?.bits === 8) {
+      const q = new Int8Array(rest.buffer), L = Array.isArray(meta.layers) ? meta.layers : [], sc = Array.isArray(meta.scales) ? meta.scales : [];
+      const params = new Float32Array(q.length);
+      let k = 0;
+      for (let i = 1; i < L.length && k < q.length; i++) {
+        const n = (L[i] | 0) * ((L[i - 1] | 0) + 1), s = Number(sc[i - 1]);
+        for (let j = k; j < Math.min(k + n, q.length); j++) params[j] = q[j] * s;
+        k += n;
+      }
+      return { meta, params };
+    }
+    const q = new Int16Array(rest.buffer, 0, rest.length >> 1);
+    const scale = Number(meta?.scale);
+    return { meta, params: Float32Array.from(q, (v) => v * scale) };
+  }
+  // Paikallisesti (localhost) ajettaessa linkki osoittaa julkiseen sivuun, jotta muut voivat avata sen
+  const shareBase = () => (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:" ? PUBLIC_URL : location.origin + location.pathname);
+  function loadQr() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    loadQr.p ||= new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = QR_URL;
+      s.onload = () => resolve(window.qrcode);
+      s.onerror = () => { loadQr.p = null; s.remove(); reject(new Error("qr")); };
+      document.head.append(s);
+    });
+    return loadQr.p;
+  }
+  // QR-koodi canvakselle; palauttaa false, jos linkki on liian pitkä QR-koodiksi (yli ~2900 merkkiä)
+  function drawQr(canvas, text) {
+    let qr;
+    try { qr = window.qrcode(0, "L"); qr.addData(text); qr.make(); } catch { return false; }
+    const n = qr.getModuleCount(), quiet = 4, cell = Math.max(2, Math.floor(560 / (n + 2 * quiet)));
+    canvas.width = canvas.height = (n + 2 * quiet) * cell;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+    return true;
+  }
+
   // Klikkaus (ei veto) näkymään: reittipisteiden asettaminen
   function onClickNotDrag(canvas, cb) {
     let down = null;
@@ -505,11 +613,12 @@
       return w.filter((p) => p && Number.isFinite(p.x) && (dim === "2d" ? Number.isFinite(p.y) : Number.isFinite(p.z))).slice(0, WAYPOINT_MAX);
     }
 
-    // o.seed: sama siemen = sama maasto ja samat kohteet (uusinta), o.race: kisaajien värit
+    // o.seed: sama siemen = sama maasto ja samat kohteet (uusinta), o.race: kisaajien värit,
+    // o.terrain / o.duration / o.taskFn / o.targets: haasteen omat ehdot asetusten sijaan
     function setEpisode(population, o = {}) {
       const old = S.episode;
-      S.episode = be.episode({ model: S.model, taskFn: S.taskFn, terrain: st.terrain, seed: o.seed ?? ((Math.random() * 1e9) | 0), population,
-        layers: S.layers, duration: st.duration, targets: wpTargets() });
+      S.episode = be.episode({ model: S.model, taskFn: o.taskFn || S.taskFn, terrain: o.terrain || st.terrain, seed: o.seed ?? ((Math.random() * 1e9) | 0), population,
+        layers: S.layers, duration: o.duration || st.duration, targets: "targets" in o ? o.targets : wpTargets() });
       S.race = o.race || null;
       view.setEpisode(S.episode, S.race?.colors);
       if (old) be.free(old);
@@ -530,6 +639,7 @@
       el.querySelector("#nn-rp").hidden = mode !== "replay";
       if (mode !== "race" && !S.race?.done) el.querySelector("#nn-race").hidden = true;
       if (mode === "replay") drawReplayBar();
+      S.fsSync?.(); // koko näytön palkin napit samoiksi
     }
 
     // Tuodun palkkiofunktion varoitus omassa laatikossaan, jottei koulutuksen tilaviesti peitä sitä
@@ -555,6 +665,7 @@
       S.last = { best, mean };
       S.history.push({ best, mean, ter: st.terrain });
       if (S.history.length > 1000) S.history.shift();
+      if (S.gen >= 100 && !S.got100) { S.got100 = true; achieve("train100"); }
       curriculumStep();
       drawChart();
       saveBrain();
@@ -599,6 +710,7 @@
           layers: S.layers, duration: st.duration, population: trainer.ask(), targets: wpTargets() });
         if (dead || S.trainer !== trainer || S.mode !== "train" || !useParallel()) return;
         finishGeneration(fit);
+        if (++S.parGens === 20) achieve("parallel");
         S.genMs = S.genMs ? S.genMs * 0.7 + (performance.now() - t0) * 0.3 : performance.now() - t0;
         const ter = st.autoTerrain ? tr(` Maasto: ${be.TERRAINS[st.terrain]} (vaikeutuu automaattisesti).`, ` Terrain: ${be.TERRAINS[st.terrain]} (gets harder automatically).`) : "";
         status(tr(`Koulutetaan ${pool.size} prosessoriytimellä, noin ${fmt(60000 / S.genMs, 0)} sukupolvea minuutissa. Näkymässä ajaa paras tähän mennessä löydetty robotti.`,
@@ -756,6 +868,7 @@
     function finishRace() {
       const ep = S.episode, R = S.race;
       R.done = true;
+      window.rsRaces = (window.rsRaces || 0) + 1; // kurssi seuraa päättyneitä kisoja
       const order = ep.agents.map((a, i) => i).sort((p, q) => ep.agents[q].fitness - ep.agents[p].fitness);
       R.result = order.map((i) => ({ i, fit: ep.agents[i].fitness, dist: distanceOf(ep, ep.agents[i]), fell: !ep.agents[i].robot.parts.length }));
       setMode("idle");
@@ -776,13 +889,14 @@
     }
 
     /* ----- Uusinta: sama rata (siemen) ja samat aivot uudelleen, hidastus ja aikajana ----- */
-    function startReplay() {
-      S.replay = { seed: (Math.random() * 1e9) | 0, params: Float32Array.from(currentBest()), rate: S.replay?.rate ?? 1, paused: false, ended: false };
-      setEpisode([S.replay.params], { seed: S.replay.seed });
+    // cfg: haasteen ehdot (maasto, kesto, mittari) — muuten nykyiset asetukset
+    function startReplay(cfg = null) {
+      S.replay = { seed: cfg?.seed ?? ((Math.random() * 1e9) | 0), params: Float32Array.from(currentBest()), rate: S.replay?.rate ?? 1, paused: false, ended: false, cfg };
+      setEpisode([S.replay.params], { seed: S.replay.seed, ...(cfg || {}) });
       setMode("replay");
     }
     function replayRestart() {
-      setEpisode([S.replay.params], { seed: S.replay.seed });
+      setEpisode([S.replay.params], { seed: S.replay.seed, ...(S.replay.cfg || {}) });
       S.replay.ended = false;
       stepDebt = 0;
     }
@@ -976,6 +1090,7 @@
                 <button class="btn primary" data-a="deploy" title="${tr("Arduino, ESP32, Raspberry Pi Pico, Raspberry Pi… Koodi, joka ajaa opitut aivot oikealla robotilla.", "Arduino, ESP32, Raspberry Pi Pico, Raspberry Pi… Code that runs the learned brain on a real robot.")}">${icon("chip")} ${tr("Vie omalle robotille", "Put on a real robot")}</button>
               </div>
               <div class="row-actions">
+                <button class="btn" data-a="share" title="${tr("Linkki ja QR-koodi, joilla muut voivat avata robottisi ja sen aivot omassa selaimessaan", "A link and a QR code others can use to open your robot and its brain in their own browser")}">🔗 ${tr("Jaa linkkinä", "Share as a link")}</button>
                 <button class="btn" data-a="exportBrain">${icon("download")} ${tr("Vie aivot", "Export brain")}</button>
                 <button class="btn" data-a="importBrain">${tr("Tuo aivot", "Import brain")}</button>
               </div>
@@ -989,8 +1104,14 @@
                   <button class="btn primary" id="nn-train">▶ ${tr("Kouluta", "Train")}</button>
                   <button class="btn" id="nn-replay">${tr("Näytä paras", "Show best")}</button>
                 </span></h3>
-              <div class="nn-stage">
+              <div class="nn-stage" id="nn-stage">
                 <canvas class="view3 nn-view" id="nn-view" aria-label="${tr("Simulaationäkymä", "Simulation view")}"></canvas>
+                <button class="icon-btn nn-fs-btn" id="nn-fs" title="${tr("Koko näyttö (Esc palaa)", "Full screen (Esc to exit)")}" aria-label="${tr("Koko näyttö", "Full screen")}">⛶</button>
+                <div class="nn-fs-bar" aria-label="${tr("Simulaation ohjaus", "Simulation controls")}">
+                  <button class="btn primary" data-fs="train"></button>
+                  <button class="btn" data-fs="replay"></button>
+                  <button class="btn" data-fs="exit">✕ ${tr("Sulje koko näyttö", "Exit full screen")}</button>
+                </div>
                 <div class="nn-hud" id="nn-hud" aria-live="off">
                   ${[tr("Sukupolvi", "Generation"), tr("Paras ikinä", "Best ever"), tr("Edell. paras", "Last best"), tr("Edell. keskiarvo", "Last mean"), tr("Aika", "Time"), tr("Elossa", "Alive")].map((l) => `<div><span>${l}</span><b>–</b></div>`).join("")}
                 </div>
@@ -1011,6 +1132,7 @@
                 <label class="mini-toggle"><input type="checkbox" id="nn-all" ${st.showAll ? "checked" : ""}> ${tr("Koko populaatio", "Whole population")}</label>
                 <label class="mini-toggle"><input type="checkbox" id="nn-follow" ${st.follow ? "checked" : ""}> ${tr("Kamera seuraa parasta", "Camera follows the best")}</label>
                 <label class="mini-toggle" title="${tr(dim === "3d" ? "Näyttää pisteet, joista robotti mittaa maaston korkeuden edessään" : "Näyttää robotin etäisyysanturien säteet", dim === "3d" ? "Shows the points where the robot measures the terrain height ahead" : "Shows the robot's distance sensor rays")}"><input type="checkbox" id="nn-sensors" ${st.sensors ? "checked" : ""}> ${tr("Anturit näkyviin", "Show sensors")}</label>
+                <button class="link-btn" data-a="coach" title="${tr("Kolmen askeleen opastus tämän työkalun käyttöön", "A three-step guide to this tool")}">❓ ${tr("Opastus", "Guide")}</button>
               </div>
               <div id="nn-trust" style="margin-top:8px"></div>
               <div id="nn-status" style="margin-top:8px"></div>
@@ -1026,6 +1148,10 @@
                 <button class="btn" data-a="saveRun">＋ ${tr("Tallenna nykyinen koulutus", "Save the current training")}</button>
                 <button class="btn primary" id="nn-race-btn" data-a="race">${tr("🏁 Kisa", "🏁 Race")}</button>
               </div>
+            </div>
+            <div class="card"><h3 class="card-title">${tr("Haasteet", "Challenges")}</h3>
+              <p class="note">${tr("Kouluta robotti ja kokeile, läpäiseekö se haasteen. Aivot ajetaan aina samalla radalla, ja tulos mitataan RoboLabin omalla mittarilla: oma palkkiofunktio ei vaikuta tulokseen. Läpäistyt haasteet näkyvät Kurssit-sivun saavutuksissa ja luokan opettajalle.", "Train a robot and try whether it passes a challenge. The brain always runs on the same track, and the result is measured with RoboLab's own meter: your reward function doesn't affect it. Passed challenges show in the achievements on the Courses page and to your class teacher.")}</p>
+              <div class="nn-chs" id="nn-ch"></div>
             </div>
             <div class="card"><h3 class="card-title">${tr("Aivot toiminnassa", "The brain in action")}</h3>
               <p class="note">${tr("Vasemmalla anturit (sisääntulot), oikealla moottorit (ulostulot) ja välissä piilokerrokset. Neuronin väri on sen aktivaatio: oranssi = positiivinen, sininen = negatiivinen. Viivat ovat kunkin neuronin kolme voimakkainta painoa. Vie hiiri neuronin päälle, niin näet sen nimen ja arvon.", "Sensors (inputs) on the left, motors (outputs) on the right and the hidden layers in between. A neuron's colour is its activation: orange = positive, blue = negative. The lines are each neuron's three strongest weights. Hover over a neuron to see its name and value.")}</p>
@@ -1049,7 +1175,7 @@
       if (!Object.hasOwn(be.MODELS, st.modelKey) && st.modelKey !== "custom") st.modelKey = B.defaults.modelKey;
       if (!Object.hasOwn(be.TASKS, st.taskKey) && st.taskKey !== "custom") st.taskKey = B.defaults.taskKey;
 
-      S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true, tick: 0, projectId: activeProject().id };
+      S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true, tick: 0, parGens: 0, projectId: activeProject().id };
       try { setupBrain(true); }
       catch (err) {
         status(tr("Tallennettu robotti on rikki: ", "The saved robot is broken: ") + err.message + tr(" Palautetaan oletusrobotti.", " Restoring the default robot."), "warn");
@@ -1097,6 +1223,32 @@
         status(S.trainer.best ? tr("Uusinta: paras tähän mennessä löydetty robotti. Hidasta liikettä nopeusnapeilla ja kelaa aikajanalla. Uusi rata vaihtaa maaston ja kohteet.", "Replay: the best robot found so far. Slow the motion down with the speed buttons and scrub the timeline. New track changes the terrain and targets.")
           : tr("Ei vielä koulutettu — näytetään satunnaiset aivot.", "Not trained yet — showing a random brain."));
       };
+      // Koko näyttö: näkymä täyttää ikkunan (myös puhelimessa, jossa elementin Fullscreen API ei aina toimi),
+      // ja alareunan palkissa ovat tärkeimmät napit. Esc tai Sulje palauttaa.
+      const stage = el.querySelector("#nn-stage");
+      const fsSync = () => {
+        stage.querySelector('[data-fs="train"]').textContent = el.querySelector("#nn-train").textContent;
+        stage.querySelector('[data-fs="replay"]').textContent = el.querySelector("#nn-replay").textContent;
+      };
+      const setFs = (on) => {
+        stage.classList.toggle("fs", on);
+        document.body.classList.toggle("nn-fs-open", on);
+        el.querySelector("#nn-fs").setAttribute("aria-pressed", on);
+        if (on) fsSync();
+        S.snap = true;
+      };
+      el.querySelector("#nn-fs").onclick = () => setFs(!stage.classList.contains("fs"));
+      stage.querySelector(".nn-fs-bar").onclick = (e) => {
+        const a = e.target.closest("[data-fs]")?.dataset.fs;
+        if (a === "train") el.querySelector("#nn-train").click();
+        else if (a === "replay") el.querySelector("#nn-replay").click();
+        else if (a === "exit") setFs(false);
+        fsSync();
+      };
+      S.fsKey = (e) => { if (e.key === "Escape" && stage.classList.contains("fs")) setFs(false); };
+      document.addEventListener("keydown", S.fsKey);
+      S.fsOff = () => setFs(false);
+      S.fsSync = fsSync;
       // Uusinnan säätimet
       const rp = el.querySelector("#nn-rp");
       rp.querySelector("#nn-rp-play").onclick = () => {
@@ -1114,9 +1266,11 @@
         if (!b) return;
         S.replay.rate = +b.dataset.r;
         if (S.replay.paused && !S.replay.ended) S.replay.paused = false;
+        if (S.replay.rate < 1) achieve("replay");
         drawReplayBar();
       };
-      rp.querySelector("#nn-rp-new").onclick = () => { S.replay.seed = (Math.random() * 1e9) | 0; replayRestart(); S.replay.paused = false; drawReplayBar(); };
+      // Uusi rata: haasteen ehdot jäävät pois, jolloin samat aivot ajavat tavallisella radalla
+      rp.querySelector("#nn-rp-new").onclick = () => { S.replay.seed = (Math.random() * 1e9) | 0; S.replay.cfg = null; replayRestart(); S.replay.paused = false; drawReplayBar(); };
       const orbit = rp.querySelector("#nn-orbit");
       if (orbit) orbit.onchange = () => { st.orbit = orbit.checked; saveToolState(key, st, { undo: false }); };
       el.querySelector("#nn-sensors").onchange = (e) => { st.sensors = e.target.checked; saveToolState(key, st, { undo: false }); };
@@ -1154,11 +1308,14 @@
         catch (err) { status(tr("Robotin tuonti rakentajasta: ", "Bringing the robot from the builder: ") + err.message, "warn"); }
       }
 
+      // Ensimmäisellä käyttökerralla lyhyt opastus (kurssin aikana kurssipaneeli opastaa)
+      if (!window.Courses?.active()) setTimeout(() => { if (!dead && my === token) startCoach(false); }, 700);
+
       // Automaattitestit (tests-app.html, ?memstore) pääsevät käsiksi koulutuksen tilaan
       if (/[?&]memstore\b/.test(location.search)) {
         (window.__nn ||= {})[dim] = {
           get S() { return S; }, get st() { return st; }, get view() { return view; },
-          finishGeneration, startRace, startReplay, replaySeek, addWaypoint, setPlacing, runs, makeRun, addRun, drawBrainViz, useRun, setMode,
+          finishGeneration, startRace, startReplay, replaySeek, addWaypoint, setPlacing, runs, makeRun, addRun, drawBrainViz, useRun, setMode, runChallenge,
         };
       }
     }
@@ -1225,6 +1382,7 @@
       el.querySelector("#nn-desc").textContent = `${raw.description || ""} (${tr(`${info.obsSize} sensoria`, `${info.obsSize} sensors`)}, ${act})`.trim();
       const h = el.querySelector("#nn-hidden");
       if (h) h.onchange = onHidden;
+      drawChallenges();
     }
 
     // Uusi tehtävä tai palkkio: vanhan tehtävän ennätys ei ole vertailukelpoinen (Näytä paras ja Paras ikinä).
@@ -1257,7 +1415,10 @@
         status(tr("Tehtävä vaihdettu. Aivot säilyvät, joten robotti jatkaa oppimista uudesta tehtävästä.", "Task changed. The brain is kept, so the robot continues learning the new task."));
         return;
       }
-      if (k === "terrain") { save(); if (S.mode === "idle") preview(); return; }
+      // Eri maaston tai episodin pituuden pisteet eivät ole vertailukelpoisia: vanha "paras ikinä" unohdetaan,
+      // muuten Näytä paras ja haasteet käyttäisivät helpomman maaston aivoja
+      if (k === "terrain") { forgetBest(); save(); if (S.mode === "idle") preview(); return; }
+      if (k === "duration") forgetBest();
       if (k === "autoTerrain") {
         save();
         const order = Object.values(be.TERRAINS);
@@ -1322,6 +1483,44 @@
       status(tr(`Koulutusajon "${r.name}" aivot otettu käyttöön (sukupolvi ${S.gen}). Paina Kouluta jatkaaksesi niistä.`, `The brain of the training run "${r.name}" is in use (generation ${S.gen}). Press Train to continue from it.`), "ok");
     }
 
+    /* ----- Haasteet (achievements.js): opitut aivot kiinteällä radalla, tulos RoboLabin omalla mittarilla ----- */
+    const challenges = () => (window.Achievements?.CHALLENGES || []).filter((c) => c.dim === dim);
+    const fmtMetric = (c, v) => (c.metric === "targets" ? String(Math.round(v)) : `${fmt(v, 1)} ${c.unit}`.trim());
+    function drawChallenges() {
+      const box = el.querySelector("#nn-ch");
+      if (!box || !be) return;
+      box.innerHTML = challenges().map((c) => {
+        const r = Achievements.challengeState(c.id), fits = !c.model || st.modelKey === c.model;
+        const need = c.model ? be.MODELS[c.model]?.name || c.model : "";
+        return `<div class="nn-ch${r?.passed ? " passed" : ""}">
+          <span class="nn-ch-icon" aria-hidden="true">${r?.passed ? "🏅" : "🎯"}</span>
+          <span class="nn-ch-text"><b>${esc(c.name)}</b><small>${esc(c.desc)}</small>
+            <small class="nn-ch-res">${r ? tr(`Paras tulos ${fmtMetric(c, r.best)} / tavoite ${fmtMetric(c, c.goal)}`, `Best result ${fmtMetric(c, r.best)} / goal ${fmtMetric(c, c.goal)}`) : tr(`Tavoite ${fmtMetric(c, c.goal)} · ei vielä yritetty`, `Goal ${fmtMetric(c, c.goal)} · not tried yet`)}${fits ? "" : ` · ${tr(`vaatii robotin ${esc(need)}`, `needs the ${esc(need)} robot`)}`}</small></span>
+          <button class="btn${fits ? " primary" : ""}" data-a="challenge" data-id="${esc(c.id)}" ${fits ? "" : "disabled"}>${tr("Kokeile", "Try")}</button>
+        </div>`;
+      }).join("");
+    }
+    function runChallenge(id) {
+      const c = challenges().find((x) => x.id === id);
+      if (!c || (c.model && st.modelKey !== c.model)) return;
+      setMode("idle");
+      // Mittaus: sama rata kaikille (siemen), tulos on mittarin summa koko ajolta
+      const taskFn = RS.compileTask(Achievements.measureCode(c));
+      const ep = be.episode({ model: S.model, taskFn, terrain: c.terrain, seed: c.seed, population: [Float32Array.from(currentBest())], layers: S.layers, duration: c.duration });
+      let score;
+      try {
+        while (!ep.finished) ep.step();
+        score = ep.agents[0].fitness;
+      } finally { be.free(ep); }
+      const res = Achievements.challengeResult(c.id, score);
+      drawChallenges();
+      // Yritys näytetään uusintana samoilla ehdoilla (sama rata ja kohteet)
+      startReplay({ seed: c.seed, terrain: c.terrain, duration: c.duration, taskFn, targets: undefined });
+      status(res?.passed
+        ? tr(`Haaste "${c.name}" läpäisty: ${fmtMetric(c, score)} (tavoite ${fmtMetric(c, c.goal)}). Uusinta näyttää yrityksen.`, `Challenge "${c.name}" passed: ${fmtMetric(c, score)} (goal ${fmtMetric(c, c.goal)}). The replay shows the attempt.`)
+        : tr(`Haaste "${c.name}": ${fmtMetric(c, score)}, tavoite ${fmtMetric(c, c.goal)}. Kouluta lisää ja yritä uudelleen. Uusinta näyttää yrityksen.`, `Challenge "${c.name}": ${fmtMetric(c, score)}, goal ${fmtMetric(c, c.goal)}. Train more and try again. The replay shows the attempt.`), res?.passed ? "ok" : "warn");
+    }
+
     /* ----- Omat reittipisteet: klikkaa näkymää ----- */
     function drawWaypointRow() {
       const box = el.querySelector("#nn-wp");
@@ -1348,6 +1547,7 @@
       if (list.length >= WAYPOINT_MAX) { status(tr(`Enintään ${WAYPOINT_MAX} reittipistettä.`, `At most ${WAYPOINT_MAX} waypoints.`), "warn"); return; }
       list.push(dim === "2d" ? { x: +p.x.toFixed(2), y: +p.y.toFixed(2) } : { x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
       st.waypoints = list;
+      forgetBest(); // eri reitin pisteet eivät ole vertailukelpoisia
       save();
       preview(); // uusi episodi ottaa pisteet kohteiksi
       setPlacing(true);
@@ -1381,6 +1581,7 @@
           forgetBest();
           save(); drawFields(); drawWaypointRow(); if (S.mode === "idle") preview();
           status(tr("Oma tavoite otettu käyttöön. Paina Kouluta. Aivot säilyvät, joten robotti jatkaa nykyisestä osaamisestaan.", "Custom goal in use. Press Train. The brain is kept, so the robot builds on what it already knows."));
+          achieve("goal");
         } });
       } else if (a === "exportModel") {
         RS.download(`${dim === "3d" ? "robotti3d" : "robotti"}-malli.json`, JSON.stringify(modelRaw(), null, 2));
@@ -1437,6 +1638,7 @@
         setPlacing(!S.placing);
       } else if (a === "clearWaypoints") {
         delete st.waypoints;
+        forgetBest();
         save(); setPlacing(false);
         if (S.mode === "idle") preview();
         status(tr("Reittipisteet poistettu: kohteet arvotaan taas.", "Waypoints removed: targets are random again."));
@@ -1447,6 +1649,86 @@
         saveOwn();
       } else if (a === "deploy") {
         openDeploy();
+      } else if (a === "share") {
+        openShare();
+      } else if (a === "coach") {
+        startCoach(true);
+      } else if (a === "challenge") {
+        const id = e.target.closest("[data-id]")?.dataset.id;
+        status(tr("Mitataan…", "Measuring…"));
+        setTimeout(() => { if (!dead) runChallenge(id); }, 30); // tilaviesti ehtii näkyä ennen mittausta
+      }
+    }
+
+    // Ensikäytön opastus: robotti → tavoite → kouluta (ei kurssin aikana, jolloin kurssipaneeli opastaa)
+    function startCoach(force) {
+      coachTour("nn" + dim, [
+        { sel: "#nn-pick", text: tr("Valitse robotti: valmiit hahmot, perusmallit tai oma robotti rakentajasta. Esimerkit-valikossa on valmiita yhdistelmiä, jotka oppivat nopeasti.", "Pick a robot: ready characters, basic models or your own robot from the builder. The Examples menu has ready combinations that learn quickly.") },
+        { sel: '[data-a="goal"]', text: tr("Valitse, mitä robotin pitää oppia: valmis tehtävä tai Oma tavoite, jossa kokoat palkkion itse.", "Choose what the robot should learn: a ready task or Custom goal, where you build the reward yourself.") },
+        { sel: "#nn-train", text: tr("Paina Kouluta. Nopea koulutus käyttää kaikkia prosessoriytimiä, ja näkymässä ajaa paras robotti. Oppimiskäyrä näyttää edistymisen, ja Näytä paras toistaa parhaan yrityksen.", "Press Train. Fast training uses every processor core and the view shows the best robot. The learning curve shows progress, and Show best replays the best attempt.") },
+      ], { force });
+    }
+
+    // Jaa linkkinä: robotti, tehtävä ja aivot linkkiin ja QR-koodiin
+    async function openShare() {
+      const raw = modelRaw();
+      const meta = { dim, name: String(raw.name || tr("Oma robotti", "Custom robot")).slice(0, 80), terrain: st.terrain, duration: st.duration, hidden: st.hidden, algo: st.algo,
+        layers: S.layers, gen: S.gen, best: isFinite(S.trainer?.bestFitness) ? +S.trainer.bestFitness.toPrecision(5) : null };
+      if (st.modelKey === "custom") meta.model = raw; else meta.modelKey = st.modelKey;
+      if (st.taskKey !== "custom") meta.taskKey = st.taskKey;
+      else if (st.goal) meta.goal = st.goal; // tavoitteesta tehdään koodi avattaessa: linkki ei voi tuoda koodia
+      else meta.code = taskCode();
+      const wps = waypoints();
+      if (wps.length) meta.waypoints = wps;
+      let url;
+      try { url = shareBase() + "#/share/" + (await encodeShare(meta, currentBest())); }
+      catch (err) { status(tr("Linkin tekeminen ei onnistunut tässä selaimessa: ", "Making the link failed in this browser: ") + err.message, "err"); return; }
+      let dlg = document.getElementById("rs-share");
+      if (!dlg) {
+        dlg = document.createElement("dialog");
+        dlg.id = "rs-share";
+        dlg.className = "rs-dlg";
+        document.body.append(dlg);
+      }
+      const n = currentBest().length;
+      dlg.innerHTML = `<h2>${tr("Jaa robotti linkkinä", "Share the robot as a link")}</h2>
+        <p class="note">${tr(`Linkki sisältää robotin, tehtävän${wps.length ? ", reittipisteet" : ""} ja opitut aivot (${n} painoa, sukupolvi ${S.gen}). Avaaja saa ne uuteen projektiin omaan selaimeensa. Tiedot ovat linkissä itsessään: niitä ei tallenneta palvelimelle.`, `The link contains the robot, the task${wps.length ? ", the waypoints" : ""} and the learned brain (${n} weights, generation ${S.gen}). Whoever opens it gets them in a new project in their own browser. The data is inside the link itself: nothing is stored on a server.`)}</p>
+        ${meta.code ? alertsHtml([{ level: "warn", text: tr("Oma palkkiofunktio on koodia: avaajan pitää tarkistaa ja hyväksyä se ennen kuin sitä ajetaan.", "The custom reward function is code: whoever opens the link has to review and accept it before it runs.") }]) : ""}
+        <div class="share-link"><input type="text" readonly id="sh-url" aria-label="${tr("Jakolinkki", "Share link")}"><button class="btn primary" id="sh-copy">${tr("Kopioi linkki", "Copy link")}</button></div>
+        <p class="note" id="sh-len"></p>
+        <div class="share-qr"><canvas id="sh-qr" hidden aria-label="${tr("QR-koodi linkistä", "QR code of the link")}"></canvas><p class="note" id="sh-qr-note"></p></div>
+        <div class="row-actions rs-dlg-foot"><button class="btn" data-close>${tr("Sulje", "Close")}</button><button class="btn" id="sh-dl" hidden>${icon("download")} ${tr("Lataa QR-kuva", "Download the QR image")}</button></div>`;
+      dlg.querySelector("#sh-url").value = url;
+      dlg.querySelector("#sh-len").textContent = tr(`Linkin pituus ${url.length.toLocaleString(LANG)} merkkiä.`, `The link is ${url.length.toLocaleString(LANG)} characters long.`);
+      dlg.querySelector("[data-close]").onclick = () => dlg.close();
+      dlg.querySelector("#sh-copy").onclick = async () => {
+        try { await navigator.clipboard.writeText(url); }
+        catch { const i = dlg.querySelector("#sh-url"); i.select(); document.execCommand("copy"); }
+        toast(tr("Linkki kopioitu leikepöydälle.", "Link copied to the clipboard."));
+        achieve("share");
+      };
+      dlg.querySelector("#sh-url").onfocus = (e) => e.target.select();
+      dlg.showModal();
+      const qrNote = dlg.querySelector("#sh-qr-note"), canvas = dlg.querySelector("#sh-qr");
+      qrNote.textContent = tr("Tehdään QR-koodia…", "Making the QR code…");
+      try {
+        await loadQr();
+        // Tarkka linkki ensin; jos se ei mahdu, QR-koodiin tehdään tiiviimpi 8-bittinen versio
+        let qrUrl = url, approx = false;
+        if (url.length > 2900) { qrUrl = shareBase() + "#/share/" + (await encodeShare(meta, currentBest(), true)); approx = true; }
+        if (drawQr(canvas, qrUrl)) {
+          canvas.hidden = false;
+          qrNote.textContent = approx
+            ? tr("Puhelimen kamera avaa robotin QR-koodista. QR-koodiin aivot on pakattu tiiviimmin (8-bittiset painot), joten robotti voi liikkua hieman eri tavalla kuin linkissä.", "A phone camera opens the robot from the QR code. In the QR code the brain is packed more tightly (8-bit weights), so the robot may move slightly differently than with the link.")
+            : tr("Puhelimen kamera avaa linkin QR-koodista.", "A phone camera opens the link from the QR code.");
+          const dl = dlg.querySelector("#sh-dl");
+          dl.hidden = false;
+          dl.onclick = () => { const a = document.createElement("a"); a.href = canvas.toDataURL("image/png"); a.download = `robolab-${dim}-${st.modelKey}.png`; a.click(); };
+        } else {
+          qrNote.textContent = tr(`Robotin aivot ovat liian isot QR-koodiksi (QR-koodiin mahtuu noin 2 900 merkkiä). Kopioi linkki, tai pienennä verkkoa lisäasetuksista (esim. piilokerrokset 16,16) ja kouluta uudelleen.`, `The robot's brain is too big for a QR code (a QR code holds about 2,900 characters). Copy the link, or make the network smaller in the advanced settings (e.g. hidden layers 16,16) and train again.`);
+        }
+      } catch {
+        qrNote.textContent = tr("QR-kirjastoa ei saatu ladattua (tarvitset internetyhteyden). Linkki toimii silti.", "Could not load the QR library (you need an internet connection). The link still works.");
       }
     }
 
@@ -1458,6 +1740,7 @@
         python: { label: "MicroPython / Python", hint: tr("MicroPython (ESP32, Raspberry Pi Pico): kytke laite USB:llä ja paina \"Lataa laitteelle USB:llä\" — koodi tallentuu nimellä main.py ja käynnistyy. Raspberry Pi tai PC: python3 tiedosto.py.", "MicroPython (ESP32, Raspberry Pi Pico): plug the board in over USB and press \"Upload over USB\" — the code is saved as main.py and starts. Raspberry Pi or PC: python3 file.py.") },
         link: { label: tr("Live-linkki (USB)", "Live link (USB)"), hint: tr("Testaa aivoja oikealla robotilla ilman latausta: lataa tämä luonnos robotille, täytä anturit ja moottorit, ja paina \"Yhdistä ja aja\". Robotti lähettää anturit USB:llä, RoboLab laskee aivot ja lähettää moottorikomennot takaisin. Kun koulutat lisää, robotti saa heti uudet aivot.", "Test the brain on the real robot without uploading it: put this sketch on the robot, fill in sensors and motors, and press \"Connect and run\". The robot sends its sensors over USB, RoboLab runs the brain and sends the motor commands back. Train more and the robot gets the new brain right away.") },
         json: { label: "JSON", hint: tr("Painot ja sensorien kuvaus koneluettavana muihin ympäristöihin (ROS, Unity, C#, Rust…). Laskenta: jokaiselle kerrokselle out = tanh(W·in + b).", "Weights and the sensor description in machine-readable form for other environments (ROS, Unity, C#, Rust…). Computation: for each layer out = tanh(W·in + b).") },
+        wiring: { label: tr("Kytkentäohje", "Wiring guide"), hint: tr("Ehdotus osista ja Raspberry Pi Picon nastoista juuri tälle robotille: moottoriohjaimet, servot, anturit, virta ja turvallisuus. Suuntaa antava: tarkista oman laitteesi nastat.", "Suggested parts and Raspberry Pi Pico pins for this robot: motor drivers, servos, sensors, power and safety. Indicative: check your own board's pins.") },
       };
       // Kouluttamattomilla aivoilla (ei vielä yhtään sukupolvea) viedään satunnaiset painot: dialogi aukeaa silti
       const t = S.trainer, p = currentBest();
@@ -1502,7 +1785,8 @@
         dlg.querySelectorAll("#dp-target button").forEach((b) => { b.classList.toggle("on", b.dataset.t === target); b.setAttribute("aria-selected", b.dataset.t === target); });
         dlg.querySelector("#dp-hint").textContent = TARGETS[target].hint;
         try {
-          out = target === "link" ? { filename: "robolab_link.ino", code: RS.USB.linkSketch(info) } : RS.deployCode(target, base);
+          out = target === "link" ? { filename: "robolab_link.ino", code: RS.USB.linkSketch(info) }
+            : target === "wiring" ? RS.wiringGuide(base) : RS.deployCode(target, base);
           dlg.querySelector("#dp-code").value = out.code;
         } catch (err) { out = null; dlg.querySelector("#dp-code").value = err.message; }
         dlg.querySelector("[data-dl] span").textContent = out ? tr(`Lataa ${out.filename}`, `Download ${out.filename}`) : tr("Lataa", "Download");
@@ -1560,6 +1844,7 @@
       show();
       dlg.showModal();
       window.rsDeployOpened = (window.rsDeployOpened || 0) + 1; // kurssi seuraa avauskertoja (vasta kun dialogi oikeasti aukesi)
+      achieve("deploy");
     }
 
     function importBrain(d, name) {
@@ -1585,6 +1870,8 @@
 
     function unmount() {
       flushBrain();
+      if (S?.fsKey) document.removeEventListener("keydown", S.fsKey);
+      S?.fsOff?.();
       dead = true;
       cancelAnimationFrame(raf);
       pool?.terminate();
@@ -1628,6 +1915,64 @@
 
   TOOL_IMPL.nn2d = makeTool("2d");
   TOOL_IMPL.nn3d = makeTool("3d");
+
+  /* ===== Jaetun linkin avaaminen (#/share/<data>, app.js router) =====
+     Linkin sisältö on tuntematonta dataa: jokainen kenttä tarkistetaan, nimet näytetään esc():llä, palkkiofunktion
+     koodi merkitään tarkistettavaksi (taskCodeUntrusted) ja Oma tavoite tehdään koodiksi vasta täällä. */
+  window.RSShare = {
+    encode: encodeShare, // testit ja muut työkalut
+    async open(data) {
+      let d;
+      try { d = await decodeShare(String(data)); }
+      catch { toast(tr("Jakolinkki on rikki tai liian pitkä.", "The share link is broken or too long.")); return; }
+      const m = d.meta, p = d.params;
+      const dim = m?.dim === "3d" ? "3d" : m?.dim === "2d" ? "2d" : null;
+      const layers = Array.isArray(m?.layers) ? m.layers : [];
+      const okLayers = layers.length >= 2 && layers.length <= 10 && layers.every((n) => Number.isInteger(n) && n > 0 && n <= 4096);
+      if (m?.v !== SHARE_VERSION || !dim || !okLayers || p.length !== RS.Brain.paramCount(layers) || !p.every(Number.isFinite)) {
+        toast(tr("Jakolinkki on rikki tai tehty eri RoboLab-versiolla.", "The share link is broken or made with a different RoboLab version."));
+        return;
+      }
+      const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+      const name = String(m.name || tr("Jaettu robotti", "Shared robot")).slice(0, 80);
+      const gen = Math.max(0, Math.floor(Number(m.gen) || 0));
+      const ok = await RS.ask(tr(`Avataanko jaettu robotti "${name}" (${dim.toUpperCase()}, ${gen} sukupolvea koulutusta)?\n\nSe avataan uuteen projektiin, joten omat työsi säilyvät ennallaan.`,
+        `Open the shared robot "${name}" (${dim.toUpperCase()}, ${gen} generations of training)?\n\nIt opens in a new project, so your own work stays as it is.`), tr("Avaa", "Open"));
+      if (!ok) return;
+      const B = BACKENDS[dim], key = "nn" + dim;
+      const st = { ...B.defaults, speed: MAX_SPEED, showAll: true, follow: true, parallel: true, hidden: layers.slice(1, -1).join(",") };
+      if (typeof m.modelKey === "string" && /^[\w-]{1,40}$/.test(m.modelKey)) st.modelKey = m.modelKey;
+      else if (isObj(m.model) && Array.isArray(m.model.bodies) && Array.isArray(m.model.joints)) { st.modelKey = "custom"; st.modelRaw = m.model; }
+      if (typeof m.taskKey === "string" && /^[\w-]{1,40}$/.test(m.taskKey)) st.taskKey = m.taskKey;
+      else if (isObj(m.goal)) {
+        try { st.taskCode = goalCode(dim, m.goal); st.taskKey = "custom"; st.goal = JSON.parse(JSON.stringify(m.goal)); } catch {}
+      } else if (typeof m.code === "string") { st.taskKey = "custom"; st.taskCode = m.code.slice(0, 20000); st.taskCodeUntrusted = true; }
+      if (typeof m.terrain === "string" && /^\w{1,20}$/.test(m.terrain)) st.terrain = m.terrain;
+      if (Number.isFinite(m.duration)) st.duration = RS.clamp(Math.round(m.duration), 2, 120);
+      if (m.algo === "ga") st.algo = "ga";
+      if (Array.isArray(m.waypoints)) {
+        st.waypoints = m.waypoints.filter((w) => isObj(w) && Number.isFinite(w.x) && Number.isFinite(dim === "2d" ? w.y : w.z)).slice(0, WAYPOINT_MAX)
+          .map((w) => (dim === "2d" ? { x: w.x, y: w.y } : { x: w.x, z: w.z }));
+      }
+      const proj = newProject(tr("Jaettu: ", "Shared: ") + name);
+      proj.tools[key] = st;
+      proj.tools[key + "Brain"] = { layers, params: Array.from(p, (v) => +v.toPrecision(6)), bestFitness: Number.isFinite(m.best) ? m.best : null, gen, history: [] };
+      const prev = projects.active;
+      projects.projects[proj.id] = proj;
+      projects.active = proj.id;
+      if (!saveProjects()) {
+        delete projects.projects[proj.id];
+        projects.active = prev;
+        saveProjects();
+        toast(tr("Selaimen tallennustila on täynnä, joten jaettua robottia ei voitu avata.", "The browser storage is full, so the shared robot could not be opened."));
+        return;
+      }
+      refreshCrumbs?.();
+      achieve("shareOpen");
+      location.hash = "#/" + key;
+      toast(tr(`Jaettu robotti "${name}" avattiin projektiin "${proj.name}".`, `The shared robot "${name}" opened in the project "${proj.name}".`));
+    },
+  };
 
   /* ===== Siirrot rakentajan ja simulaation välillä =====
      Robotti kulkee projektin tilassa: rakentaja lukee build2d/build3d.importRaw-kentän ja simulaatio nn2d/nn3d-mallin. */
