@@ -351,6 +351,38 @@ async function test(name, fn) {
     ok(!w.__pwned && !window.__pwned, "tuotu koodi tai HTML suoritettiin");
   });
 
+  await test("Oma tavoite tekee palkkiofunktion eikä tallennettu tavoite voi tuoda koodia", async () => {
+    w.__pwned = false;
+    const p = G("activeProject")();
+    p.tools.nn2d = { ...(p.tools.nn2d || {}), goal: { move: { on: true, w: "1;window.__pwned=true", dir: '"+x);window.__pwned=true;//' }, energy: { on: true, w: 2 }, fall: "constructor" } };
+    w.saveProjects();
+    await go("#/nn2d", 2500);
+    w.document.querySelector('[data-a="goal"]').click();
+    const dlg = await waitFor(() => w.document.querySelector("#rs-goal[open]"));
+    const tgt = dlg.querySelector('[data-k="target"] [data-w]');
+    tgt.value = 2; tgt.dispatchEvent(new w.Event("input", { bubbles: true }));
+    const code = dlg.querySelector("pre").textContent;
+    ok(/s\.targetDist/.test(code) && /\* 2/.test(code), "kohde ja paino puuttuvat koodista");
+    ok(!/pwned/.test(code), "tallennettu tavoite toi koodia");
+    dlg.querySelector("[data-yes]").click();
+    eq(w.getToolState("nn2d", {}).taskKey, "custom", "tehtävä");
+    eq(w.getToolState("nn2d", {}).taskCode, code, "koodi");
+    ok(!w.__pwned, "koodia suoritettiin");
+  });
+
+  await test("Nopea koulutus laskee sukupolvet rinnakkain", async () => {
+    await go("#/nn2d", 2500);
+    const btn = w.document.querySelector("#nn-train");
+    const gen0 = w.getToolState("nn2dBrain", {}).gen || 0;
+    btn.click();
+    try {
+      await waitFor(() => (w.getToolState("nn2dBrain", {}).gen || 0) >= gen0 + 2, 30000);
+      ok(/prosessoriytim|processor cores/.test(w.document.querySelector("#nn-status")?.textContent || ""), "tila ei kerro ytimistä");
+    } finally {
+      if (/Tauko|Pause/.test(btn.textContent)) btn.click();
+    }
+  });
+
   await test("Liian suuri tuonti perutaan eikä muu tallennus jää jumiin", async () => {
     await go("#/dashboard");
     const count = projCount();

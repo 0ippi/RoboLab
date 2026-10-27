@@ -1027,6 +1027,19 @@ body.lesson-open.lesson-collapsed .ai-fab { right: calc(64px + 18px); }
 .rs-err { color: var(--err); min-height: 1em; margin: 6px 0; font-size: .85rem; }
 .rs-dlg-foot { justify-content: flex-end; margin: 6px 0 0; }
 .rs-ask-text { margin: 0 0 14px; white-space: pre-line; }
+/* Oman tavoitteen rakentaja (neuroverkkosimulaatiot) */
+#rs-goal { max-height: calc(100vh - 32px); }
+.goal-intro { margin: 0 0 10px; color: var(--text-2); font-size: .88rem; }
+.goal-list { display: grid; gap: 6px; margin-bottom: 10px; }
+.goal-row { display: grid; grid-template-columns: auto 1fr minmax(90px, 160px); gap: 4px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); }
+.goal-row.on { border-color: var(--accent); background: var(--hover); }
+.goal-row b { font-weight: 600; font-size: .9rem; }
+.goal-row small { display: block; color: var(--text-3); font-size: .78rem; }
+.goal-row .goal-extra { grid-column: 2 / 4; }
+.goal-row input[type=range] { width: 100%; }
+.goal-fall { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: .9rem; }
+#rs-goal .rs-help { max-height: 200px; }
+@media (max-width: 560px) { .goal-row { grid-template-columns: auto 1fr; } .goal-row input[type=range] { grid-column: 2; } }
 #rs-deploy { max-height: calc(100vh - 32px); }
 #rs-deploy .seg { flex-wrap: wrap; }
 #rs-deploy textarea { height: 30vh; margin-top: 10px; white-space: pre; }

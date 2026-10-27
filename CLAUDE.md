@@ -20,6 +20,12 @@ Kun muutat sovellusta:
 - Siirrettäessä osan lapset (`M.descendants`, nivel a → b) tulevat mukana; Alt + veto siirtää vain valinnan. Usean osan kahva on apupisteessä `view.pivot` (siirto, kierto, tasainen skaalaus).
 - Fysiikkatestin lentoavustin (`PhysicsTest.autopilot`, vain käsin testaukseen): PI-nousunopeus ja PD-asento, voimat pienimmän normin ratkaisulla. Simulaatiossa neuroverkko ohjaa roottoreita suoraan.
 
+## Neuroverkkosimulaatiot (tools/nn.js)
+- Nopea koulutus (`st.parallel`, oletus päällä): `TrainPool` jakaa sukupolven Web Workereille (`robosim/core/worker2d.js` perinteinen, `robosim/3d/worker3d.js` moduuli; sama siemen kaikille). Pääsäie ajaa vain parhaan robotin näytöksen. Jos työläiset eivät käynnisty, `S.noParallel` ja paluu tavalliseen koulutukseen. Simulaatiomoduulien pitää toimia ilman DOMia (robot3d.js tuo three:n täydellä URL:lla, koska työläisellä ei ole import mapia).
+- Maasto ulottuu aloituspaikan joka puolelle (2D ±400 m, 3D X −80…150, Z ±40).
+- Oma tavoite (`goalDialog`/`goalCode`): valinnat → palkkiofunktion koodi; `st.goal` tallentaa valinnat. Koodiin päätyy vain kiinteitä paloja ja lukuja.
+- Kurssien pikakysymysten vaihtoehdot arvotaan joka avauksella (`s._qo`, ei tallennu).
+
 ## Kurssien tarkistukset
 - Jokaisella tehtävällä on `check`; toimintoja (napit, valinnat, vedot) seurataan `did(ctx, tyyppi, valitsin)`-apurilla vaiheen alusta (`ctx.t0`). Katso/lue-tehtävä ilman checkiä kuitataan, kun työkalu on ollut auki `look` sekuntia (oletus 8). Tein sen -nappia ei ole.
 - Tehtävän pitää olla mahdollinen siinä työkalussa, johon vaihe vie (esim. 2D-rakentaja näyttää robotin sivulta: siinä ei voi kääntyä; kääntyminen opetetaan Mobiilirobotti 2D:ssä). Tarkista teksti, nappien nimet ja vihjeiden luvut työkalun koodista tai ajamalla ne.

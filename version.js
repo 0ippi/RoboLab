@@ -3,6 +3,17 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.9.0", date: "2026-10-27",
+    fi: ["Nopea koulutus neuroverkkosimulaatioissa: sukupolvi lasketaan kaikilla prosessoriytimillä taustalla, ja näkymässä ajaa paras robotti. Koulutus on moninkertaisesti nopeampaa, ja populaatio voi olla satoja robotteja (2D enintään 2000, 3D enintään 1000). Koko populaation näet, kun kytket Nopean koulutuksen pois.",
+      "Oma tavoite: valitse, mitä robotin pitää oppia (esim. liiku suuntaan, mene kohteisiin, pysy pystyssä, hyppää, säästä energiaa) ja kuinka tärkeää kukin on. Palkkiofunktio tehdään puolestasi.",
+      "Maasto ympäröi nyt robotin joka puolelta, ei vain edestä.",
+      "Kurssien pikakysymysten vastausvaihtoehdot sekoitetaan joka kerta, joten oikea vastaus ei ole aina ensimmäisenä."],
+    en: ["Fast training in the neural network simulations: each generation is computed on all processor cores in the background while the view shows the best robot. Training is many times faster, and the population can be hundreds of robots (up to 2000 in 2D, 1000 in 3D). Turn Fast training off to watch the whole population.",
+      "Custom goal: choose what the robot should learn (e.g. move in a direction, reach targets, stay upright, jump, save energy) and how important each one is. The reward function is made for you.",
+      "The terrain now surrounds the robot on every side, not just in front.",
+      "The answer options in course quick questions are shuffled every time, so the right answer is no longer always first."],
+  },
+  {
     version: "2.8.1", date: "2026-10-27",
     fi: ["Mobiilirobotti 2D näyttää tulosruudut, kuten pyörien nopeudet, heti kun työkalu avataan."],
     en: ["Mobile robot 2D shows its result tiles, such as the wheel speeds, as soon as the tool opens."],

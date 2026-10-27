@@ -17,6 +17,7 @@ const APP_FILES = [
   "robosim/core/sim.js", "robosim/core/render.js", "robosim/core/deco.js", "robosim/3d/look.js",
   "robosim/3d/api.js", "robosim/3d/models3d.js", "robosim/3d/tasks3d.js", "robosim/3d/terrain3d.js",
   "robosim/3d/robot3d.js", "robosim/3d/sim3d.js", "robosim/3d/view3d.js",
+  "robosim/core/worker2d.js", "robosim/3d/worker3d.js",
   "robosim/builder/ui.js", "robosim/builder/model.js", "robosim/builder/viewport.js", "robosim/builder/physics.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png", "icons/favicon-32.png",
 ];

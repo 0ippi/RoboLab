@@ -34,6 +34,12 @@ const Courses = (() => {
     return Kin.matToEuler(Kin.quatToMat(q), "ZYX", "intrinsic");
   };
   const near = (a, b, tol) => Math.abs(a - b) < tol;
+  // Indeksit 0..n-1 satunnaisessa järjestyksessä (Fisher–Yates): kysymysten vaihtoehdot
+  const shuffled = (n) => {
+    const a = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  };
   // Uusi maaliin pääsy vaiheen alun jälkeen. Laskuri nollautuu sivun latauksessa, joten pohja-arvo seuraa sitä.
   const newArrival = (ctx) => {
     const n = window.sim2dStatus?.()?.arrivals || 0;
@@ -1336,10 +1342,15 @@ const Courses = (() => {
 
   function quizHtml(step, s, who) {
     const q = step.quiz, answered = s.quiz !== null && s.quiz !== undefined, ok = s.quiz === q.correct;
+    // Vaihtoehtojen järjestys arvotaan joka kerta, kun kysymys avataan (lähteessä oikea on usein ensimmäinen).
+    // Järjestys on ei-lueteltava ominaisuus: se pysyy samana uudelleenpiirroissa, mutta ei tallennu.
+    delete s.qorder; // 2.8.x tallensi järjestyksen
+    if (!Array.isArray(s._qo) || s._qo.length !== q.options.length) Object.defineProperty(s, "_qo", { value: shuffled(q.options.length), configurable: true });
+    const order = s._qo;
     return `<div class="lesson-quiz">
       <div class="quiz-head">⚡ ${tr("Pikakysymys", "Quick question")}</div>
       <p class="quiz-q">${esc(q.q)}</p>
-      <div class="quiz-opts">${q.options.map((o, i) => `<button class="quiz-opt ${answered && i === s.quiz ? (ok ? "right" : "wrong") : ""}" data-l="quiz" data-i="${i}" ${ok ? "disabled" : ""}><span class="q-letter">${"ABCD"[i]}</span>${esc(o)}</button>`).join("")}</div>
+      <div class="quiz-opts">${order.map((i, k) => `<button class="quiz-opt ${answered && i === s.quiz ? (ok ? "right" : "wrong") : ""}" data-l="quiz" data-i="${i}" ${ok ? "disabled" : ""}><span class="q-letter">${"ABCD"[k]}</span>${esc(q.options[i])}</button>`).join("")}</div>
       ${answered ? (ok ? bubble(who, "happy", `<p>✓ ${esc(q.explain)}</p>`)
         : bubble(who, "oops", `<p>${tr("Ei ihan. Mieti uudelleen — vihje löytyy teoriasta.", "Not quite. Think again — the theory has a clue.")}</p><button class="link-btn" data-l="ai" data-k="quiz">${tr("Kysy Voltilta, miksi", "Ask Volt why")}</button>`)) : ""}
     </div>`;
@@ -1361,7 +1372,7 @@ const Courses = (() => {
   function openExam(course) {
     const c = cp(course.id), ex = EXAMS[course.id];
     if (!ex) return;
-    if (!c.exam || c.exam.done && !c.finished) c.exam = { first: [], cur: [], done: false, order: ex.map((q) => q.options.map((_, i) => i).sort(() => Math.random() - 0.5)) };
+    if (!c.exam || c.exam.done && !c.finished) c.exam = { first: [], cur: [], done: false, order: ex.map((q) => shuffled(q.options.length)) };
     c.examOpen = true;
     persist(); drawPanel();
   }
