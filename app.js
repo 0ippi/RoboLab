@@ -402,7 +402,7 @@ const undoState = { project: null, undo: [], redo: [], last: 0 };
 const UNDO_MAX = 100, UNDO_GROUP_MS = 700;
 // Opitut neuroverkon painot eivät kuulu kumoamiseen: Ctrl+Z ei saa pyyhkiä tuntien koulutusta
 // (ja ne ovat isoja, joten ne jätetään myös kumoamiskuvista pois)
-const UNDO_KEEP = new Set(["nn2dBrain", "nn3dBrain", "nn2dStats", "nn3dStats"]);
+const UNDO_KEEP = new Set(["nn2dBrain", "nn3dBrain", "nn2dStats", "nn3dStats", "nn2dRuns", "nn3dRuns"]);
 const undoable = (tools) => JSON.stringify(tools, (k, v) => (UNDO_KEEP.has(k) ? undefined : v));
 
 function snapshot(p) {

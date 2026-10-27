@@ -32,7 +32,8 @@ function niceTicks(min, max, count = 5) {
 }
 
 // series: [{ x: number[], y: number[], label, color?, dash?, width? }]
-function drawPlot(canvas, { series, xLabel = "", yMin, yMax }) {
+// marks: [{ x, label }] pystyviivat tapahtumille (esim. maaston vaihtuminen koulutuksessa)
+function drawPlot(canvas, { series, xLabel = "", yMin, yMax, marks = [] }) {
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.clientWidth, H = canvas.clientHeight;
   if (!W || !H) return;
@@ -81,6 +82,18 @@ function drawPlot(canvas, { series, xLabel = "", yMin, yMax }) {
   ctx.save();
   ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
   ctx.lineJoin = "round";
+  let labelEnd = -Infinity; // nimet eivät saa mennä päällekkäin: liian lähellä edellistä oleva jätetään pois
+  for (const m of marks) {
+    if (!(m.x >= xmin && m.x <= xmax)) continue;
+    ctx.strokeStyle = text3; ctx.globalAlpha = 0.6; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(X(m.x), pad.t); ctx.lineTo(X(m.x), pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (m.label && X(m.x) + 4 > labelEnd) {
+      ctx.fillStyle = text3; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillText(m.label, X(m.x) + 4, pad.t + 4);
+      labelEnd = X(m.x) + 4 + ctx.measureText(m.label).width + 6;
+    }
+  }
   series.forEach((s, si) => {
     ctx.strokeStyle = s.color || seriesColor(si);
     ctx.lineWidth = s.width || 2;

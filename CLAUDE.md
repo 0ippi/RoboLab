@@ -24,6 +24,12 @@ Kun muutat sovellusta:
 - Nopea koulutus (`st.parallel`, oletus päällä): `TrainPool` jakaa sukupolven Web Workereille (`robosim/core/worker2d.js` perinteinen, `robosim/3d/worker3d.js` moduuli; sama siemen kaikille). Pääsäie ajaa vain parhaan robotin näytöksen. Jos työläiset eivät käynnisty, `S.noParallel` ja paluu tavalliseen koulutukseen. Simulaatiomoduulien pitää toimia ilman DOMia (robot3d.js tuo three:n täydellä URL:lla, koska työläisellä ei ole import mapia).
 - Maasto ulottuu aloituspaikan joka puolelle (2D ±400 m, 3D X −80…150, Z ±40).
 - Oma tavoite (`goalDialog`/`goalCode`): valinnat → palkkiofunktion koodi; `st.goal` tallentaa valinnat. Koodiin päätyy vain kiinteitä paloja ja lukuja.
+- Koulutusajot `nnXdRuns` ({ list }, enintään 8, painot 4 numeron tarkkuudella, `sig` = mallin tiiviste): vertailukäyrät (`st.runShow`), kisa (`S.mode = "race"`, sama episodi, `S.race`), "Ota käyttöön". Ennen aivojen nollausta/korvausta `autoArchive()` tallentaa ≥ 10 sukupolven koulutuksen. Ajot tarkistetaan (`runs()`), koska tuotu projekti voi sisältää mitä tahansa; projects.js:n tuonti hyväksyy `nnXdRuns`.
+- Maaston vaikeutus `st.autoTerrain`: `curriculumStep()` vaihtaa seuraavaan maastoon, kun ≥ 20 sukupolvea samassa maastossa eikä paras parane (8 + 8 sukupolven keskiarvot). Historian rivit saavat `ter`-kentän, kaavio piirtää vaihdot (`drawPlot` `marks`).
+- Uusinta (`S.mode = "replay"`): sama siemen = sama rata, aikajana ajaa alusta uudelleen (`replaySeek`), hidastus 0,1–2× pehmennetään `be.pose` + `lerp`. 3D: kiertävä kamera `st.orbit`.
+- Reittipisteet `st.waypoints` (2D {x,y}, 3D {x,z}) → episodin `cfg.targets` (myös työläisille). Maassa kulkevalle 2D-robotille y lasketaan maastosta.
+- Aivonäkymä `drawBrainViz()` (sisääntulojen nimet `RS.deployInfo`), anturit näkyviin `st.sensors`. Aivot tallennetaan enintään 1,5 s välein (`saveBrain`/`flushBrain`).
+- Testitilassa `window.__nn["2d"|"3d"]` antaa testeille pääsyn tilaan (S, st, finishGeneration, startRace, replaySeek, addWaypoint…).
 - Kurssien pikakysymysten vaihtoehdot arvotaan joka avauksella (`s._qo`, ei tallennu).
 
 ## Kurssien tarkistukset

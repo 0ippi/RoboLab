@@ -383,6 +383,107 @@ async function test(name, fn) {
     }
   });
 
+  await test("Koulutusajot: tallennus, vertailukäyrä ja kisa", async () => {
+    await go("#/nn2d", 2500);
+    const nn = await waitFor(() => w.__nn?.["2d"]?.S?.trainer && w.__nn["2d"], 5000, "työkalu");
+    const before = nn.runs().length;
+    w.prompt = () => "Testiajo";
+    w.document.querySelector('[data-a="saveRun"]').click();
+    eq(nn.runs().length, before + 1, "ajoja");
+    const run = nn.runs()[0];
+    eq(run.name, "Testiajo", "nimi");
+    eq(run.params.length, w.RS.Brain.paramCount(run.layers), "painojen määrä");
+    ok((nn.st.runShow || []).includes(run.id), "uusi ajo ei näy käyrässä");
+    ok(w.document.querySelector(`#nn-runs input[data-run="${run.id}"]`)?.checked, "rasti puuttuu");
+    // Kisa: nykyiset aivot ja tallennettu ajo samalla radalla
+    w.document.querySelector("#nn-race-btn").click();
+    eq(nn.S.mode, "race", "tila");
+    eq(nn.S.episode.agents.length, 2, "kisaajia");
+    await waitFor(() => nn.S.mode === "idle", 40000, "kisan loppu");
+    ok(nn.S.race?.done && nn.S.race.result.length === 2, "tulokset");
+    ok(/Voittaja|Winner/.test(w.document.querySelector("#nn-status").textContent), "voittaja ei näy");
+    ok(!w.document.querySelector("#nn-race").hidden, "tulostaulu piilossa");
+  });
+
+  await test("Uusinta: sama rata toistuu täsmälleen, hidastus ja aikajana", async () => {
+    const nn = w.__nn["2d"];
+    w.document.querySelector("#nn-replay").click();
+    eq(nn.S.mode, "replay", "tila");
+    ok(!w.document.querySelector("#nn-rp").hidden, "säätimet piilossa");
+    nn.replaySeek(240);
+    const a = nn.S.episode.agents[0].robot.root.getPosition(), p = [a.x, a.y];
+    nn.replaySeek(60); nn.replaySeek(240);
+    const b = nn.S.episode.agents[0].robot.root.getPosition();
+    near(b.x, p[0], 1e-9, "x"); near(b.y, p[1], 1e-9, "y");
+    w.document.querySelector('#nn-rp-rate button[data-r="0.25"]').click();
+    eq(nn.S.replay.rate, 0.25, "nopeus");
+    w.document.querySelector("#nn-replay").click();
+    eq(nn.S.mode, "idle", "lopetus");
+  });
+
+  await test("Maasto vaikeutuu automaattisesti, kun oppiminen tasaantuu", async () => {
+    const nn = w.__nn["2d"], S = nn.S, st = nn.st;
+    const tg = w.document.querySelector('input[data-f="autoTerrain"]');
+    tg.checked = true; tg.dispatchEvent(new w.Event("input", { bubbles: true }));
+    ok(st.autoTerrain, "kytkin");
+    st.terrain = "flat"; S.history = [];
+    // Sukupolvet ajetaan suoraan samassa tehtävässä, jolloin fysiikkasilmukka ei ehdi väliin
+    S.mode = "train";
+    const gens = (n, f) => { for (let i = 0; i < n; i++) { const pop = S.trainer.ask(); nn.finishGeneration(pop.map(() => f(i))); } };
+    try {
+      gens(19, () => 50);
+      eq(st.terrain, "flat", "vaihtui liian aikaisin");
+      gens(2, () => 50);
+      eq(st.terrain, "rough", "tasaantunut oppiminen ei vaihtanut maastoa");
+      gens(30, (i) => 100 * (i + 2));
+      eq(st.terrain, "rough", "maasto vaihtui, vaikka oppiminen paranee");
+      eq(w.document.querySelector('select[data-f="terrain"]').value, "rough", "valinta");
+    } finally {
+      S.mode = "idle"; st.autoTerrain = false; st.terrain = "flat"; w.saveToolState("nn2d", st);
+    }
+  });
+
+  await test("Reittipisteet: klikatut pisteet ovat episodin kohteet", async () => {
+    await go("#/dashboard"); await go("#/nn2d", 2500);
+    const nn = await waitFor(() => w.__nn?.["2d"]?.S?.trainer && w.__nn["2d"], 5000, "työkalu");
+    w.document.querySelector('[data-a="waypoints"]').click();
+    ok(nn.S.placing, "asetustila");
+    const c = w.document.querySelector("#nn-view"), r = c.getBoundingClientRect();
+    // Ruudun keskikohta vaakasuunnassa on kameran x
+    near(nn.view.r.toWorld(r.left + r.width / 2, r.top + r.height / 2).x, nn.view.r.camX, 0.05, "ruutu → maailma");
+    nn.addWaypoint({ x: 6, y: 1 }); nn.addWaypoint({ x: -4, y: 1 });
+    eq(nn.st.waypoints.length, 2, "pisteitä");
+    eq(nn.S.episode.targets.map((t) => t.x), [6, -4], "episodin kohteet");
+    w.document.querySelector('[data-a="waypoints"]').click();
+    ok(!nn.S.placing, "valmis");
+    w.document.querySelector('[data-a="clearWaypoints"]').click();
+    ok(!nn.st.waypoints, "poisto");
+    ok(nn.S.episode.targets.length >= 10, "arvotut kohteet eivät palanneet");
+  });
+
+  await test("Aivonäkymä piirtää kaikki neuronit nimineen", async () => {
+    const nn = w.__nn["2d"];
+    if (w.document.hidden) throw new Skip("selain ei piirrä tätä ikkunaa (piilossa)");
+    nn.drawBrainViz();
+    eq(nn.S.vizNodes.length, nn.S.layers.reduce((a, b) => a + b, 0), "neuroneja");
+    ok(nn.S.vizNodes[0].name && !/sisääntulo 1$/.test(nn.S.vizNodes[0].name), "sisääntulon nimi puuttuu");
+  });
+
+  await test("Tuodun projektin koulutusajot tarkistetaan eikä nimi päädy HTML:ksi", async () => {
+    w.__pwned = false;
+    const good = { id: "ok1", name: '<img src=x onerror="window.__pwned=true">', layers: [21, 2], params: Array(44).fill(0.1), sig: "x", gen: 3, curve: [[1, 2], [2, 3]] };
+    await importFile(projectFile({ name: "Ajot", tools: { nn2dRuns: { list: [good,
+      { id: "bad1", name: "rikki", layers: [2, 2], params: ["x", 1, 2, 3, 4, 5] },
+      { id: "bad2", name: "väärä koko", layers: [3, 2], params: [1, 2] },
+      "ei objekti"] } } }));
+    await go("#/nn2d", 2500);
+    const nn = await waitFor(() => w.__nn?.["2d"]?.S?.trainer && w.__nn["2d"], 5000, "työkalu");
+    eq(nn.runs().map((r) => r.id), ["ok1"], "kelpaavat ajot");
+    ok(!w.document.querySelector("#nn-runs img"), "nimi päätyi HTML:ksi");
+    await sleep(300);
+    ok(!w.__pwned && !window.__pwned, "koodia suoritettiin");
+  });
+
   await test("Liian suuri tuonti perutaan eikä muu tallennus jää jumiin", async () => {
     await go("#/dashboard");
     const count = projCount();

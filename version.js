@@ -3,6 +3,21 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.10.0", date: "2026-10-28",
+    fi: ["Koulutusajot neuroverkkosimulaatioissa: tallenna koulutus, vertaa oppimiskäyriä samassa kaaviossa ja ota vanhat aivot takaisin käyttöön. Kun nollaat aivot tai vaihdat robottia, kunnollinen koulutus tallentuu listaan itsestään.",
+      "Kisa: rastitetut koulutusajot ja nykyiset aivot ajavat samalla radalla, ja tulostaulu kertoo voittajan.",
+      "Maaston automaattinen vaikeutus: kun oppiminen tasaantuu, maasto vaihtuu vaikeampaan (tasainen → epätasainen → mäkinen → portaat → esteet). Vaihdot näkyvät oppimiskäyrässä.",
+      "Uusinta: Näytä paras toistaa saman radan, ja sitä voi hidastaa (0,1×–2×), pysäyttää ja kelata aikajanalla. 3D:ssä kamera voi kiertää robottia.",
+      "Reittipisteet: klikkaa näkymää, niin robotti oppii kulkemaan omat pisteesi järjestyksessä (Mene kohteeseen tai Oma tavoite → Mene kohteisiin).",
+      "Aivot toiminnassa: neuroverkon kaavio näyttää anturit, piilokerrokset ja moottorit sekä sen, mitkä neuronit ovat aktiivisia juuri nyt. Anturit näkyviin -valinta piirtää robotin etäisyysanturit näkymään."],
+    en: ["Training runs in the neural network simulations: save a training, compare learning curves in one chart and bring an old brain back. When you reset the brain or switch robots, a proper training is saved to the list automatically.",
+      "Race: the ticked training runs and the current brain drive on the same track, and a results board shows the winner.",
+      "Automatic terrain difficulty: when learning levels off, the terrain changes to a harder one (flat → rough → hilly → stairs → obstacles). The changes show in the learning curve.",
+      "Replay: Show best repeats the same track, and you can slow it down (0.1×–2×), pause it and scrub the timeline. In 3D the camera can orbit the robot.",
+      "Waypoints: click the view and the robot learns to visit your own points in order (Reach the target or Custom goal → Reach targets).",
+      "The brain in action: a diagram of the neural network shows the sensors, hidden layers and motors, and which neurons are active right now. Show sensors draws the robot's distance sensors in the view."],
+  },
+  {
     version: "2.9.0", date: "2026-10-27",
     fi: ["Nopea koulutus neuroverkkosimulaatioissa: sukupolvi lasketaan kaikilla prosessoriytimillä taustalla, ja näkymässä ajaa paras robotti. Koulutus on moninkertaisesti nopeampaa, ja populaatio voi olla satoja robotteja (2D enintään 2000, 3D enintään 1000). Koko populaation näet, kun kytket Nopean koulutuksen pois.",
       "Oma tavoite: valitse, mitä robotin pitää oppia (esim. liiku suuntaan, mene kohteisiin, pysy pystyssä, hyppää, säästä energiaa) ja kuinka tärkeää kukin on. Palkkiofunktio tehdään puolestasi.",
