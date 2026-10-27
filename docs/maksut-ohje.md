@@ -20,6 +20,8 @@ Komennot tekevät nämä:
 - `classes`- ja `class_activations`-taulut: opettajan luokkakoodit ja montako laitetta niihin on aktivoitu.
 - Funktiot `my_plan`, `create_class`, `my_classes`, `delete_class` ja `activate_class_code`.
 
+**Kehittäjätila (valinnainen):** aja myös [`supabase-dev.sql`](supabase-dev.sql). Sen jälkeen kehittäjäksi lisätty tili voi vaihtaa omaa tasoaan RoboLabin Tasot-sivulla. Kehittäjä lisätään tiedoston lopun ohjeella.
+
 ## 2. Tason antaminen käsin (pilotti ja laskulla maksavat koulut)
 
 Tämä toimii heti ilman maksupalvelua:
