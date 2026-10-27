@@ -125,8 +125,8 @@ function importProject(file, done) {
     if (data.format !== PROJECT_FORMAT || !isObj(data.project) || !isObj(data.project.tools)) throw new Error("format");
     if (data.version > PROJECT_VERSION) throw new Error("version");
     // Vain tunnetut työkalutilat, ja jokaisen pitää olla objekti
-    // Koulutetut aivot ja koulutuksen tilastot tallentuvat omiin lohkoihinsa (nn2dBrain, nn2dStats…)
-    const known = new Set([...TOOLS.map((t) => t.id), "arm", "occ", "nn2dBrain", "nn3dBrain", "nn2dStats", "nn3dStats"]);
+    // Koulutetut aivot, koulutuksen tilastot ja tallennetut koulutusajot tallentuvat omiin lohkoihinsa (nn2dBrain, nn2dStats, nn2dRuns…)
+    const known = new Set([...TOOLS.map((t) => t.id), "arm", "occ", "nn2dBrain", "nn3dBrain", "nn2dStats", "nn3dStats", "nn2dRuns", "nn3dRuns"]);
     const tools = Object.fromEntries(Object.entries(data.project.tools).filter(([k, v]) => known.has(k) && isObj(v)));
     // Tiedoston oma palkkiofunktio on koodia: se ajetaan vasta, kun käyttäjä on tarkistanut sen (tools/nn.js)
     for (const k of ["nn2d", "nn3d"]) if (typeof tools[k]?.taskCode === "string") tools[k].taskCodeUntrusted = true;

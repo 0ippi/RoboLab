@@ -10,6 +10,27 @@
 (() => {
   const BRAIN_FORMAT = { "2d": "robosim-brain-v1", "3d": "robosim3d-brain-v1" };
   const MAX_SPEED = 31; // liukusäätimen ääriarvo = maksiminopeus
+  const RUN_MAX = 8, RACE_MAX = 5, WAYPOINT_MAX = 12;
+  const REPLAY_RATES = [0.1, 0.25, 0.5, 1, 2];
+  // Saavutukset (achievements.js): ilmoitus, kun käyttäjä kokeilee ominaisuutta ensimmäistä kertaa
+  const achieve = (id) => window.Achievements?.unlock(id);
+
+  // Lyhyt tiiviste (FNV-1a): kisaan ja vertailuun kelpaavat vain saman robotin aivot
+  function hashStr(s) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return (h >>> 0).toString(36);
+  }
+
+  // Klikkaus (ei veto) näkymään: reittipisteiden asettaminen
+  function onClickNotDrag(canvas, cb) {
+    let down = null;
+    canvas.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+    canvas.addEventListener("pointerup", (e) => {
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6) cb(e);
+      down = null;
+    });
+  }
 
   /* ===== Taustat ===== */
   // 2D-näkymä: canvas-piirto, kamera seuraa parasta; rulla zoomaa, veto siirtää, tuplaklikkaus palauttaa seurannan
@@ -30,11 +51,12 @@
       });
       canvas.addEventListener("pointerup", () => { drag = null; });
       canvas.addEventListener("dblclick", () => { this.manual = false; });
+      onClickNotDrag(canvas, (e) => this.onPick?.(this.r.toWorld(e.clientX, e.clientY)));
       this.ro = new ResizeObserver(() => this.r.resize());
       this.ro.observe(canvas);
       this.r.resize();
     }
-    setEpisode(ep) { this.ep = ep; }
+    setEpisode(ep, race) { this.ep = ep; this.race = race || null; }
     draw(o) {
       const ep = this.ep;
       const focus = ep ? ep.leader() : -1;
@@ -42,7 +64,18 @@
         const p = ep.agents[focus].robot.root.getPosition();
         this.r.follow(p.x, p.y, o.snap);
       }
-      this.r.draw(ep, { focus, showAll: o.showAll, showTarget: o.showTarget });
+      // Etäisyysanturien säteet seurattavalta robotilta
+      let rays = null;
+      const fa = focus >= 0 ? ep.agents[focus] : null;
+      if (o.sensors && fa && !fa.done && fa.robot.info.lidar) {
+        const rb = fa.robot, pos = rb.root.getPosition(), n = rb.info.lidar;
+        rays = [];
+        for (let i = 0; i < n; i++) {
+          const ang = RS.lidarAngle(i, n), f = rb.lidar(pos, i, n) * RS.LIDAR_RANGE;
+          rays.push({ x0: pos.x, y0: pos.y, x1: pos.x + Math.cos(ang) * f, y1: pos.y + Math.sin(ang) * f, hit: f < RS.LIDAR_RANGE });
+        }
+      }
+      this.r.draw(ep, { focus, showAll: o.showAll, showTarget: o.showTarget, race: this.race, rays, lerp: o.lerp, waypoints: o.waypoints });
     }
     resumeFollow() { this.manual = false; }
     dispose() { this.ro.disconnect(); }
@@ -55,9 +88,23 @@
       this.ro = new ResizeObserver(() => this.v.resize());
       this.ro.observe(canvas);
       this.v.resize();
+      onClickNotDrag(canvas, (e) => { const p = this.v.pick(e.clientX, e.clientY); if (p) this.onPick?.(p); });
     }
-    setEpisode(ep) { this.v.setEpisode(ep); this.ep = ep; }
-    draw(o) { this.v.draw({ focus: this.ep ? this.ep.leader() : -1, showAll: o.showAll, follow: o.follow, snap: o.snap, showTarget: o.showTarget }); }
+    setEpisode(ep, race) { this.v.setEpisode(ep, race); this.ep = ep; }
+    draw(o) {
+      const ep = this.ep, focus = ep ? ep.leader() : -1, fa = focus >= 0 ? ep.agents[focus] : null;
+      // Maaston korkeusanturin mittauspisteet seurattavan robotin edessä
+      let scan = null;
+      if (o.sensors && fa && !fa.done && fa.robot.info.scan) {
+        const r = fa.robot, pos = r.root.translation(), yaw = r.yaw(), cx = Math.cos(yaw), cz = -Math.sin(yaw);
+        scan = [];
+        for (let i = 0; i < r.info.scan; i++) {
+          const d = 0.6 + i * 0.6, x = pos.x + cx * d, z = pos.z + cz * d;
+          scan.push({ x, y: ep.terrain.heightAt(x, z), z });
+        }
+      }
+      this.v.draw({ focus, showAll: o.showAll, follow: o.follow, snap: o.snap, showTarget: o.showTarget, lerp: o.lerp, scan, orbit: o.orbit, waypoints: o.waypoints });
+    }
     resumeFollow() {}
     dispose() { this.ro.disconnect(); this.v.dispose(); }
   }
@@ -75,6 +122,12 @@
           episode: (cfg) => new RS.Episode(cfg),
           free() {},
           view: (canvas) => new View2D(canvas),
+          // Kappaleiden asennot ennen fysiikka-askelta: hidastetun uusinnan tasoitusta varten
+          pose(ep) {
+            const m = new Map();
+            for (const a of ep.agents) if (!a.done) for (const { body } of a.robot.parts) { const p = body.getPosition(); m.set(body, { x: p.x, y: p.y, a: body.getAngle() }); }
+            return m;
+          },
           calm: false,
           modelHelp: tr("Osat (bodies): id, shape \"box\" (w, h) tai \"circle\" (r), x, y, angle, density, friction, color, foot (maakosketussensori), static.\nUseita muotoja yhteen osaan: shapes: [{type, w, h, r, x, y, angle}].\nNivelet (joints): a, b (osien id:t), x, y (nivelen paikka), lower, upper (asteina), torque, speed (rad/s), motor: false = ei moottoria.\nroot: osa, jonka sijaintia tehtävä seuraa. fall: { rootContact: true, minUpright: 0.5 }. sensors: { lidar: 5 }. target: { x: [min, max], y: [min, max] }.\nMallin muuttaminen nollaa aivot.",
             "Parts (bodies): id, shape \"box\" (w, h) or \"circle\" (r), x, y, angle, density, friction, color, foot (ground contact sensor), static.\nSeveral shapes in one part: shapes: [{type, w, h, r, x, y, angle}].\nJoints: a, b (part ids), x, y (joint position), lower, upper (degrees), torque, speed (rad/s), motor: false = no motor.\nroot: the part the task tracks. fall: { rootContact: true, minUpright: 0.5 }. sensors: { lidar: 5 }. target: { x: [min, max], y: [min, max] }.\nChanging the model resets the brain."),
@@ -97,6 +150,14 @@
           episode: (cfg) => new api.Episode3D({ RAPIER: R, ...cfg }),
           free: (ep) => ep.free(),
           view: (canvas) => new View3DWrap(api, canvas),
+          pose(ep) {
+            const m = new Map();
+            for (const a of ep.agents) if (!a.done) for (const { body } of a.robot.parts) {
+              const p = body.translation(), q = body.rotation();
+              m.set(body, { p: { x: p.x, y: p.y, z: p.z }, q: { x: q.x, y: q.y, z: q.z, w: q.w } });
+            }
+            return m;
+          },
           calm: true,
           modelHelp: tr("Osat (bodies): id, pos [x,y,z], rot [x,y,z] asteina, shape \"box\" (size [w,h,d]), \"sphere\" (r), \"cylinder\" tai \"capsule\" (r, h; akseli y-suunnassa), density, friction, color, foot (maakosketussensori), static.\nUseita muotoja yhteen osaan: shapes: [{type, size, r, h, pos, rot, color}].\nNivelet (joints): a, b, pos [x,y,z], axis [x,y,z] (kiertoakseli), lower, upper (asteina), strength, speed (rad/s), motor: false.\nroot, fall { rootContact, minUpright }, sensors { scan: 5 }. x eteenpäin, y ylöspäin, z sivulle.\nMallin muuttaminen nollaa aivot.",
             "Parts (bodies): id, pos [x,y,z], rot [x,y,z] in degrees, shape \"box\" (size [w,h,d]), \"sphere\" (r), \"cylinder\" or \"capsule\" (r, h; axis along y), density, friction, color, foot (ground contact sensor), static.\nSeveral shapes in one part: shapes: [{type, size, r, h, pos, rot, color}].\nJoints: a, b, pos [x,y,z], axis [x,y,z] (rotation axis), lower, upper (degrees), strength, speed (rad/s), motor: false.\nroot, fall { rootContact, minUpright }, sensors { scan: 5 }. x forward, y up, z sideways.\nChanging the model resets the brain."),
@@ -194,7 +255,7 @@
         dirs: d3 ? [["+x", tr("eteenpäin (+x)", "forward (+x)")], ["-x", tr("taaksepäin (−x)", "backward (−x)")], ["+z", tr("sivulle (+z)", "sideways (+z)")], ["-z", tr("toiselle sivulle (−z)", "other side (−z)")]]
           : [["+x", tr("oikealle (+x)", "right (+x)")], ["-x", tr("vasemmalle (−x)", "left (−x)")]] },
       { k: "speed", name: tr("Ole nopea", "Be fast"), desc: tr("Palkitaan vauhdista mihin tahansa suuntaan.", "Rewards speed in any direction.") },
-      { k: "target", name: tr("Mene kohteisiin", "Reach targets"), desc: tr("Kohde näkyy näkymässä; saavutettu kohde vaihtuu uuteen.", "The target shows in the view; a reached target is replaced by a new one.") },
+      { k: "target", name: tr("Mene kohteisiin", "Reach targets"), desc: tr("Kohde näkyy näkymässä; saavutettu kohde vaihtuu seuraavaan. Kohteet arvotaan, tai robotti kulkee omat reittipisteesi (Aseta reittipisteet).", "The target shows in the view; a reached target is replaced by the next. Targets are random, or the robot follows your own waypoints (Set waypoints).") },
       { k: "upright", name: tr("Pysy pystyssä", "Stay upright"), desc: tr("Palkitaan joka hetki, jona robotti on pystyssä.", "Rewards every moment the robot is upright.") },
       { k: "jump", name: tr("Hyppää korkealle", "Jump high"), desc: tr("Lopussa palkitaan korkeimmasta saavutetusta korkeudesta.", "At the end, rewards the highest point reached.") },
       ...(d3 ? [{ k: "spin", name: tr("Pyöri", "Spin"), desc: tr("Palkitaan kääntymisestä vastapäivään.", "Rewards turning counter-clockwise.") }] : []),
@@ -309,8 +370,13 @@
     const taskCode = () => (st.taskKey === "custom" ? (st.taskCodeUntrusted ? be.TASKS[B.defaults.taskKey].code : st.taskCode) : be.TASKS[st.taskKey].code);
     const opts = () => ({ popSize: Math.round(st.popSize), sigma: st.sigma, lr: st.lr });
     const save = () => saveToolState(key, st);
+    const runsKey = key + "Runs";
+    const taskLabel = () => (st.taskKey === "custom" ? (st.goal ? tr("Oma tavoite", "Custom goal") : tr("Oma tehtävä", "Custom task")) : be.TASKS[st.taskKey]?.name || "");
+    const usesTarget = () => /targetDist|s\.target/.test(taskCode());
 
-    function saveBrain() {
+    function writeBrain() {
+      // Projekti on voinut vaihtua kesken (koulutus kuuluu siihen projektiin, jossa työkalu avattiin)
+      if (activeProject().id !== S.projectId) return;
       const t = S.trainer, p = t.best || t.mean;
       const brain = {
         layers: S.layers, params: p ? Array.from(p, (v) => +v.toPrecision(6)) : null,
@@ -318,7 +384,64 @@
       };
       saveToolState(brainKey, brain, { undo: false });
       saveToolState(statsKey, { generation: S.gen, bestFitness: brain.bestFitness, lastBest: S.last?.best ?? null, lastMean: S.last?.mean ?? null,
-        model: modelRaw()?.name, task: st.taskKey === "custom" ? "custom" : be.TASKS[st.taskKey].name }, { undo: false });
+        model: modelRaw()?.name, task: st.taskKey === "custom" ? "custom" : be.TASKS[st.taskKey].name, terrain: st.terrain }, { undo: false });
+    }
+    // Aivot tallennetaan joka sukupolven jälkeen, mutta enintään puolentoista sekunnin välein: nopeassa koulutuksessa
+    // koko projektin kirjoittaminen selaimen tallennukseen kymmeniä kertoja sekunnissa hidastaisi kaikkea.
+    let brainTimer = 0, brainAt = 0;
+    function saveBrain(force) {
+      clearTimeout(brainTimer);
+      brainTimer = 0;
+      const wait = 1500 - (performance.now() - brainAt);
+      if (force || wait <= 0) { brainAt = performance.now(); writeBrain(); }
+      else brainTimer = setTimeout(() => { if (!dead && S) saveBrain(true); }, wait);
+    }
+    const flushBrain = () => { if (brainTimer && S?.trainer) saveBrain(true); };
+
+    /* ----- Koulutusajot: tallennetut aivot ja oppimiskäyrät vertailua ja kisaa varten ----- */
+    const modelSig = () => hashStr(JSON.stringify(S.model));
+    // Tuotu projekti voi sisältää mitä tahansa, joten jokainen ajo tarkistetaan ennen käyttöä
+    function runs() {
+      const list = activeProject().tools[runsKey]?.list;
+      if (!Array.isArray(list)) return [];
+      return list.filter((r) => r && typeof r === "object" && typeof r.id === "string" && Array.isArray(r.layers) && Array.isArray(r.params)
+        && r.layers.length >= 2 && r.layers.every((n) => Number.isInteger(n) && n > 0 && n <= 4096)
+        && r.params.length === RS.Brain.paramCount(r.layers) && r.params.every(Number.isFinite));
+    }
+    const saveRuns = (list) => saveToolState(runsKey, { list }, { undo: false });
+    const runColor = (i) => seriesColor(i + 1); // 0 = nykyinen koulutus
+    const sameBrainShape = (r) => r.sig === modelSig() && JSON.stringify(r.layers) === JSON.stringify(S.layers);
+    // Oppimiskäyrä tiivistettynä: enintään 150 pistettä [sukupolvi, paras]
+    function curveOf(history, gen) {
+      const n = history.length, step = Math.max(1, Math.ceil(n / 150)), out = [];
+      for (let i = 0; i < n; i += step) out.push([gen - n + i + 1, +(+history[i].best).toPrecision(5)]);
+      if (n > 1 && (n - 1) % step) out.push([gen, +(+history[n - 1].best).toPrecision(5)]);
+      return out.filter(([, y]) => Number.isFinite(y));
+    }
+    function makeRun(name, auto) {
+      const t = S.trainer, p = currentBest();
+      return {
+        id: "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: String(name).slice(0, 80), auto: !!auto, savedAt: Date.now(),
+        model: S.model.name || modelRaw()?.name || "", sig: modelSig(), task: taskLabel(), terrain: st.terrain,
+        gen: S.gen, best: isFinite(t.bestFitness) ? +t.bestFitness.toPrecision(5) : null, layers: S.layers.slice(),
+        params: Array.from(p, (v) => +v.toPrecision(4)), curve: curveOf(S.history, S.gen),
+      };
+    }
+    function addRun(run) {
+      const list = [run, ...runs()];
+      // Lista täynnä: pois ensin vanhimmat automaattisesti tallennetut, sitten vanhimmat muut
+      while (list.length > RUN_MAX) {
+        const i = list.findLastIndex((r) => r.auto);
+        list.splice(i > 0 ? i : list.length - 1, 1);
+      }
+      saveRuns(list);
+      drawRuns(); drawChart();
+    }
+    // Ennen kuin aivot nollataan tai korvataan, kunnollinen koulutus tallentuu koulutusajoksi
+    function autoArchive() {
+      if (!S?.trainer || S.gen < 10) return;
+      addRun(makeRun(`${S.model.name || tr("Robotti", "Robot")} · ${taskLabel()} · ${tr("sp", "gen")} ${S.gen}`, true));
+      toast(tr("Edellinen koulutus tallennettiin Koulutusajot-listaan.", "The previous training was saved to the Training runs list."));
     }
 
     function calmInit(layers) {
@@ -334,6 +457,10 @@
       const info = be.info(S.model);
       S.layers = [info.obsSize, ...hiddenOf(), info.actSize];
       S.taskFn = RS.compileTask(taskCode());
+      // Aivonäkymän nimet sisään- ja ulostuloille (samat kuin Vie omalle robotille -kytkentäohjeessa)
+      try { S.io = RS.deployInfo(dim, S.model); } catch { S.io = null; }
+      S.vizBrain = new RS.Brain(S.layers);
+      S.vizObs = new Float32Array(S.layers[0]);
       const saved = useSaved && activeProject().tools[brainKey];
       let init = null;
       if (saved?.params && JSON.stringify(saved.layers) === JSON.stringify(S.layers) && saved.params.length === RS.Brain.paramCount(S.layers)) {
@@ -363,21 +490,46 @@
 
     const currentBest = () => (S.trainer && (S.trainer.best || S.trainer.mean)) || RS.Brain.randomParams(S.layers);
 
-    function setEpisode(population) {
+    // Omat reittipisteet episodin kohteiksi. 2D: maassa kulkevan robotin piste asettuu maan tasalle (y puuttuu),
+    // ilmassa liikkuvan (mallissa oma kohdealue) klikattuun korkeuteen. 3D: ilmassa liikkuvalle kohdealueen keskikorkeus.
+    function wpTargets() {
+      const list = waypoints();
+      if (!list.length) return undefined;
+      const area = S.model.target;
+      if (dim === "2d") return list.map((p) => (area ? { x: p.x, y: p.y } : { x: p.x }));
+      return list.map((p) => (area ? { x: p.x, y: (area.y[0] + area.y[1]) / 2, z: p.z } : { x: p.x, z: p.z }));
+    }
+    function waypoints() {
+      const w = st.waypoints;
+      if (!Array.isArray(w)) return [];
+      return w.filter((p) => p && Number.isFinite(p.x) && (dim === "2d" ? Number.isFinite(p.y) : Number.isFinite(p.z))).slice(0, WAYPOINT_MAX);
+    }
+
+    // o.seed: sama siemen = sama maasto ja samat kohteet (uusinta), o.race: kisaajien värit
+    function setEpisode(population, o = {}) {
       const old = S.episode;
-      S.episode = be.episode({ model: S.model, taskFn: S.taskFn, terrain: st.terrain, seed: (Math.random() * 1e9) | 0, population, layers: S.layers, duration: st.duration });
-      view.setEpisode(S.episode);
+      S.episode = be.episode({ model: S.model, taskFn: S.taskFn, terrain: st.terrain, seed: o.seed ?? ((Math.random() * 1e9) | 0), population,
+        layers: S.layers, duration: st.duration, targets: wpTargets() });
+      S.race = o.race || null;
+      view.setEpisode(S.episode, S.race?.colors);
       if (old) be.free(old);
       S.snap = true;
+      S.prevPose = null;
     }
     const preview = () => setEpisode([currentBest()]);
 
     function setMode(mode) {
+      if (S.mode === "train" && mode !== "train") flushBrain();
       S.mode = mode;
       const tb = el.querySelector("#nn-train"), rb = el.querySelector("#nn-replay");
       tb.innerHTML = mode === "train" ? `❚❚ ${tr("Tauko", "Pause")}` : `▶ ${tr("Kouluta", "Train")}`;
       tb.classList.toggle("primary", mode !== "train");
       rb.textContent = mode === "replay" ? tr("Lopeta", "Stop") : tr("Näytä paras", "Show best");
+      const rc = el.querySelector("#nn-race-btn");
+      if (rc) rc.textContent = mode === "race" ? tr("Lopeta kisa", "Stop the race") : tr("🏁 Kisa", "🏁 Race");
+      el.querySelector("#nn-rp").hidden = mode !== "replay";
+      if (mode !== "race" && !S.race?.done) el.querySelector("#nn-race").hidden = true;
+      if (mode === "replay") drawReplayBar();
     }
 
     // Tuodun palkkiofunktion varoitus omassa laatikossaan, jottei koulutuksen tilaviesti peitä sitä
@@ -392,17 +544,43 @@
       box.innerHTML = level ? alertsHtml([{ level, text }]) : `<p class="note">${esc(text)}</p>`;
     }
 
-    const confirmReset = () => S.gen === 0 || RS.ask(tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nVoit tallentaa ne ensin Vie aivot -painikkeella.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nYou can save it first with Export brain.`), tr("Nollaa ja jatka", "Reset and continue"));
+    const confirmReset = () => S.gen === 0 || RS.ask(S.gen >= 10
+      ? tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nNykyinen koulutus tallentuu Koulutusajot-listaan, josta sen voi ottaa myöhemmin takaisin käyttöön.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nThe current training is saved to the Training runs list, where you can bring it back later.`)
+      : tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nVoit tallentaa ne ensin Vie aivot -painikkeella.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nYou can save it first with Export brain.`), tr("Nollaa ja jatka", "Reset and continue"));
 
     function finishGeneration(fit) {
       S.trainer.tell(fit);
       S.gen++;
       const best = Math.max(...fit), mean = fit.reduce((a, b) => a + b, 0) / fit.length;
       S.last = { best, mean };
-      S.history.push({ best, mean });
+      S.history.push({ best, mean, ter: st.terrain });
       if (S.history.length > 1000) S.history.shift();
+      curriculumStep();
       drawChart();
       saveBrain();
+    }
+
+    /* ----- Maaston automaattinen vaikeutus: kun oppiminen tasaantuu, siirrytään seuraavaan maastoon ----- */
+    const CUR_MIN_GENS = 20, CUR_WINDOW = 8;
+    function curriculumStep() {
+      if (!st.autoTerrain || S.mode !== "train") return;
+      const order = Object.keys(be.TERRAINS), i = order.indexOf(st.terrain);
+      if (i < 0 || i >= order.length - 1) return;
+      // Sukupolvet nykyisessä maastossa (vanhoissa tallennuksissa maastoa ei ole merkitty)
+      let n = 0;
+      for (let k = S.history.length - 1; k >= 0 && (S.history[k].ter ?? st.terrain) === st.terrain; k--) n++;
+      if (n < CUR_MIN_GENS) return;
+      const avg = (a) => a.reduce((s, h) => s + h.best, 0) / a.length;
+      const h = S.history.slice(-2 * CUR_WINDOW), late = avg(h.slice(CUR_WINDOW)), early = avg(h.slice(0, CUR_WINDOW));
+      // Vielä paranee selvästi (yli 3 %): pysytään tässä maastossa
+      if (late - early > Math.max(0.03 * Math.abs(early), 1e-6)) return;
+      st.terrain = order[i + 1];
+      save(); drawFields();
+      forgetBest(); // vaikeamman maaston pisteet eivät ole vertailukelpoisia
+      const last = i + 1 === order.length - 1;
+      status(tr(`Oppiminen tasaantui, joten maasto vaihtui vaikeampaan: ${be.TERRAINS[st.terrain]}${last ? " (vaikein)" : ""}.`, `Learning levelled off, so the terrain changed to a harder one: ${be.TERRAINS[st.terrain]}${last ? " (the hardest)" : ""}.`), "ok");
+      toast(tr(`Maasto: ${be.TERRAINS[st.terrain]}`, `Terrain: ${be.TERRAINS[st.terrain]}`));
+      if (last) achieve("curriculum");
     }
 
     // Tavallinen koulutus: koko populaatio simuloidaan ja piirretään pääsäikeessä
@@ -418,12 +596,13 @@
       try {
         pool ||= new TrainPool(dim);
         const fit = await pool.run({ model: S.model, code: taskCode(), terrain: st.terrain, seed: (Math.random() * 1e9) | 0,
-          layers: S.layers, duration: st.duration, population: trainer.ask() });
+          layers: S.layers, duration: st.duration, population: trainer.ask(), targets: wpTargets() });
         if (dead || S.trainer !== trainer || S.mode !== "train" || !useParallel()) return;
         finishGeneration(fit);
         S.genMs = S.genMs ? S.genMs * 0.7 + (performance.now() - t0) * 0.3 : performance.now() - t0;
+        const ter = st.autoTerrain ? tr(` Maasto: ${be.TERRAINS[st.terrain]} (vaikeutuu automaattisesti).`, ` Terrain: ${be.TERRAINS[st.terrain]} (gets harder automatically).`) : "";
         status(tr(`Koulutetaan ${pool.size} prosessoriytimellä, noin ${fmt(60000 / S.genMs, 0)} sukupolvea minuutissa. Näkymässä ajaa paras tähän mennessä löydetty robotti.`,
-          `Training on ${pool.size} processor cores, about ${fmt(60000 / S.genMs, 0)} generations a minute. The view shows the best robot found so far.`));
+          `Training on ${pool.size} processor cores, about ${fmt(60000 / S.genMs, 0)} generations a minute. The view shows the best robot found so far.`) + ter);
       } catch (err) {
         if (dead || err.message === "terminated") return;
         if (err.message.startsWith(tr("Virhe tehtävän koodissa", "Error in the task code"))) { setMode("idle"); status(err.message, "err"); return; }
@@ -445,24 +624,31 @@
       const now = performance.now();
       const elapsed = Math.min(0.25, (now - lastStep) / 1000);
       lastStep = now;
-      // Rinnakkaistilassa pääsäie vain näyttää parasta robottia (ei maksiminopeuden kiiresilmukkaa)
+      // Rinnakkaistilassa pääsäie vain näyttää parasta robottia (ei maksiminopeuden kiiresilmukkaa).
+      // Uusinnalla on oma nopeutensa (hidastus) ja tauko; kisa ajetaan valitulla nopeudella, enintään 4×.
       const par = S.mode === "train" && useParallel();
-      const v = par && st.speed >= MAX_SPEED ? 1 : st.speed, max = v >= MAX_SPEED;
+      const v = S.mode === "replay" ? (S.replay.paused ? 0 : S.replay.rate)
+        : S.mode === "race" ? Math.min(st.speed, 4)
+        : par && st.speed >= MAX_SPEED ? 1 : st.speed;
+      const max = v >= MAX_SPEED;
       try {
         if (par && !S.pending) S.pending = trainParallel();
-        if (S.mode !== "idle" && S.episode) {
-          stepDebt = max ? Infinity : Math.min(stepDebt + elapsed * 60 * v, 60 * v * 0.25);
+        if (S.mode !== "idle" && S.episode && !S.episode.finished && v > 0) {
+          stepDebt = max ? Infinity : Math.min(stepDebt + elapsed * 60 * v, Math.max(1, 60 * v * 0.25));
           const t0 = performance.now();
           while (stepDebt >= 1 && performance.now() - t0 < 25) {
+            if (S.mode === "replay") S.prevPose = be.pose(S.episode);
             S.episode.step();
             stepDebt--;
             if (S.episode.finished) {
               if (S.mode === "train" && !par) endGeneration();
-              else setEpisode([currentBest()]);
+              else if (S.mode === "train") setEpisode([currentBest()]);
+              else if (S.mode === "replay") { S.replay.paused = true; S.replay.ended = true; stepDebt = 0; drawReplayBar(); break; }
+              else if (S.mode === "race") { finishRace(); break; }
             }
           }
           if (max) stepDebt = 0;
-        } else stepDebt = 0;
+        } else if (S.mode !== "replay") stepDebt = 0;
       } catch (err) {
         setMode("idle");
         status(err.message, "err");
@@ -474,9 +660,13 @@
 
     function frame() {
       if (dead) return;
-      view.draw({ showAll: st.showAll, follow: st.follow, snap: S.snap, showTarget: /targetDist|s\.target/.test(taskCode()) });
+      const lerp = S.mode === "replay" && S.prevPose && S.replay.rate < 1 ? { prev: S.prevPose, alpha: RS.clamp(stepDebt, 0, 1) } : null;
+      view.draw({ showAll: st.showAll, follow: st.follow, snap: S.snap, showTarget: usesTarget() || S.placing, lerp, sensors: st.sensors,
+        orbit: S.mode === "replay" && st.orbit, waypoints: waypoints() });
       S.snap = false;
       updateHud();
+      if (++S.tick % 6 === 0) drawBrainViz();
+      if (S.mode === "replay") drawReplayBar();
       raf = requestAnimationFrame(frame);
     }
 
@@ -487,12 +677,14 @@
       const vals = [S.gen, f2(S.trainer?.bestFitness), f2(S.last?.best), f2(S.last?.mean), ep ? fmt(ep.t, 1) + " s" : "–",
         ep ? `${ep.agents.filter((a) => !a.done).length} / ${ep.agents.length}` : "–"];
       h.querySelectorAll("b").forEach((b, i) => { if (b.textContent !== String(vals[i])) b.textContent = vals[i]; });
+      drawRaceBox();
     }
 
     function drawChart() {
       const c = el.querySelector("#nn-chart");
       if (!c) return;
-      if (S.history.length < 2) {
+      const shown = runs().map((r, i) => ({ r, i })).filter(({ r }) => (st.runShow || []).includes(r.id) && r.curve?.length > 1);
+      if (S.history.length < 2 && !shown.length) {
         el.querySelector("#nn-chart-empty").hidden = false;
         c.hidden = true;
         return;
@@ -500,13 +692,215 @@
       el.querySelector("#nn-chart-empty").hidden = true;
       c.hidden = false;
       const x = S.history.map((_, i) => S.gen - S.history.length + i + 1);
+      // Maaston vaihtumiskohdat pystyviivoina (automaattinen vaikeutus tai käsin vaihdettu maasto)
+      const marks = [];
+      S.history.forEach((h, i) => { const p = S.history[i - 1]; if (p?.ter && h.ter && p.ter !== h.ter) marks.push({ x: x[i], label: be.TERRAINS[h.ter] || "" }); });
       drawPlot(c, {
         xLabel: tr("sukupolvi", "generation"),
+        marks,
         series: [
           { x, y: S.history.map((h) => h.mean), label: tr("Keskiarvo", "Mean"), color: cssColor("var(--text-3)"), width: 1.5 },
           { x, y: S.history.map((h) => h.best), label: tr("Paras", "Best"), color: seriesColor(0), width: 2 },
+          // Valitut koulutusajot katkoviivoina (vain paras)
+          ...shown.map(({ r, i }) => ({ x: r.curve.map((p) => p[0]), y: r.curve.map((p) => p[1]), label: r.name.length > 24 ? r.name.slice(0, 23) + "…" : r.name,
+            color: runColor(i), width: 1.5, dash: [6, 4] })),
         ],
       });
+    }
+
+    /* ----- Koulutusajojen lista ----- */
+    function drawRuns() {
+      const box = el.querySelector("#nn-runs");
+      if (!box) return;
+      const list = runs(), show = new Set(st.runShow || []);
+      if (!list.length) {
+        box.innerHTML = `<p class="note">${tr("Ei vielä tallennettuja koulutusajoja. Kun nollaat aivot tai vaihdat robottia, kunnollinen koulutus (vähintään 10 sukupolvea) tallentuu tänne myös itsestään.", "No saved training runs yet. When you reset the brain or switch robots, a proper training (at least 10 generations) is also saved here automatically.")}</p>`;
+        return;
+      }
+      box.innerHTML = list.map((r, i) => {
+        const fits = sameBrainShape(r);
+        const meta = [r.model, r.task, be.TERRAINS[r.terrain] || "", tr(`sp ${r.gen}`, `gen ${r.gen}`), tr(`paras ${f2(r.best)}`, `best ${f2(r.best)}`)].filter(Boolean).map((s) => esc(String(s))).join(" · ");
+        return `<div class="nn-run${fits ? "" : " other"}">
+          <label><input type="checkbox" data-run="${esc(r.id)}" ${show.has(r.id) ? "checked" : ""}><i class="dot" style="background:${runColor(i)}"></i>
+            <span><b>${esc(r.name)}</b><small>${meta}${fits ? "" : ` · ${tr("eri robotti: vain vertailuun", "a different robot: comparison only")}`}</small></span></label>
+          <span class="nn-run-acts">
+            ${fits ? `<button class="icon-btn" data-a="useRun" data-id="${esc(r.id)}" title="${tr("Ota nämä aivot käyttöön", "Use this brain")}" aria-label="${tr("Ota käyttöön", "Use")}">↺</button>` : ""}
+            <button class="icon-btn" data-a="renameRun" data-id="${esc(r.id)}" title="${tr("Nimeä uudelleen", "Rename")}" aria-label="${tr("Nimeä uudelleen", "Rename")}">✎</button>
+            <button class="icon-btn" data-a="delRun" data-id="${esc(r.id)}" title="${tr("Poista", "Delete")}" aria-label="${tr("Poista", "Delete")}">✕</button>
+          </span></div>`;
+      }).join("");
+    }
+
+    /* ----- Kisa: valitut koulutusajot ja nykyiset aivot samalla radalla ----- */
+    function startRace() {
+      const list = runs(), show = new Set(st.runShow || []);
+      const picked = list.map((r, i) => ({ r, i })).filter(({ r }) => show.has(r.id) && sameBrainShape(r)).slice(0, RACE_MAX - 1);
+      if (!picked.length) {
+        status(tr("Valitse Koulutusajot-listasta vähintään yksi saman robotin ajo (rasti), niin se kisaa nykyisiä aivoja vastaan. Tallenna ensin ajo, jos lista on tyhjä.", "Tick at least one run of the same robot in the Training runs list and it races the current brain. Save a run first if the list is empty."), "warn");
+        return;
+      }
+      const race = {
+        names: [tr("Nykyiset aivot", "Current brain"), ...picked.map(({ r }) => r.name)],
+        colors: [seriesColor(0), ...picked.map(({ i }) => runColor(i))],
+      };
+      setMode("race");
+      setEpisode([Float32Array.from(currentBest()), ...picked.map(({ r }) => Float32Array.from(r.params))], { race });
+      S.raceKey = "";
+      status(tr(`Kisa käynnissä: ${race.names.length} aivoa samalla radalla ja samoilla kohteilla. Pisteet lasketaan tehtävän palkkiofunktiolla.`, `Race on: ${race.names.length} brains on the same track with the same targets. Points come from the task's reward function.`));
+    }
+    // Matka alusta: 2D eteenpäin x-suunnassa, 3D vaakatasossa mihin tahansa suuntaan
+    function distanceOf(ep, a) {
+      if (dim === "3d") { const p = ep.positionOf(a); return Math.hypot(p.x - a.robot.startX, p.z - a.robot.startZ); }
+      return a.robot.root.getPosition().x - a.robot.startX;
+    }
+    function finishRace() {
+      const ep = S.episode, R = S.race;
+      R.done = true;
+      const order = ep.agents.map((a, i) => i).sort((p, q) => ep.agents[q].fitness - ep.agents[p].fitness);
+      R.result = order.map((i) => ({ i, fit: ep.agents[i].fitness, dist: distanceOf(ep, ep.agents[i]), fell: !ep.agents[i].robot.parts.length }));
+      setMode("idle");
+      drawRaceBox();
+      const w = R.result[0];
+      status(tr(`Kisa päättyi. Voittaja: ${R.names[w.i]} (${f2(w.fit)} pistettä, matka ${fmt(w.dist, 1)} m).`, `The race is over. Winner: ${R.names[w.i]} (${f2(w.fit)} points, distance ${fmt(w.dist, 1)} m).`), "ok");
+      if (w.i === 0) achieve("race");
+    }
+    function drawRaceBox() {
+      const box = el.querySelector("#nn-race"), R = S.race, ep = S.episode;
+      if (!box) return;
+      if (!R || !ep) { if (!box.hidden) box.hidden = true; return; }
+      const rows = R.result || ep.agents.map((a, i) => ({ i, fit: a.fitness, dist: distanceOf(ep, a), fell: !a.robot.parts.length })).sort((p, q) => q.fit - p.fit);
+      const html = `<b>${R.done ? tr("Tulokset", "Results") : tr("Kisa", "Race")}</b>` + rows.map((r, k) =>
+        `<div><i style="background:${R.colors[r.i]}"></i><span>${R.done ? ["🥇", "🥈", "🥉"][k] || `${k + 1}.` : `${k + 1}.`} ${esc(R.names[r.i])}${r.fell ? " ✗" : ""}</span><em>${f2(r.fit)}</em></div>`).join("");
+      if (html !== S.raceKey) { S.raceKey = html; box.innerHTML = html; }
+      box.hidden = false;
+    }
+
+    /* ----- Uusinta: sama rata (siemen) ja samat aivot uudelleen, hidastus ja aikajana ----- */
+    function startReplay() {
+      S.replay = { seed: (Math.random() * 1e9) | 0, params: Float32Array.from(currentBest()), rate: S.replay?.rate ?? 1, paused: false, ended: false };
+      setEpisode([S.replay.params], { seed: S.replay.seed });
+      setMode("replay");
+    }
+    function replayRestart() {
+      setEpisode([S.replay.params], { seed: S.replay.seed });
+      S.replay.ended = false;
+      stepDebt = 0;
+    }
+    // Aikajanalla taaksepäin: rata ajetaan alusta uudelleen samalla siemenellä (fysiikka on deterministinen)
+    function replaySeek(k) {
+      if (!S.episode || k < S.episode.steps) replayRestart();
+      const t0 = performance.now();
+      while (S.episode.steps < k && !S.episode.finished && performance.now() - t0 < 400) S.episode.step();
+      S.replay.ended = S.episode.finished;
+      S.prevPose = null;
+      stepDebt = 0;
+    }
+    function drawReplayBar() {
+      const bar = el.querySelector("#nn-rp"), ep = S.episode;
+      if (!bar || !S.replay || !ep) return;
+      const time = bar.querySelector("#nn-rp-time");
+      time.max = ep.maxSteps;
+      if (!S.scrubbing) time.value = ep.steps;
+      const label = `${fmt(ep.t, 1)} / ${fmt(ep.maxSteps / 60, 0)} s`;
+      const tl = bar.querySelector("#nn-rp-t");
+      if (tl.textContent !== label) tl.textContent = label;
+      const play = bar.querySelector("#nn-rp-play"), icon = S.replay.ended ? "↻" : S.replay.paused ? "▶" : "❚❚";
+      if (play.textContent !== icon) {
+        play.textContent = icon;
+        play.setAttribute("aria-label", S.replay.ended ? tr("Toista alusta", "Play from the start") : S.replay.paused ? tr("Toista", "Play") : tr("Tauko", "Pause"));
+      }
+      bar.querySelectorAll("#nn-rp-rate button").forEach((b) => b.classList.toggle("on", +b.dataset.r === S.replay.rate));
+    }
+
+    /* ----- Aivot toiminnassa: neuroverkon kerrokset, painot ja aktivaatiot seurattavalle robotille ----- */
+    function drawBrainViz() {
+      const c = el.querySelector("#nn-brain");
+      if (!c || !S.vizBrain || document.hidden || !c.clientWidth) return;
+      const ep = S.episode, L = S.layers;
+      const focus = ep ? ep.leader() : -1, a = focus >= 0 ? ep.agents[focus] : null;
+      const params = a?.params || currentBest();
+      let acts = null;
+      if (a && !a.done) {
+        a.robot.observe(S.vizObs, ep.t, ep.targetOf(a));
+        S.vizBrain.forward(params, S.vizObs);
+        acts = S.vizBrain.buffers;
+      }
+      // Korkeus sisään- ja ulostulojen määrän mukaan, jotta niiden nimet mahtuvat näkyviin
+      const wantH = RS.clamp(Math.max(L[0], L[L.length - 1]) * 12 + 24, 240, 560) + "px";
+      if (c.style.height !== wantH) c.style.height = wantH;
+      const dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+      if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+      const ctx = c.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const padL = Math.min(130, W * 0.3), padR = Math.min(110, W * 0.24), padY = 10;
+      const colX = (i) => padL + (i / (L.length - 1)) * (W - padL - padR);
+      const nodeY = (n, j) => padY + ((j + 0.5) / n) * (H - 2 * padY);
+      const maxN = Math.max(...L), rad = RS.clamp((H - 2 * padY) / maxN / 2.6, 1.5, 6);
+      const pos = getComputedStyle(document.documentElement).getPropertyValue("--warn").trim() || "#f5b84a";
+      const neg = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#4c8dff";
+      // Yhteydet: jokaiseen neuroniin piirretään sen kolme voimakkainta painoa (oranssi = vahvistaa, sininen = vaimentaa)
+      let k = 0;
+      for (let li = 1; li < L.length; li++) {
+        const nIn = L[li - 1], nOut = L[li];
+        let maxW = 1e-6;
+        for (let q = k, end = k + nOut * (nIn + 1); q < end; q++) maxW = Math.max(maxW, Math.abs(params[q]));
+        for (let o = 0; o < nOut; o++) {
+          const base = k + o * (nIn + 1);
+          const top = [];
+          for (let j = 0; j < nIn; j++) {
+            const w = params[base + j];
+            if (top.length < 3) top.push(j);
+            else { let m = 0; for (let t = 1; t < 3; t++) if (Math.abs(params[base + top[t]]) < Math.abs(params[base + top[m]])) m = t; if (Math.abs(w) > Math.abs(params[base + top[m]])) top[m] = j; }
+          }
+          for (const j of top) {
+            const w = params[base + j], src = acts ? Math.abs(acts[li - 1][j]) : 0.6;
+            ctx.strokeStyle = w > 0 ? pos : neg;
+            ctx.globalAlpha = 0.08 + 0.55 * (Math.abs(w) / maxW) * (0.25 + 0.75 * src);
+            ctx.lineWidth = 0.6 + 1.4 * Math.abs(w) / maxW;
+            ctx.beginPath(); ctx.moveTo(colX(li - 1), nodeY(nIn, j)); ctx.lineTo(colX(li), nodeY(nOut, o)); ctx.stroke();
+          }
+        }
+        k += nOut * (nIn + 1);
+      }
+      ctx.globalAlpha = 1;
+      // Neuronit: väri aktivaation mukaan (−1 sininen … 0 harmaa … 1 oranssi)
+      const nodes = [];
+      const border = cssColor("var(--border-strong)"), text2 = cssColor("var(--text-2)"), text3 = cssColor("var(--text-3)");
+      for (let li = 0; li < L.length; li++) {
+        const n = L[li];
+        for (let j = 0; j < n; j++) {
+          const x = colX(li), y = nodeY(n, j), v = acts ? acts[li][j] : 0;
+          ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
+          ctx.fillStyle = cssColor("var(--surface-2)"); ctx.fill();
+          if (acts) { ctx.globalAlpha = Math.min(1, Math.abs(v)); ctx.fillStyle = v > 0 ? pos : neg; ctx.fill(); ctx.globalAlpha = 1; }
+          ctx.strokeStyle = border; ctx.lineWidth = 0.8; ctx.stroke();
+          const name = li === 0 ? S.io?.inputs[j]?.name : li === L.length - 1 ? S.io?.outputs[j]?.name : null;
+          nodes.push({ x, y, v: acts ? v : null, name: name || (li === 0 ? tr(`sisääntulo ${j + 1}`, `input ${j + 1}`) : li === L.length - 1 ? tr(`ulostulo ${j + 1}`, `output ${j + 1}`) : tr(`piilokerros ${li}, neuroni ${j + 1}`, `hidden layer ${li}, neuron ${j + 1}`)) });
+        }
+      }
+      // Nimet sisään- ja ulostuloille, jos ne mahtuvat
+      const gap = (H - 2 * padY) / L[0];
+      ctx.font = `${RS.clamp(gap - 1.5, 8, 10.5)}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textBaseline = "middle";
+      const fit = (s, w) => { if (ctx.measureText(s).width <= w) return s; while (s.length > 1 && ctx.measureText(s + "…").width > w) s = s.slice(0, -1); return s + "…"; };
+      if (gap >= 8) {
+        ctx.textAlign = "right"; ctx.fillStyle = text3;
+        for (let j = 0; j < L[0]; j++) ctx.fillText(fit(S.io?.inputs[j]?.name || "", padL - rad - 8), padL - rad - 5, nodeY(L[0], j));
+      }
+      ctx.font = `10.5px ${getComputedStyle(document.body).fontFamily}`;
+      const nl = L.length - 1;
+      if ((H - 2 * padY) / L[nl] >= 9) {
+        ctx.textAlign = "left";
+        for (let j = 0; j < L[nl]; j++) {
+          const v = acts ? acts[nl][j] : null;
+          ctx.fillStyle = text2;
+          ctx.fillText(fit(`${v == null ? "" : (v >= 0 ? "+" : "") + v.toFixed(2) + " "}${S.io?.outputs[j]?.name || ""}`, padR - rad - 8), colX(nl) + rad + 5, nodeY(L[nl], j));
+        }
+      }
+      S.vizNodes = nodes;
+      const note = el.querySelector("#nn-brain-note");
+      if (note) note.textContent = acts ? tr(`Seurattava robotti, aika ${fmt(ep.t, 1)} s`, `Followed robot, time ${fmt(ep.t, 1)} s`) : tr("Ei liikkuvaa robottia: näkyvät vain painot. Paina Kouluta tai Näytä paras.", "No moving robot: only the weights are shown. Press Train or Show best.");
     }
 
     /* ----- Kentät ----- */
@@ -520,6 +914,8 @@
             info: tr("Mitä robotin halutaan oppivan. Tehtävä on palkkiofunktio, joka antaa pisteitä hyvästä käytöksestä. Tehtävää voi vaihtaa kesken koulutuksen: opitut aivot säilyvät.", "What the robot should learn. The task is a reward function that gives points for good behaviour. You can switch tasks mid-training: the learned brain is kept.") },
           { key: "terrain", label: tr("Maasto", "Terrain"), type: "select", options: Object.entries(be.TERRAINS),
             info: tr("Maa, jolla robotti liikkuu. Aloita tasaisella ja vaihda vaikeampaan, kun robotti osaa perusasiat. Aivot säilyvät vaihdossa.", "The ground the robot moves on. Start flat and switch to harder terrain once the basics are learned. The brain is kept.") },
+          { key: "autoTerrain", label: tr("Vaikeuta maastoa automaattisesti", "Make the terrain harder automatically"), type: "toggle",
+            info: tr(`Opetussuunnitelma: kun oppiminen tasaantuu (vähintään ${CUR_MIN_GENS} sukupolvea samassa maastossa eikä paras tulos enää parane), maasto vaihtuu seuraavaan: ${Object.values(be.TERRAINS).join(" → ")}. Vaihdot näkyvät oppimiskäyrässä pystyviivoina.`, `A curriculum: when learning levels off (at least ${CUR_MIN_GENS} generations on the same terrain and the best result no longer improves), the terrain changes to the next one: ${Object.values(be.TERRAINS).join(" → ")}. The changes show in the learning curve as vertical lines.`) },
         ],
         train: [
           { key: "algo", label: tr("Algoritmi", "Algorithm"), type: "select", options: [["es", tr("Evoluutiostrategia (ES)", "Evolution strategy (ES)")], ["ga", tr("Geneettinen algoritmi (GA)", "Genetic algorithm (GA)")]],
@@ -542,7 +938,7 @@
       el = root;
       dead = false;
       const my = ++token; // uudelleenpiirto kesken latauksen (esim. Ctrl+Z) ohittaa vanhan
-      st = getToolState(key, { ...B.defaults, showAll: true, follow: true, speed: MAX_SPEED, parallel: true });
+      st = getToolState(key, { ...B.defaults, showAll: true, follow: true, speed: MAX_SPEED, parallel: true, autoTerrain: false, sensors: false, orbit: true });
       const adv = st._adv ?? settings.advanced;
       el.innerHTML = `
         ${toolHead(tool)}
@@ -566,6 +962,7 @@
               <div class="fields" id="nn-f-task"></div>
               <div class="row-actions"><button class="btn primary" data-a="goal" title="${tr("Valitse tavoitteet ja niiden tärkeys: palkkiofunktio tehdään puolestasi.", "Pick goals and how important they are: the reward function is made for you.")}">${icon("target")} ${tr("Oma tavoite", "Custom goal")}</button>
                 <button class="btn" data-a="editTask" title="${tr("Kirjoita oma palkkiofunktio JavaScriptillä.", "Write your own reward function in JavaScript.")}">${tr("Muokkaa palkkiofunktiota", "Edit reward function")}</button></div>
+              <div class="nn-wp" id="nn-wp"></div>
             </div>
             <div class="card"><h3 class="card-title">${tr("Koulutus", "Training")}</h3>
               <div class="fields" id="nn-f-train"></div>
@@ -598,12 +995,22 @@
                   ${[tr("Sukupolvi", "Generation"), tr("Paras ikinä", "Best ever"), tr("Edell. paras", "Last best"), tr("Edell. keskiarvo", "Last mean"), tr("Aika", "Time"), tr("Elossa", "Alive")].map((l) => `<div><span>${l}</span><b>–</b></div>`).join("")}
                 </div>
                 <div class="nn-loading" id="nn-loading">${tr("Ladataan fysiikkamoottoria…", "Loading the physics engine…")}</div>
+                <div class="nn-race" id="nn-race" hidden aria-live="polite"></div>
+              </div>
+              <div class="nn-replaybar" id="nn-rp" hidden>
+                <button class="icon-btn" id="nn-rp-play" aria-label="${tr("Tauko", "Pause")}">❚❚</button>
+                <input type="range" id="nn-rp-time" min="0" max="600" value="0" step="1" aria-label="${tr("Uusinnan aikajana", "Replay timeline")}">
+                <span class="nn-rp-t" id="nn-rp-t"></span>
+                <div class="seg small" id="nn-rp-rate" role="group" aria-label="${tr("Uusinnan nopeus", "Replay speed")}">${REPLAY_RATES.map((r) => `<button data-r="${r}">${fmt(r, r === 0.25 ? 2 : r < 1 ? 1 : 0)}×</button>`).join("")}</div>
+                ${dim === "3d" ? `<label class="mini-toggle"><input type="checkbox" id="nn-orbit" ${st.orbit ? "checked" : ""}> ${tr("Kiertävä kamera", "Orbiting camera")}</label>` : ""}
+                <button class="link-btn" id="nn-rp-new" title="${tr("Samat aivot uudella radalla ja uusilla kohteilla", "The same brain on a new track with new targets")}">${tr("Uusi rata", "New track")}</button>
               </div>
               <div class="nn-controls">
                 <label class="nn-speed">${tr("Nopeus", "Speed")} <b id="nn-speed-l"></b>
                   <input type="range" id="nn-speed" min="1" max="${MAX_SPEED}" value="${st.speed}" aria-label="${tr("Simulaation nopeus", "Simulation speed")}"></label>
                 <label class="mini-toggle"><input type="checkbox" id="nn-all" ${st.showAll ? "checked" : ""}> ${tr("Koko populaatio", "Whole population")}</label>
                 <label class="mini-toggle"><input type="checkbox" id="nn-follow" ${st.follow ? "checked" : ""}> ${tr("Kamera seuraa parasta", "Camera follows the best")}</label>
+                <label class="mini-toggle" title="${tr(dim === "3d" ? "Näyttää pisteet, joista robotti mittaa maaston korkeuden edessään" : "Näyttää robotin etäisyysanturien säteet", dim === "3d" ? "Shows the points where the robot measures the terrain height ahead" : "Shows the robot's distance sensor rays")}"><input type="checkbox" id="nn-sensors" ${st.sensors ? "checked" : ""}> ${tr("Anturit näkyviin", "Show sensors")}</label>
               </div>
               <div id="nn-trust" style="margin-top:8px"></div>
               <div id="nn-status" style="margin-top:8px"></div>
@@ -611,6 +1018,19 @@
             <div class="card"><h3 class="card-title">${tr("Oppimiskäyrä", "Learning curve")}</h3>
               <p class="note" id="nn-chart-empty">${tr("Kaavio näkyy, kun koulutus on edennyt pari sukupolvea.", "The chart appears after a couple of generations.")}</p>
               <canvas class="plot small" id="nn-chart" hidden></canvas>
+            </div>
+            <div class="card"><h3 class="card-title">${tr("Koulutusajot", "Training runs")}</h3>
+              <p class="note">${tr("Tallenna koulutus, niin voit verrata oppimiskäyriä ja laittaa aivot kisaamaan. Rastitetut ajot näkyvät oppimiskäyrässä katkoviivoina ja pääsevät kisaan.", "Save a training to compare learning curves and race the brains. Ticked runs show in the learning curve as dashed lines and take part in the race.")}</p>
+              <div class="nn-runs" id="nn-runs"></div>
+              <div class="row-actions">
+                <button class="btn" data-a="saveRun">＋ ${tr("Tallenna nykyinen koulutus", "Save the current training")}</button>
+                <button class="btn primary" id="nn-race-btn" data-a="race">${tr("🏁 Kisa", "🏁 Race")}</button>
+              </div>
+            </div>
+            <div class="card"><h3 class="card-title">${tr("Aivot toiminnassa", "The brain in action")}</h3>
+              <p class="note">${tr("Vasemmalla anturit (sisääntulot), oikealla moottorit (ulostulot) ja välissä piilokerrokset. Neuronin väri on sen aktivaatio: oranssi = positiivinen, sininen = negatiivinen. Viivat ovat kunkin neuronin kolme voimakkainta painoa. Vie hiiri neuronin päälle, niin näet sen nimen ja arvon.", "Sensors (inputs) on the left, motors (outputs) on the right and the hidden layers in between. A neuron's colour is its activation: orange = positive, blue = negative. The lines are each neuron's three strongest weights. Hover over a neuron to see its name and value.")}</p>
+              <div class="nn-brainviz"><canvas id="nn-brain" aria-label="${tr("Neuroverkon kaavio", "Neural network diagram")}"></canvas><div class="nn-brain-tip" id="nn-brain-tip" hidden></div></div>
+              <p class="note" id="nn-brain-note"></p>
             </div>
           </div>
         </div>`;
@@ -629,7 +1049,7 @@
       if (!Object.hasOwn(be.MODELS, st.modelKey) && st.modelKey !== "custom") st.modelKey = B.defaults.modelKey;
       if (!Object.hasOwn(be.TASKS, st.taskKey) && st.taskKey !== "custom") st.taskKey = B.defaults.taskKey;
 
-      S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true };
+      S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true, tick: 0, projectId: activeProject().id };
       try { setupBrain(true); }
       catch (err) {
         status(tr("Tallennettu robotti on rikki: ", "The saved robot is broken: ") + err.message + tr(" Palautetaan oletusrobotti.", " Restoring the default robot."), "warn");
@@ -638,10 +1058,13 @@
       }
       trustNote();
       view = be.view(el.querySelector("#nn-view"));
+      view.onPick = addWaypoint;
       el.querySelector("#nn-view").addEventListener("dblclick", () => { st.follow = true; el.querySelector("#nn-follow").checked = true; view.resumeFollow(); S.snap = true; });
       drawFields();
       preview();
       drawChart();
+      drawRuns();
+      drawWaypointRow();
       setMode("idle");
       status(S.gen
         ? tr(`Jatketaan tallennetusta: sukupolvi ${S.gen}. Paina Kouluta.`, `Continuing from the save: generation ${S.gen}. Press Train.`)
@@ -670,11 +1093,56 @@
       };
       el.querySelector("#nn-replay").onclick = () => {
         if (S.mode === "replay") { setMode("idle"); preview(); return; }
-        preview();
-        setMode("replay");
-        status(S.trainer.best ? tr("Näytetään paras tähän mennessä löydetty robotti. Laske nopeus 1×:ään, niin näet liikkeen oikeassa tahdissa.", "Showing the best robot found so far. Set the speed to 1× to see the motion in real time.")
+        startReplay();
+        status(S.trainer.best ? tr("Uusinta: paras tähän mennessä löydetty robotti. Hidasta liikettä nopeusnapeilla ja kelaa aikajanalla. Uusi rata vaihtaa maaston ja kohteet.", "Replay: the best robot found so far. Slow the motion down with the speed buttons and scrub the timeline. New track changes the terrain and targets.")
           : tr("Ei vielä koulutettu — näytetään satunnaiset aivot.", "Not trained yet — showing a random brain."));
       };
+      // Uusinnan säätimet
+      const rp = el.querySelector("#nn-rp");
+      rp.querySelector("#nn-rp-play").onclick = () => {
+        if (S.replay.ended) { replayRestart(); S.replay.paused = false; }
+        else S.replay.paused = !S.replay.paused;
+        drawReplayBar();
+      };
+      const time = rp.querySelector("#nn-rp-time");
+      time.addEventListener("pointerdown", () => { S.scrubbing = true; });
+      time.addEventListener("pointerup", () => { S.scrubbing = false; });
+      time.oninput = () => { S.replay.paused = true; replaySeek(+time.value); drawReplayBar(); };
+      time.onchange = () => { S.scrubbing = false; };
+      rp.querySelector("#nn-rp-rate").onclick = (e) => {
+        const b = e.target.closest("[data-r]");
+        if (!b) return;
+        S.replay.rate = +b.dataset.r;
+        if (S.replay.paused && !S.replay.ended) S.replay.paused = false;
+        drawReplayBar();
+      };
+      rp.querySelector("#nn-rp-new").onclick = () => { S.replay.seed = (Math.random() * 1e9) | 0; replayRestart(); S.replay.paused = false; drawReplayBar(); };
+      const orbit = rp.querySelector("#nn-orbit");
+      if (orbit) orbit.onchange = () => { st.orbit = orbit.checked; saveToolState(key, st, { undo: false }); };
+      el.querySelector("#nn-sensors").onchange = (e) => { st.sensors = e.target.checked; saveToolState(key, st, { undo: false }); };
+      // Koulutusajojen valinnat: rasti näyttää käyrän ja ottaa ajon kisaan
+      el.querySelector("#nn-runs").addEventListener("change", (e) => {
+        const id = e.target.dataset.run;
+        if (!id) return;
+        const set = new Set(st.runShow || []);
+        if (e.target.checked) set.add(id); else set.delete(id);
+        st.runShow = [...set];
+        saveToolState(key, st, { undo: false });
+        drawChart();
+      });
+      // Aivonäkymän vihjeteksti: lähin neuroni hiiren kohdalla
+      const brain = el.querySelector("#nn-brain"), tip = el.querySelector("#nn-brain-tip");
+      brain.addEventListener("mousemove", (e) => {
+        const r = brain.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+        let best = null, bd = 12;
+        for (const n of S.vizNodes || []) { const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
+        tip.hidden = !best;
+        if (!best) return;
+        tip.textContent = best.v == null ? best.name : `${best.name}: ${(best.v >= 0 ? "+" : "") + best.v.toFixed(2)}`;
+        tip.style.left = Math.min(x + 12, r.width - 180) + "px";
+        tip.style.top = y + 12 + "px";
+      });
+      brain.addEventListener("mouseleave", () => { tip.hidden = true; });
       el.querySelector(".nn-tool").addEventListener("click", onAction);
 
       // Rakentajan "Kouluta simulaatiossa" jättää robotin odottamaan
@@ -684,6 +1152,14 @@
         saveToolState(key, st, { undo: false });
         try { await applyModel(raw, tr(`Robotti "${raw.name || tr("oma robotti", "custom robot")}" tuotiin rakentajasta. Valitse tehtävä ja paina Kouluta.`, `Robot "${raw.name || "custom robot"}" was brought from the builder. Pick a task and press Train.`)); }
         catch (err) { status(tr("Robotin tuonti rakentajasta: ", "Bringing the robot from the builder: ") + err.message, "warn"); }
+      }
+
+      // Automaattitestit (tests-app.html, ?memstore) pääsevät käsiksi koulutuksen tilaan
+      if (/[?&]memstore\b/.test(location.search)) {
+        (window.__nn ||= {})[dim] = {
+          get S() { return S; }, get st() { return st; }, get view() { return view; },
+          finishGeneration, startRace, startReplay, replaySeek, addWaypoint, setPlacing, runs, makeRun, addRun, drawBrainViz, useRun, setMode,
+        };
       }
     }
 
@@ -763,6 +1239,7 @@
       if (k === "modelKey") {
         const prev = getToolState(key, B.defaults).modelKey;
         if (st.modelKey === "custom" || !(await confirmReset())) { st.modelKey = prev; drawFields(); return; }
+        autoArchive();
         const task = be.DEFAULT_TASK[st.modelKey];
         if (task && st.taskKey !== task) { st.taskKey = task; toast(tr(`Tehtäväksi vaihdettiin "${be.TASKS[task].name}", koska se sopii tälle robotille.`, `The task was switched to "${be.TASKS[task].name}" because it suits this robot.`)); }
         delete st.modelRaw;
@@ -776,11 +1253,19 @@
         delete st.taskCode;
         S.taskFn = RS.compileTask(taskCode());
         forgetBest();
-        save(); if (S.mode === "idle") preview();
+        save(); drawWaypointRow(); if (S.mode === "idle") preview();
         status(tr("Tehtävä vaihdettu. Aivot säilyvät, joten robotti jatkaa oppimista uudesta tehtävästä.", "Task changed. The brain is kept, so the robot continues learning the new task."));
         return;
       }
       if (k === "terrain") { save(); if (S.mode === "idle") preview(); return; }
+      if (k === "autoTerrain") {
+        save();
+        const order = Object.values(be.TERRAINS);
+        status(st.autoTerrain
+          ? tr(`Maasto vaikeutuu automaattisesti koulutuksen aikana: ${order.join(" → ")}. Aloita tasaisesta, niin robotti oppii perusasiat ensin.`, `The terrain gets harder automatically during training: ${order.join(" → ")}. Start on flat ground so the robot learns the basics first.`)
+          : tr("Maasto pysyy valitsemassasi.", "The terrain stays as you choose."));
+        return;
+      }
       if (k === "algo" || k === "popSize") { save(); rebuildTrainer(); return; }
       if (k === "parallel") {
         save();
@@ -795,6 +1280,7 @@
       let h;
       try { h = RS.parseHidden(e.target.value); } catch (err) { status(err.message, "err"); e.target.value = st.hidden; return; }
       if (!(await confirmReset())) { e.target.value = st.hidden; return; }
+      autoArchive();
       st.hidden = h.join(",");
       setMode("idle");
       save(); setupBrain(false); resetBrain(); preview(); drawChart(); drawFields();
@@ -804,10 +1290,68 @@
     async function applyModel(raw, why) {
       be.check(raw);
       if (!(await confirmReset())) throw new Error(tr("Peruttu.", "Cancelled."));
+      autoArchive();
       st.modelKey = "custom"; st.modelRaw = raw; delete st.libId;
       setMode("idle");
       save(); setupBrain(false); resetBrain(); drawFields(); preview(); drawChart();
       status(why || tr("Oma robotti otettu käyttöön. Paina Kouluta.", "Custom robot in use. Press Train."));
+    }
+
+    // Tallennetun koulutusajon aivot takaisin käyttöön (nykyinen koulutus tallentuu ensin listaan)
+    async function useRun(r) {
+      if (!sameBrainShape(r)) return;
+      if (S.gen > 0 && !(await RS.ask(tr(`Otetaanko koulutusajon "${r.name}" aivot käyttöön? Nykyiset aivot (${S.gen} sukupolvea) korvataan${S.gen >= 10 ? ", mutta ne tallentuvat ensin Koulutusajot-listaan" : ""}.`, `Use the brain of the training run "${r.name}"? The current brain (${S.gen} generations) is replaced${S.gen >= 10 ? ", but it is saved to the Training runs list first" : ""}.`), tr("Ota käyttöön", "Use")))) return;
+      autoArchive();
+      setMode("idle");
+      const p = Float32Array.from(r.params);
+      S.trainer = RS.makeTrainer(st.algo, S.layers, opts(), p);
+      S.trainer.bestFitness = Number.isFinite(r.best) ? r.best : -Infinity;
+      // Tiivistetty käyrä takaisin sukupolvikohtaiseksi historiaksi (välit täytetään suoralla viivalla)
+      const hist = [], c = r.curve || [];
+      for (let i = 0; i < c.length; i++) {
+        const [g0, b0] = c[i], next = c[i + 1];
+        if (!next) { hist.push({ best: b0, mean: null }); break; }
+        const [g1, b1] = next;
+        for (let g = g0; g < g1; g++) hist.push({ best: b0 + ((b1 - b0) * (g - g0)) / Math.max(1, g1 - g0), mean: null });
+      }
+      S.history = hist.slice(-1000);
+      S.gen = Math.max(r.gen | 0, S.history.length);
+      S.last = S.history.at(-1) || null;
+      saveBrain(true);
+      preview(); drawChart(); drawRuns();
+      status(tr(`Koulutusajon "${r.name}" aivot otettu käyttöön (sukupolvi ${S.gen}). Paina Kouluta jatkaaksesi niistä.`, `The brain of the training run "${r.name}" is in use (generation ${S.gen}). Press Train to continue from it.`), "ok");
+    }
+
+    /* ----- Omat reittipisteet: klikkaa näkymää ----- */
+    function drawWaypointRow() {
+      const box = el.querySelector("#nn-wp");
+      if (!box) return;
+      const n = waypoints().length;
+      box.innerHTML = `<div class="row-actions">
+          <button class="btn${S.placing ? " primary" : ""}" data-a="waypoints" aria-pressed="${!!S.placing}">📍 ${S.placing ? tr("Valmis", "Done") : tr("Aseta reittipisteet", "Set waypoints")}</button>
+          ${n ? `<button class="link-btn" data-a="clearWaypoints">${tr(`Poista reittipisteet (${n})`, `Remove waypoints (${n})`)}</button>` : ""}
+        </div>
+        ${n && !usesTarget() ? `<p class="note">${tr("Reittipisteitä käytetään vain tehtävissä, joissa on kohde: valitse tehtäväksi Mene kohteeseen tai Oma tavoite → Mene kohteisiin.", "Waypoints are only used by tasks with a target: pick Reach the target or Custom goal → Reach targets.")}</p>` : ""}`;
+    }
+    function setPlacing(on) {
+      S.placing = on;
+      if (on && S.mode !== "idle") { setMode("idle"); preview(); }
+      drawWaypointRow();
+      el.querySelector("#nn-view").classList.toggle("placing", on);
+      const n = waypoints().length;
+      if (on) status(tr(`Klikkaa näkymää: jokainen klikkaus lisää reittipisteen (nyt ${n}/${WAYPOINT_MAX}). Robotti kulkee pisteet järjestyksessä ja aloittaa sitten alusta. ${dim === "3d" ? "Vedä hiirellä kääntääksesi näkymää." : "Vedä hiirellä siirtääksesi näkymää, rulla zoomaa."} Paina lopuksi Valmis.`, `Click the view: every click adds a waypoint (now ${n}/${WAYPOINT_MAX}). The robot visits the points in order and then starts over. ${dim === "3d" ? "Drag to turn the view." : "Drag to move the view, scroll to zoom."} Press Done when finished.`));
+      else if (n) status(tr(`${n} reittipistettä käytössä. Robotti oppii kulkemaan ne järjestyksessä, kun tehtävässä on kohde. Paina Kouluta.`, `${n} waypoints in use. The robot learns to visit them in order when the task has a target. Press Train.`), "ok");
+    }
+    function addWaypoint(p) {
+      if (!S.placing) return;
+      const list = waypoints();
+      if (list.length >= WAYPOINT_MAX) { status(tr(`Enintään ${WAYPOINT_MAX} reittipistettä.`, `At most ${WAYPOINT_MAX} waypoints.`), "warn"); return; }
+      list.push(dim === "2d" ? { x: +p.x.toFixed(2), y: +p.y.toFixed(2) } : { x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
+      st.waypoints = list;
+      save();
+      preview(); // uusi episodi ottaa pisteet kohteiksi
+      setPlacing(true);
+      achieve("waypoints");
     }
 
     async function onAction(e) {
@@ -827,7 +1371,7 @@
             S.taskFn = RS.compileTask(text); // heittää syntaksivirheen
             st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; delete st.goal; trustNote();
             forgetBest();
-            save(); drawFields(); if (S.mode === "idle") preview();
+            save(); drawFields(); drawWaypointRow(); if (S.mode === "idle") preview();
             status(tr("Oma palkkiofunktio otettu käyttöön.", "Custom reward function in use."));
           } });
       } else if (a === "goal") {
@@ -835,7 +1379,7 @@
           S.taskFn = RS.compileTask(code);
           st.taskKey = "custom"; st.taskCode = code; st.goal = goal; delete st.taskCodeUntrusted; trustNote();
           forgetBest();
-          save(); drawFields(); if (S.mode === "idle") preview();
+          save(); drawFields(); drawWaypointRow(); if (S.mode === "idle") preview();
           status(tr("Oma tavoite otettu käyttöön. Paina Kouluta. Aivot säilyvät, joten robotti jatkaa nykyisestä osaamisestaan.", "Custom goal in use. Press Train. The brain is kept, so the robot builds on what it already knows."));
         } });
       } else if (a === "exportModel") {
@@ -861,8 +1405,41 @@
         catch (err) { status(tr("Tiedoston lataus epäonnistui: ", "Loading the file failed: ") + err.message, "err"); }
       } else if (a === "reset") {
         if (!(await confirmReset())) return;
+        autoArchive();
         setMode("idle"); resetBrain(); preview(); drawChart();
         status(tr("Aivot nollattu.", "Brain reset."));
+      } else if (a === "saveRun") {
+        const name = askName(tr("Koulutusajon nimi:", "Name of the training run:"), `${S.model.name || tr("Robotti", "Robot")} · ${taskLabel()} · ${tr("sp", "gen")} ${S.gen}`);
+        if (!name) return;
+        addRun(makeRun(name, false));
+        // Juuri tallennettu ajo näkyy heti käyrässä
+        st.runShow = [...new Set([...(st.runShow || []), runs()[0].id])];
+        saveToolState(key, st, { undo: false });
+        drawRuns(); drawChart();
+        toast(tr(`Koulutusajo "${name}" tallennettu.`, `Training run "${name}" saved.`));
+      } else if (a === "race") {
+        if (S.mode === "race") { setMode("idle"); preview(); status(tr("Kisa keskeytettiin.", "The race was stopped.")); return; }
+        startRace();
+      } else if (a === "useRun" || a === "renameRun" || a === "delRun") {
+        const id = e.target.closest("[data-id]")?.dataset.id, list = runs(), r = list.find((x) => x.id === id);
+        if (!r) return;
+        if (a === "renameRun") {
+          const n = askName(tr("Koulutusajon uusi nimi:", "New name for the training run:"), r.name);
+          if (n) { r.name = n.slice(0, 80); saveRuns(list); drawRuns(); drawChart(); }
+        } else if (a === "delRun") {
+          if (!(await RS.ask(tr(`Poistetaanko koulutusajo "${r.name}"?`, `Delete the training run "${r.name}"?`), tr("Poista", "Delete")))) return;
+          saveRuns(list.filter((x) => x.id !== id));
+          st.runShow = (st.runShow || []).filter((x) => x !== id);
+          saveToolState(key, st, { undo: false });
+          drawRuns(); drawChart();
+        } else await useRun(r);
+      } else if (a === "waypoints") {
+        setPlacing(!S.placing);
+      } else if (a === "clearWaypoints") {
+        delete st.waypoints;
+        save(); setPlacing(false);
+        if (S.mode === "idle") preview();
+        status(tr("Reittipisteet poistettu: kohteet arvotaan taas.", "Waypoints removed: targets are random again."));
       } else if (a === "builder") {
         RSBridge.simToBuilder(dim);
         location.hash = "#/build" + dim;
@@ -989,6 +1566,7 @@
       if (!d || d.format !== BRAIN_FORMAT[dim]) throw new Error(dim === "3d" ? tr("Tiedosto ei ole RoboSim 3D -aivot-tiedosto.", "The file is not a RoboSim 3D brain file.") : tr("Tiedosto ei ole RoboSim 2D -aivot-tiedosto.", "The file is not a RoboSim 2D brain file."));
       const raw = d.model;
       be.normalize(raw);
+      autoArchive();
       delete st.libId;
       Object.assign(st, {
         modelKey: Object.hasOwn(be.MODELS, d.modelKey) ? d.modelKey : "custom", modelRaw: Object.hasOwn(be.MODELS, d.modelKey) ? undefined : raw,
@@ -1006,6 +1584,7 @@
     }
 
     function unmount() {
+      flushBrain();
       dead = true;
       cancelAnimationFrame(raf);
       pool?.terminate();
@@ -1018,8 +1597,10 @@
 
     // Esimerkit: valmiit yhdistelmät, jotka oppivat nopeasti
     const ex = (name, desc, cfg) => ({ name, desc, apply: () => {
+      if (S && !dead) { flushBrain(); autoArchive(); }
       const cur = getToolState(key, B.defaults);
-      saveToolState(key, { ...B.defaults, ...cfg, speed: cur.speed ?? MAX_SPEED, showAll: cur.showAll ?? true, follow: cur.follow ?? true, _adv: cur._adv });
+      saveToolState(key, { ...B.defaults, ...cfg, speed: cur.speed ?? MAX_SPEED, showAll: cur.showAll ?? true, follow: cur.follow ?? true, _adv: cur._adv,
+        parallel: cur.parallel ?? true, sensors: cur.sensors, orbit: cur.orbit, runShow: cur.runShow });
       saveToolState(brainKey, {}, { undo: false });
       saveToolState(statsKey, {}, { undo: false }); // uudet aivot aloittavat sukupolvesta 0
     } });
