@@ -28,6 +28,11 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Uusi `robolab-*`-avain kuuluu siis automaattisesti käyttäjälle. Laitekohtainen tieto tarvitsee muun etuliitteen tai SYSTEM-listan.
 - Älä testaa tilien vaihtoa ilman varmuuskopiota pane-selaimen tallennuksesta.
 
+## Pilvitili (Supabase)
+- `cloud-config.js` (julkinen URL + anon/publishable-avain; tyhjä = pilvi pois) ja `cloud.js` (`Cloud`): kirjautuminen, synkronointi tauluun `user_data` (yksi JSON-rivi per käyttäjä, RLS: `docs/supabase.sql`), ristiriidan ratkaisu, tilin poisto (`delete_my_account`). Käyttöönotto-ohje: `docs/pilvitili-ohje.md`.
+- Pilvitili on `accounts.js`:n tili, jolla `cloud: true` ja `cloudUid`; vaihto `Accounts.cloudAccount` / `useAccount`. Laitekohtaiset avaimet: `rlcloud-meta` (synkronointitila), `rlcloud-auth` (Supabasen istunto). Synkronoimatta: API-avain ja `SKIP`-lista cloud.js:ssä.
+- Testit käyttävät Supabasen testiversiota (`makeSupabaseMock` tests-app.html:ssä); oikeaa Supabasea ei testata automaattisesti. Älä koskaan lisää service_role-avainta.
+
 ## Opettajille ja tietoturva
 - `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–C (`LESSONS`), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
 - Tuotu koodi (nn2d/nn3d `taskCode`) merkitään `taskCodeUntrusted`: sitä ei ajeta ennen kuin käyttäjä hyväksyy sen editorissa. Kaikki tuodut tai tallennetut arvot `esc()`:llä HTML:ään; `getToolState` pakottaa numero-oletusten kentät luvuiksi.

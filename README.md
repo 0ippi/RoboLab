@@ -64,7 +64,7 @@ Avaa testisivu selaimessa palvelimen kautta (esim. http://localhost:8080/tests.h
 
 ## Tunnetut rajoitukset
 
-- Tiedot tallentuvat vain selaimeen (localStorage), eikä niitä synkronoida laitteiden välillä. Siirto tehdään profiilin varmuuskopiolla. Jos selaimen tiedot tyhjennetään, tallennukset katoavat.
+- Tiedot tallentuvat oletuksena vain selaimeen (localStorage). Jos selaimen tiedot tyhjennetään, tallennukset katoavat. Laitteiden välillä tiedot siirtyvät profiilin varmuuskopiolla tai vapaaehtoisella **pilvitilillä** (Supabase). Pilvitilin käyttöönotto-ohje on tiedostossa [docs/pilvitili-ohje.md](docs/pilvitili-ohje.md).
 - Käyttäjätilit ovat paikallisia. Salasana estää vain saman koneen muita käyttäjiä avaamasta tiliä, eikä tietoja salata.
 - Simulaatiot ovat opetukseen tehtyjä likimääräisiä malleja eivätkä tarkkoja fysikaalisia malleja. Esimerkiksi moottori on lineaarinen DC-malli ja akusta puuttuu jännitteen notkahdus. Mitoituksia kannattaa verrata komponenttien datalehtiin.
 - Ilmainen kielimalli vaatii WebGPU:n (Chrome tai Edge) ja kirjoittaa suomea heikosti, joten se vastaa englanniksi.

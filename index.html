@@ -36,6 +36,10 @@ if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window
   const errs = window.parent.__robolabErrors;
   window.addEventListener("error", (e) => errs.push(String(e.message || e.error)));
   window.addEventListener("unhandledrejection", (e) => errs.push("promise: " + String(e.reason?.message || e.reason)));
+  // Pilvitilin testiversio (ei oikeaa Supabasea) ja automaattisen synkronoinnin esto testeissä
+  if (window.parent.__robolabSupabaseMock) window.__robolabSupabaseMock = window.parent.__robolabSupabaseMock;
+  window.__robolabCloudNoAuto = true;
+  if (window.parent.__robolabCloudOverride) window.__robolabCloudOverride = window.parent.__robolabCloudOverride;
   const s = window.parent.__robolabStores;
   Object.defineProperty(window, "localStorage", { value: fake(s.local), configurable: true });
   Object.defineProperty(window, "sessionStorage", { value: fake(s.session), configurable: true });
@@ -137,6 +141,8 @@ if (/[?&]memstore\b/.test(location.search) && window.parent !== window && window
 <script src="app.js"></script>
 <script src="robots.js"></script>
 <script src="library.js"></script>
+<script src="cloud-config.js"></script>
+<script src="cloud.js"></script>
 <script src="account-ui.js"></script>
 <script src="plot.js"></script>
 <script src="view3d.js"></script>

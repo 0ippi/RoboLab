@@ -27,7 +27,71 @@ window.__robolabStores = { local: new Map(), session: new Map() };
 window.__robolabErrors = [];
 window.__robolabQuota = 0;
 
+// Pilvitilin testiversio: Supabase-asiakkaan pienin tarvittava osa muistissa. "Palvelin" on yhteinen,
+// istunto tallentuu laitteen (tallennus-Mapin) omaan avaimeen kuten oikeassa kirjastossa.
+function makeSupabaseMock() {
+  const server = { users: new Map(), rows: new Map(), clock: 0, confirm: false };
+  const S = () => window.__robolabStores.local;
+  const sess = () => { try { return JSON.parse(S().get("rlcloud-auth")); } catch { return null; } };
+  const ts = () => new Date(Date.UTC(2026, 0, 1) + ++server.clock * 1000).toISOString();
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const query = () => {
+    const q = { sel: "", filter: undefined, up: null };
+    const run = async () => {
+      const s = sess();
+      if (!s) return { data: null, error: { message: "JWT expired" } };
+      if (q.up) {
+        if (q.up.user_id !== s.user.id) return { data: null, error: { message: "new row violates row-level security policy" } };
+        const r = { data: clone(q.up.data), updated_at: ts() };
+        server.rows.set(s.user.id, r);
+        return { data: { updated_at: r.updated_at }, error: null };
+      }
+      if (q.filter !== s.user.id) return { data: null, error: null }; // RLS: vain oma rivi näkyy
+      const r = server.rows.get(q.filter);
+      if (!r) return { data: null, error: null };
+      return { data: q.sel.includes("data") ? { data: clone(r.data), updated_at: r.updated_at } : { updated_at: r.updated_at }, error: null };
+    };
+    Object.assign(q, { select: (c) => ((q.sel = c), q), eq: (k, v) => ((q.filter = v), q), upsert: (row) => ((q.up = row), q), maybeSingle: run, single: run });
+    return q;
+  };
+  return {
+    server,
+    auth: {
+      async signUp({ email, password, options }) {
+        if (server.users.has(email)) return { data: {}, error: { message: "User already registered" } };
+        if (password.length < 8) return { data: {}, error: { message: "Password should be at least 8 characters." } };
+        const user = { id: "u" + (server.users.size + 1) + Math.random().toString(36).slice(2, 6), email, user_metadata: options?.data || {} };
+        server.users.set(email, { user, password });
+        if (server.confirm) return { data: { user, session: null }, error: null };
+        S().set("rlcloud-auth", JSON.stringify({ user }));
+        return { data: { user, session: { user } }, error: null };
+      },
+      async signInWithPassword({ email, password }) {
+        const u = server.users.get(email);
+        if (!u || u.password !== password) return { data: {}, error: { message: "Invalid login credentials" } };
+        S().set("rlcloud-auth", JSON.stringify({ user: u.user }));
+        return { data: { user: u.user, session: { user: u.user } }, error: null };
+      },
+      async getSession() { return { data: { session: sess() } }; },
+      async signOut() { S().delete("rlcloud-auth"); return { error: null }; },
+      async resetPasswordForEmail() { return { error: null }; },
+      async updateUser() { return { error: null }; },
+      onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
+    },
+    from: () => query(),
+    async rpc(name) {
+      const s = sess();
+      if (name !== "delete_my_account" || !s) return { error: { message: "not allowed" } };
+      server.rows.delete(s.user.id);
+      for (const [e, u] of server.users) if (u.user.id === s.user.id) server.users.delete(e);
+      return { error: null };
+    },
+  };
+}
+const devices = { A: { local: new Map(), session: new Map() }, B: { local: new Map(), session: new Map() } };
+const useDevice = (d) => { window.__robolabStores = devices[d]; };
 const frame = document.getElementById("app");
+
 const results = [];
 // Sovelluksen const/let-globaalit eivät ole window-olion ominaisuuksia, joten ne luetaan eval-kutsulla
 const G = (name) => w.eval(name);
@@ -419,7 +483,120 @@ async function test(name, fn) {
     ok(G("projects").active !== id1 && G("activeProject")().tools.motor.wheelD === 65, "palautus");
   });
 
-  /* ===== Puhelin ja offline ===== */
+  /* ===== Pilvitili (Supabasen testiversio) ===== */
+  await test("Ilman pilviasetuksia pilvitili ei näy eikä lataa mitään", async () => {
+    window.__robolabSupabaseMock = null; window.__robolabCloudOverride = { url: "", anonKey: "" }; fresh(); await boot();
+    window.__robolabCloudOverride = null;
+    eq(w.Cloud.configured, false, "configured");
+    w.AccountsUI.showLogin();
+    ok(!w.document.querySelector("[data-cloud]"), "pilvinappi näkyy");
+    w.document.querySelector(".acc-gate").remove(); w.document.body.classList.remove("acc-locked");
+    [...w.document.body.children].forEach((c) => (c.inert = false));
+  });
+
+  const mock = (window.__robolabSupabaseMock = makeSupabaseMock());
+  await test("Pilvitilin luonti siirtää vieraan työn tilille ja tallentaa sen pilveen", async () => {
+    useDevice("A"); fresh(); await boot();
+    G("activeProject")().name = "Pilviprojekti"; w.saveProjects();
+    w.localStorage.setItem("robolab-ai-key", "sk-ant-testi-ei-oikea");
+    const r = await w.Cloud.signUp({ email: "aino@example.com", password: "salasana123", name: "Aino" });
+    eq(r.confirm, false, "vahvistus");
+    const acc = G("Accounts").current();
+    ok(acc?.cloud && acc.email === "aino@example.com", "pilvitili ei aktiivinen");
+    const row = mock.server.rows.get(acc.cloudUid);
+    ok(row, "pilvessä ei riviä");
+    ok(/Pilviprojekti/.test(row.data["robolab-projects-v1"]), "projekti puuttuu pilvestä");
+    ok(!("robolab-ai-key" in row.data), "API-avain päätyi pilveen");
+    ok(JSON.parse(row.data["robolab-profile"]).name === "Aino", "profiili puuttuu");
+  });
+
+  await test("Kirjautuminen toisella laitteella lataa samat tiedot", async () => {
+    useDevice("B"); fresh(); await boot();
+    w.prompt = () => null; w.confirm = () => false;
+    await w.Cloud.signIn({ email: "aino@example.com", password: "salasana123" });
+    await boot();
+    eq(G("activeProject")().name, "Pilviprojekti", "projekti");
+    eq(G("Accounts").current().name, "Aino", "nimi");
+    ok(!w.localStorage.getItem("robolab-ai-key"), "API-avain siirtyi laitteelta toiselle");
+  });
+
+  await test("Muutos yhdellä laitteella siirtyy toiselle", async () => {
+    G("activeProject")().name = "Muutettu B:llä"; w.saveProjects();
+    eq(await w.Cloud.sync(), "pushed", "B:n tallennus");
+    useDevice("A"); await boot();
+    eq(await w.Cloud.sync(), "reload", "A:n haku");
+    await boot();
+    eq(G("activeProject")().name, "Muutettu B:llä", "A:n projekti");
+    eq(await w.Cloud.sync(), "ok", "ei turhaa tallennusta");
+  });
+
+  await test("Ristiriita: kumpikin laite muuttui → käyttäjä valitsee, mikään ei sekoitu", async () => {
+    G("activeProject")().name = "A:n muutos"; w.saveProjects();
+    useDevice("B"); await boot();
+    G("activeProject")().name = "B:n muutos"; w.saveProjects();
+    eq(await w.Cloud.sync(), "pushed", "B ensin");
+    useDevice("A"); await boot();
+    eq(await w.Cloud.sync(), "conflict", "ristiriita");
+    eq(G("activeProject")().name, "A:n muutos", "A:n tiedot eivät saa muuttua ennen valintaa");
+    eq(await w.Cloud.resolve("device"), "pushed", "A:n versio pilveen");
+    useDevice("B"); await boot();
+    eq(await w.Cloud.sync(), "reload", "B hakee");
+    await boot();
+    eq(G("activeProject")().name, "A:n muutos", "B:n projekti");
+  });
+
+  await test("Pilvitili: selkeät virheilmoitukset", async () => {
+    let e1 = null, e2 = null;
+    try { await w.Cloud.signIn({ email: "aino@example.com", password: "väärä-salasana" }); } catch (e) { e1 = e.message; }
+    try { await w.Cloud.signUp({ email: "aino@example.com", password: "salasana123", name: "X" }); } catch (e) { e2 = e.message; }
+    ok(e1 && !/invalid login/i.test(e1) && /salasana|password/i.test(e1), "väärä salasana: " + e1);
+    ok(e2 && /jo pilvitili|already/i.test(e2), "olemassa oleva tili: " + e2);
+  });
+
+  await test("Sähköpostivahvistus: tili luodaan vasta kirjautumalla, vieraan työ siirtyy silloin", async () => {
+    mock.server.confirm = true;
+    useDevice("A"); fresh(); await boot();
+    G("activeProject")().name = "Vahvistuksen jälkeen"; w.saveProjects();
+    const r = await w.Cloud.signUp({ email: "bea@example.com", password: "salasana456", name: "Bea" });
+    eq(r.confirm, true, "vahvistus pyydetty");
+    ok(!G("Accounts").current(), "tili luotiin ennen vahvistusta");
+    await w.Cloud.signIn({ email: "bea@example.com", password: "salasana456" });
+    await boot();
+    eq(G("activeProject")().name, "Vahvistuksen jälkeen", "vieraan työ");
+    const uid = G("Accounts").current().cloudUid;
+    ok(/Vahvistuksen/.test(mock.server.rows.get(uid)?.data["robolab-projects-v1"] || ""), "ei pilvessä");
+    mock.server.confirm = false;
+  });
+
+  await test("Uloskirjautuminen ja pilvitilin poisto", async () => {
+    await w.Cloud.signOut();
+    eq(G("Accounts").active(), "guest", "aktiivinen");
+    ok(!ls().get("rlcloud-auth"), "istunto jäi");
+    await w.Cloud.signIn({ email: "bea@example.com", password: "salasana456" });
+    await boot();
+    const uid = G("Accounts").current().cloudUid;
+    await w.Cloud.deleteAccount();
+    ok(!mock.server.rows.has(uid), "pilvirivi jäi");
+    ok(![...mock.server.users.values()].some((u) => u.user.id === uid), "käyttäjä jäi");
+    ok(!G("Accounts").list().some((a) => a.cloudUid === uid), "paikallinen tili jäi");
+  });
+
+  await test("Kirjautumisnäkymä: pilvilomake tarkistaa syötteet", async () => {
+    await boot();
+    w.AccountsUI.showLogin("cloud");
+    const d = w.document;
+    d.querySelector('[data-cl="signup"]').click();
+    d.querySelector("#cl-email").value = "ei-osoite"; d.querySelector("#cl-pw").value = "lyhyt";
+    d.querySelector("#acc-cloud").requestSubmit();
+    ok(!d.querySelector("#cl-err").hidden, "virhe ei näy");
+    d.querySelector("#cl-email").value = "c@example.com"; d.querySelector("#cl-pw").value = "pitkasalasana";
+    d.querySelector("#acc-cloud").requestSubmit();
+    ok(/13|ikä|age/i.test(d.querySelector("#cl-err").textContent), "ikävahvistusta ei vaadittu");
+    d.querySelector(".acc-gate").remove(); d.body.classList.remove("acc-locked");
+    [...d.body.children].forEach((c) => (c.inert = false));
+    window.__robolabSupabaseMock = null; useDevice("A");
+  });
+
   await test("Puhelinleveys (375 px): ei vaakavieritystä ja valikko aukeaa", async () => {
     await boot("#/dashboard", { width: 375 });
     const bad = [];

@@ -106,7 +106,8 @@ const Accounts = (() => {
 
   async function login(id, password, remember) {
     const acc = get(id);
-    if (!acc || !(await verify(acc, password))) return false;
+    // Pilvitilille kirjaudutaan Supabasen kautta (account-ui.js → Cloud), ei paikallisella salasanalla
+    if (!acc || acc.cloud || !(await verify(acc, password))) return false;
     const switched = active() !== id;
     switchTo(id);
     markSession(id, remember);
@@ -158,7 +159,7 @@ const Accounts = (() => {
     }
     return JSON.stringify(s);
   }
-  function importData(obj) {
+  function importData(obj, { trusted = false } = {}) {
     if (!obj || obj.format !== BACKUP_FORMAT || !obj.data || typeof obj.data !== "object") throw new Error("format");
     if (obj.version > 1) throw new Error("version");
     const entries = Object.entries(obj.data).filter(([k, v]) => isUserKey(k) && !NO_EXPORT.has(k) && typeof v === "string");
@@ -168,7 +169,7 @@ const Accounts = (() => {
       if (data["robolab-projects-v1"] != null) {
         const p = JSON.parse(data["robolab-projects-v1"]);
         if (!p || typeof p.projects !== "object" || !Object.keys(p.projects).length) throw 0;
-        data["robolab-projects-v1"] = distrustCode(data["robolab-projects-v1"]);
+        if (!trusted) data["robolab-projects-v1"] = distrustCode(data["robolab-projects-v1"]);
       }
       if (data["robolab-library-v1"] != null) { const l = JSON.parse(data["robolab-library-v1"]); if (!l || typeof l !== "object" || Array.isArray(l)) throw 0; }
     } catch { throw new Error("format"); }
@@ -187,6 +188,31 @@ const Accounts = (() => {
     return entries.length;
   }
 
-  return { list, active, current, get, signedIn, create, login, guest, logout, update, remove, setPassword, verify,
+  /* Pilvitili (cloud.js): paikallinen tili, joka on sidottu Supabase-käyttäjään. Salasanan tarkistaa Supabase.
+     takeGuest: vieraana tehty työ siirtyy tilille (uusi pilvitili), muuten vaihdetaan tilin omiin tietoihin. */
+  function cloudAccount({ uid, email, name }, { takeGuest = false } = {}) {
+    const l = list();
+    let acc = l.find((a) => a.cloudUid === uid);
+    if (!acc) {
+      acc = { id: "c" + Math.random().toString(36).slice(2, 9), name: String(name || email || "").trim().slice(0, 40) || "RoboLab", avatar: "volt", created: Date.now(), bio: "", cloud: true, cloudUid: uid, email };
+      l.push(acc);
+      saveList(l);
+    } else if (email && acc.email !== email) saveList(l.map((a) => (a.id === acc.id ? { ...a, email } : a)));
+    if (active() !== acc.id) {
+      if (takeGuest && active() === GUEST) { for (const k of nsKeys(acc.id)) ls.removeItem(k); ls.setItem(ACTIVE, acc.id); }
+      else switchTo(acc.id);
+    }
+    markSession(acc.id, true);
+    return get(acc.id);
+  }
+  // Vaihto tilille ilman salasanaa (pilvitili, jonka istunto on jo voimassa)
+  function useAccount(id) {
+    const switched = active() !== id;
+    switchTo(id);
+    markSession(id, true);
+    return { switched };
+  }
+
+  return { list, active, current, get, signedIn, create, login, guest, logout, update, remove, setPassword, verify, cloudAccount, useAccount,
     exportData, importData, needsLogin: () => list().length > 0 && !signedIn(), GUEST };
 })();

@@ -3,6 +3,13 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.2.0", date: "2026-10-27",
+    fi: ["Pilvitili: kirjaudu sähköpostilla, niin samat projektit, kurssit, robotit ja asetukset ovat käytössä kaikilla laitteillasi. Muutokset synkronoituvat automaattisesti, ja jos samaa tiliä on muokattu kahdella laitteella, saat valita kumpi versio säilyy.",
+      "Pilvitili on vapaaehtoinen: paikalliset tilit ja vierastila toimivat kuten ennenkin. Pilvitilin ja kaikki sen tiedot voi poistaa profiilista, eikä Claude API -avain koskaan tallennu pilveen."],
+    en: ["Cloud account: sign in with your email and the same projects, courses, robots and settings are available on all your devices. Changes sync automatically, and if the same account was edited on two devices you choose which version to keep.",
+      "The cloud account is optional: local accounts and guest mode work as before. You can delete the cloud account and all its data from your profile, and a Claude API key is never stored in the cloud."],
+  },
+  {
     version: "2.1.0", date: "2026-10-27",
     fi: ["Uusi Opettajille-sivu: kolme valmista oppituntia (Ensimmäinen robotti, Robotti väistää esteitä, PID-säätö käytännössä) tunnin kulkuineen, tulostettavine monisteineen, ratkaisuineen ja arviointikriteereineen. Oppilaslinkki avaa kurssin suoraan, ja luokan edistymisen voi koota oppilaiden tiedostoista ilman tilejä tai nimiä.",
       "Kurssit kolmella tasolla aloittelijan järjestyksessä. Kojelaudalta voi aloittaa ensimmäisen kurssin yhdellä napilla ja jatkaa keskeytettyä kurssia. Kurssiteksteistä korjattiin asiavirheitä (mm. A*-haku, anturien kantamat, virrankulutus).",
