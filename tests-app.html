@@ -510,6 +510,39 @@ async function test(name, fn) {
     ok(!/Ki = 0/.test(txt), "väärä Ki-ilmoitus: " + txt);
   });
 
+  await test("Mobiilirobotti 2D pääsee satunnaisiin maaleihin jumittumatta (myös auto) ja seinän viereinen maali siirretään", async () => {
+    await go("#/sim2d", 600);
+    const S = w.__sim2d, Plan = G("Plan"), map = S.map, base = { ...S.st };
+    const free = [];
+    for (let j = 0; j < map.h; j++) for (let i = 0; i < map.w; i++) if (Plan.free(map.grid, i, j)) free.push([i, j]);
+    const run = (st, n, seed) => {
+      Object.assign(S.st, base, st); S.reset();
+      let ok = 0, col = 0;
+      for (let k = 0; k < n; k++) {
+        seed = (seed * 16807) % 2147483647;
+        S.planTo(free[seed % free.length]);
+        const sim = w.mobileSim(), tgt = sim.goal, c0 = sim.collisions;
+        for (let t = 0; t < 60 && w.mobileSim().path.length; t += 0.01) S.step(0.01);
+        const s = w.mobileSim();
+        col += s.collisions - c0;
+        if (tgt && Math.hypot(s.pose[0] - (tgt[0] + 0.5) * map.cell, s.pose[1] - (tgt[1] + 0.5) * map.cell) < 0.08) ok++;
+        s.path = [];
+      }
+      return { ok, col };
+    };
+    const diff = run({ model: "diff", controller: "pp", radius: 0.1, vmax: 0.4, useOdom: false, noise: 0 }, 20, 5);
+    eq(diff.ok, 20, "differentiaalirobotti maalissa"); ok(diff.col <= 3, "liikaa seinäkosketuksia: " + diff.col);
+    const car = run({ model: "ackermann", controller: "pp", radius: 0.1, vmax: 0.5, amax: 1.5, L: 0.25, lookahead: 0.4, useOdom: false, noise: 0 }, 20, 5);
+    ok(car.ok >= 15, "auto pääsi maaliin vain " + car.ok + "/20");
+    // Kulmaan asetettu maali: robotti ei mahdu solun keskelle, joten maali siirtyy ja siitä kerrotaan
+    Object.assign(S.st, base, { model: "diff", radius: 0.1 }); S.reset();
+    S.planTo([0, 0]);
+    const g = w.mobileSim().goal;
+    ok(g && (g[0] > 0 || g[1] > 0), "maalia ei siirretty");
+    ok(/siirrettiin|moved/i.test(w.mobileSim().msg), "viesti: " + w.mobileSim().msg);
+    Object.assign(S.st, base); S.reset();
+  });
+
   await test("Mobiilirobotti 2D ajaa maaliin ja nollautuu", async () => {
     await go("#/sim2d", 800);
     // Piilossa olevassa välilehdessä selain pysäyttää animaatiot, jolloin simulaatio ei etene

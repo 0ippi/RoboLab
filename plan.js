@@ -61,7 +61,9 @@ const Plan = (() => {
   }
 
   // Ruudukkohaut: "astar" | "dijkstra" | "bfs" | "greedy"
-  function gridSearch(g, start, goal, { algo = "astar", diagonal = true, weight = 1 } = {}) {
+  // cellCost (valinnainen): solukohtainen lisäkustannus (askel × (1 + cellCost)), esim. seinien läheisyys,
+  // jolloin reitti kulkee mieluummin käytävän keskellä. Heuristiikka pysyy sallittuna, koska kerroin ≥ 1.
+  function gridSearch(g, start, goal, { algo = "astar", diagonal = true, weight = 1, cellCost = null } = {}) {
     const N = g.w * g.h;
     const s = start[1] * g.w + start[0], t = goal[1] * g.w + goal[0];
     const expanded = [];
@@ -101,7 +103,7 @@ const Plan = (() => {
         if (i === t) break;
         for (const [n, c] of neighbors(g, i, diagonal)) {
           if (closed[n]) continue;
-          const nc = cost[i] + c;
+          const nc = cost[i] + (cellCost ? c * (1 + cellCost[n]) : c);
           if (nc < cost[n] || (algo === "greedy" && parent[n] < 0 && n !== s)) {
             cost[n] = nc; parent[n] = i;
             open.push(n, pri(n));
