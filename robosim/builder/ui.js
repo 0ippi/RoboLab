@@ -67,6 +67,8 @@ export function mount(root, dim, tool) {
             <button class="btn" id="rb-addArm" title="${tr('Lisää robottikäden (olka- ja kyynärnivel, kärjessä tarttuja) valitun osan päälle.', 'Adds a robot arm (shoulder and elbow joints, a gripper at the tip) on top of the selected part.')}">🦾 ${tr('Käsivarsi', 'Arm')}</button>
             <button class="btn" id="rb-addGripper" title="${tr('Lisää kaksisormisen tarttujan valitun osan etuosaan. Sormet sulkeutuvat servoilla.', 'Adds a two-finger gripper to the front of the selected part. The fingers close with servos.')}">✊ ${tr('Tarttuja', 'Gripper')}</button>
             <button class="btn" id="rb-addTail" title="${tr('Lisää vapaasti heiluvan hännän valitun osan takaosaan.', 'Adds a freely swinging tail to the back of the selected part.')}">〰 ${tr('Häntä', 'Tail')}</button>
+            <button class="btn" id="rb-addSpringLeg" title="${tr('Lisää jalan, jossa on moottoroitu lonkka ja joustava polvi (jousi). Vähemmän moottoreita: hyppivä robotti oppii nopeammin.', 'Adds a leg with a motorised hip and a springy knee. Fewer motors: a hopping robot learns faster.')}">🦘 ${tr('Jousijalka', 'Spring leg')}</button>
+            <button class="btn" id="rb-addBumper" title="${tr('Lisää kosketusanturin (joustava puskuri) valitun osan etuosaan. Robotti tietää, osuuko puskuri esteeseen tai maahan.', 'Adds a touch sensor (a springy bumper) to the front of the selected part. The robot knows whether the bumper hits an obstacle or the ground.')}">🛡 ${tr('Kosketusanturi', 'Touch sensor')}</button>
             <button class="btn" id="rb-addLidar" title="${tr('Lisää lidar-anturin valitun osan päälle ja kytkee etäisyysanturit päälle.', 'Adds a lidar sensor on top of the selected part and turns the distance sensors on.')}">📡 Lidar</button>
             <button class="btn" id="rb-addCamera" title="${tr('Lisää kamerasilmän valitun osan etuosaan (ulkonäkö).', 'Adds a camera eye to the front of the selected part (appearance).')}">📷 ${tr('Kamera', 'Camera')}</button>
           </div>
@@ -197,7 +199,7 @@ export function mount(root, dim, tool) {
 
   function updateButtons() {
     const n = S.sel.bodies.length, one = n === 1;
-    for (const id of ['addWheel', 'addLeg', 'addRotor', 'addWheelPair', 'addCaster', 'addArm', 'addGripper', 'addTail', 'addLidar', 'addCamera']) q(id).disabled = !one;
+    for (const id of ['addWheel', 'addLeg', 'addRotor', 'addWheelPair', 'addCaster', 'addArm', 'addGripper', 'addTail', 'addLidar', 'addCamera', 'addBumper', 'addSpringLeg']) q(id).disabled = !one;
     q('jointBtn').disabled = n !== 2;
     q('mergeBtn').disabled = n !== 2;
     q('mirrorBtn').disabled = n === 0;
@@ -259,7 +261,7 @@ export function mount(root, dim, tool) {
       const d = document.createElement('button');
       d.className = 'rsb-item joint' + (S.sel.joint === i ? ' sel' : '');
       const type = M.jointType(j);
-      d.textContent = `${type === 'wheel' ? '⚙' : type === 'free' ? '○' : '◆'} ${j.a} → ${j.b}`;
+      d.textContent = `${type === 'wheel' ? '⚙' : type === 'free' ? '○' : type === 'spring' ? '〰' : '◆'} ${j.a} → ${j.b}`;
       d.onclick = () => select('joint', i);
       el.appendChild(d);
     });
@@ -531,7 +533,13 @@ export function mount(root, dim, tool) {
       el.append(prop(tr('Liikealue (°)', 'Range of motion (°)'), tr('Kuinka paljon nivel voi kääntyä kumpaankin suuntaan. Esim. polvi −45…45.', 'How far the joint can turn each way. E.g. a knee −45…45.'),
         vecInput([j.lower, j.upper], (v) => { j.lower = v[0]; j.upper = v[1]; }, { names: ['min', 'max'], step: 5 })));
     }
-    if (type !== 'free') {
+    if (type === 'spring') {
+      el.append(prop(tr('Jousen jäykkyys', 'Spring stiffness'), tr('Kuinka voimakkaasti nivel palaa lepoasentoon. Isompi = jäykempi. Tavallisesti 10–100.', 'How strongly the joint returns to its rest position. Bigger = stiffer. Usually 10–100.'),
+        numInput(j.spring, (v) => { j.spring = v > 0 ? v : M.SPRING_DEFAULT.k; }, { step: 5, min: 1, placeholder: String(M.SPRING_DEFAULT.k) })));
+      el.append(prop(tr('Vaimennus', 'Damping'), tr('Jarruttaa pomppimista. 0 = ei vaimennusta. Tavallisesti 1–5.', 'Brakes bouncing. 0 = no damping. Usually 1–5.'),
+        numInput(j.springDamping, (v) => { j.springDamping = v ?? M.SPRING_DEFAULT.d; }, { step: 0.5, min: 0, placeholder: String(M.SPRING_DEFAULT.d) })));
+    }
+    if (type !== 'free' && type !== 'spring') {
       el.append(prop(tr('Nopeus (rad/s)', 'Speed (rad/s)'), type === 'wheel' ? tr('Pyörän suurin pyörimisnopeus.', 'The wheel’s top spin speed.') : tr('Kuinka nopeasti nivel ehtii kääntyä. Isompi = nopeampi mutta riuhtovampi.', 'How fast the joint can turn. Bigger = faster but jerkier.'),
         numInput(j.speed, (v) => { j.speed = v ?? undefined; }, { step: 1, min: 0.1 })));
       if (is2d) {
@@ -909,6 +917,8 @@ export function mount(root, dim, tool) {
     q('addArm').onclick = withParent(M.addArm);
     q('addGripper').onclick = withParent(M.addGripper);
     q('addTail').onclick = withParent(M.addTail);
+    q('addBumper').onclick = withParent(M.addBumper);
+    q('addSpringLeg').onclick = withParent(M.addSpringLeg);
     // Anturit lisätään valittuun osaan muotoina, joten valinta säilyy
     const sensor = (kind) => () => { const p = selectedBody(); if (p) change(() => M.addSensor(S.model, p, kind, S.dim), true); };
     q('addLidar').onclick = sensor('lidar');

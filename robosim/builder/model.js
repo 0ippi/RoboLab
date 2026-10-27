@@ -90,17 +90,25 @@ export const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 export const JOINT_TYPES = {
   servo: { label: tr('Nivel (servo)', 'Joint (servo)'), hint: tr('Kääntyy rajojen välillä. Neuroverkko valitsee kulman. Jalat, kädet.', 'Turns between limits. The neural network picks the angle. Legs, arms.') },
   wheel: { label: tr('Pyörä', 'Wheel'), hint: tr('Pyörii vapaasti ympäri. Neuroverkko valitsee nopeuden.', 'Spins freely all the way round. The neural network picks the speed.') },
-  free: { label: tr('Vapaa (ei moottoria)', 'Free (no motor)'), hint: tr('Heiluu vapaasti ilman moottoria, esim. tukipyörä tai häntä.', 'Swings freely without a motor, e.g. a caster or a tail.') }
+  free: { label: tr('Vapaa (ei moottoria)', 'Free (no motor)'), hint: tr('Heiluu vapaasti ilman moottoria, esim. tukipyörä tai häntä.', 'Swings freely without a motor, e.g. a caster or a tail.') },
+  spring: { label: tr('Jousi (ei moottoria)', 'Spring (no motor)'), hint: tr('Joustaa takaisin lepoasentoon kuin iskunvaimennin: joustava polvi, puskuri tai jousitus. Lepoasento on se, mihin osat on rakennettu.', 'Springs back to its rest position like a shock absorber: a springy knee, a bumper or suspension. The rest position is how the parts are built.') }
 };
+export const SPRING_DEFAULT = { k: 30, d: 2 };
 
 export function jointType(j) {
-  if (j.motor === false) return 'free';
+  if (j.motor === false) return j.spring > 0 ? 'spring' : 'free';
   return j.lower != null && j.upper != null ? 'servo' : 'wheel';
 }
 
 export function setJointType(j, type) {
   delete j.motor;
-  if (type === 'servo') {
+  if (type !== 'spring') { delete j.spring; delete j.springDamping; }
+  if (type === 'spring') {
+    j.motor = false;
+    j.spring = j.spring > 0 ? j.spring : SPRING_DEFAULT.k;
+    j.springDamping = j.springDamping ?? SPRING_DEFAULT.d;
+    delete j.strength;
+  } else if (type === 'servo') {
     j.lower = j.lower ?? -45; j.upper = j.upper ?? 45;
     j.speed = j.speed ?? 6;
     delete j.strength;
@@ -259,6 +267,34 @@ export function addTail(model, parent, dim) {
   if (dim === '2d') j.torque = 1;
   model.joints.push(j);
   return [body];
+}
+
+// Kosketusanturi (puskuri): ohut levy osan etuosaan joustavalla nivelellä. Levy on "jalka" eli kosketusanturi:
+// robotti tietää, osuuko puskuri maahan tai esteeseen. Törmäyksessä levy joustaa ja palaa paikalleen.
+export function addBumper(model, parent, dim) {
+  const box = bodyBox(parent), t = 0.04, hgt = round(Math.max(0.12, (box.max.y - box.min.y) * 0.7));
+  const x0 = round(box.max.x), yc = round((box.min.y + box.max.y) / 2), z = dim === '2d' ? 0 : round((box.min.z + box.max.z) / 2);
+  const depth = dim === '2d' ? 0.3 : round(Math.max(0.2, (box.max.z - box.min.z) * 0.9));
+  const id = uniqueId(model, tr('puskuri', 'bumper'));
+  const body = { id, pos: [round(x0 + 0.02 + t / 2), yc, z], rot: [0, 0, 0], color: '#ffd166', foot: true, friction: 0.6, density: 0.3,
+    shapes: [{ type: 'box', size: [t, hgt, depth], pos: [0, 0, 0], rot: [0, 0, 0] }] };
+  model.bodies.push(body);
+  // Saranan paikka levyn yläreunassa: alareuna joustaa taaksepäin osuessaan esteeseen
+  const j = { a: parent.id, b: id, pos: [x0, round(yc + hgt / 2), z], axis: [0, 0, 1], lower: -15, upper: 15 };
+  setJointType(j, 'spring');
+  if (dim === '2d') j.torque = 1;
+  model.joints.push(j);
+  return [body];
+}
+
+// Jousijalka: moottoroitu lonkka ja joustava polvi. Moottoreita on puolet vähemmän kuin tavallisessa jalassa,
+// joten hyppivä tai tasapainoileva robotti oppii nopeammin.
+export function addSpringLeg(model, parent, dim) {
+  const made = addLeg(model, parent, dim);
+  const knee = model.joints.find((j) => j.b === made[1].id);
+  setJointType(knee, 'spring');
+  knee.lower = -35; knee.upper = 35;
+  return made;
 }
 
 // Anturit: näkyvä osa lisätään valittuun osaan muotona (lidar katolle, kamera eteen). Lidar myös kytkee
@@ -598,7 +634,8 @@ export function to3D(model) {
     })),
     joints: model.joints.map((j) => ({
       a: j.a, b: j.b, pos: j.pos, axis: j.axis, lower: j.lower, upper: j.upper, speed: j.speed,
-      strength: j.strength, stiffness: j.stiffness, damping: j.damping, control: j.control, motor: j.motor
+      strength: j.strength, stiffness: j.stiffness, damping: j.damping, control: j.control, motor: j.motor,
+      spring: j.spring, springDamping: j.springDamping
     })),
     thrusters: liveThrusters(model).map((t) => ({ body: t.body, pos: t.pos, dir: t.dir, weight: t.weight, force: t.force, rid: t.rid }))
   });
@@ -619,7 +656,7 @@ export function to2D(model) {
     })),
     joints: model.joints.map((j) => ({
       a: j.a, b: j.b, x: j.pos[0], y: j.pos[1], lower: j.lower, upper: j.upper,
-      torque: j.torque ?? 10, speed: j.speed, motor: j.motor
+      torque: j.torque ?? 10, speed: j.speed, motor: j.motor, spring: j.spring, springDamping: j.springDamping
     })),
     thrusters: liveThrusters(model).map((t) => ({ body: t.body, x: t.pos[0], y: t.pos[1], angle: round(Math.atan2(t.dir[1], t.dir[0]) * 180 / Math.PI), weight: t.weight, force: t.force, rid: t.rid }))
   });
@@ -656,7 +693,7 @@ export function from2D(raw) {
   out.thrusters = m.thrusters.map((t) => ({ body: t.body, pos: [t.x, t.y, 0], dir: [Math.cos(t.angle * Math.PI / 180), Math.sin(t.angle * Math.PI / 180), 0], weight: t.weight, force: t.force, rid: t.rid }));
   out.joints = m.joints.map((j) => clean({
     a: j.a, b: j.b, pos: [j.x, j.y, 0], axis: [0, 0, 1], lower: j.lower, upper: j.upper,
-    torque: j.torque, speed: j.speed, motor: j.motor
+    torque: j.torque, speed: j.speed, motor: j.motor, spring: j.spring, springDamping: j.springDamping
   }));
   return clean(out);
 }
