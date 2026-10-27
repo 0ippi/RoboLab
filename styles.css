@@ -951,6 +951,35 @@ body.ai-open .ai-fab { display: none; }
 .course-banner > div:nth-child(2) { flex: 1; min-width: 0; }
 .course-banner:hover { border-color: var(--accent); }
 
+/* Etusivu: pääpolku, pikalinkit ja työkaluhakemisto */
+.home-lead { gap: 18px; padding: calc(var(--pad) * 1.4); background: linear-gradient(135deg, var(--accent-soft), var(--surface) 65%); }
+.home-lead-bot { flex: none; }
+.home-lead-text small { display: block; color: var(--accent); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+.home-lead-text h2 { margin: 2px 0 4px; font-size: 1.25rem; }
+.home-lead-text p { margin: 0; color: var(--text-2); }
+.home-lead-text .course-progress { margin-top: 10px; max-width: 320px; }
+.home-lead > .btn { flex: none; pointer-events: none; }
+.home-note { display: block; margin: calc(var(--pad) * -0.75) 0 calc(var(--pad) * 1.5); padding: 10px 14px; border-radius: var(--radius); background: var(--surface-2); color: var(--text); text-decoration: none; font-size: .9rem; }
+.home-note:hover { color: var(--accent); }
+.home-quick { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-bottom: calc(var(--pad) * 2); }
+.home-quick a { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); text-decoration: none; font-weight: 550; }
+.home-quick a:hover { border-color: var(--accent); }
+.home-quick .ico { color: var(--accent); flex: none; }
+.home-quick .fav-mini { margin-left: auto; }
+.home-dir { display: grid; gap: var(--pad); grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-bottom: calc(var(--pad) * 2); }
+.home-group { display: flex; flex-direction: column; gap: 2px; }
+.home-group h3 { margin: 0 0 4px; font-size: .85rem; color: var(--text-2); }
+.home-group a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; color: var(--text); text-decoration: none; font-size: .9rem; }
+.home-group a:hover { background: var(--surface-2); }
+.home-group a .ico { width: 16px; height: 16px; color: var(--text-3); flex: none; }
+.home-group a.locked { color: var(--text-3); }
+.home-group a .plan-badge { margin-left: auto; }
+@media (max-width: 600px) {
+  .home-lead { flex-wrap: wrap; }
+  .home-lead-bot { display: none; }
+  .home-lead > .btn { width: 100%; justify-content: center; }
+}
+
 @media (max-width: 900px) {
   .lesson { position: fixed; z-index: 35; left: 0; right: 0; bottom: 28px; width: auto; max-height: 55vh; border-left: 0; border-top: 1px solid var(--border-strong); box-shadow: var(--shadow); }
   .lesson.collapsed { width: auto; max-height: none; }
@@ -1078,11 +1107,16 @@ body.lesson-open.lesson-collapsed .ai-fab { right: calc(64px + 18px); }
 .rsb-shape { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin: 8px 0; }
 .rsb-shape-head { display: flex; justify-content: space-between; align-items: center; }
 .rsb-json { width: 100%; height: 50vh; font: .78rem/1.5 var(--mono); }
+/* Keskikokoinen tila (esim. kurssipaneeli auki): osat vasemmalla näkymän vieressä, ominaisuudet ja tarkistus alla */
 @container content (max-width: 1000px) {
-  .rsb-grid { grid-template-columns: 1fr; height: auto; }
+  .rsb-grid { grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: max(420px, calc(100vh - 300px)) auto; height: auto; }
+  .rsb-right { grid-column: 1 / -1; max-height: none; }
+  .rsb-keys { display: none; }
+}
+@container content (max-width: 640px) {
+  .rsb-grid { grid-template-columns: 1fr; grid-template-rows: none; }
   .rsb-center { height: 55vh; order: -1; }
   .rsb-left, .rsb-right { max-height: none; }
-  .rsb-keys { display: none; }
 }
 .shortcuts th { padding: 12px calc(var(--pad) * 1.1) 6px; text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); border-top: 1px solid var(--border); }
 .shortcuts tr:first-child th { border-top: 0; }
@@ -1221,12 +1255,12 @@ body.acc-locked .ai-fab { display: none; }
 .plan-pro { color: #7c5cff; }
 .upgrade-btn { border-color: #e0a600; background: linear-gradient(135deg, #ffd34d, #ffb000); color: #2b2000; font-weight: 700; }
 .upgrade-btn:hover { filter: brightness(1.05); }
-.upgrade-banner { display: flex; align-items: center; gap: 14px; margin-bottom: calc(var(--pad) * 1.5); text-decoration: none; color: inherit; border-color: #e0a600; background: linear-gradient(135deg, rgba(255, 196, 0, .16), var(--surface) 70%); }
-.upgrade-banner .ub-star { font-size: 1.6rem; }
-.upgrade-banner div { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.upgrade-banner div span { color: var(--text-2); font-size: .9rem; }
-.upgrade-banner .ub-go { font-weight: 600; color: var(--accent); white-space: nowrap; }
-.nav-item.locked { opacity: .72; }
+/* Etusivun tasomaininta: yksi ohut rivi, ei iso mainos */
+.upgrade-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin: 0 0 calc(var(--pad) * 1.5); padding: 10px 14px; border: 1px solid color-mix(in srgb, #e0a600 45%, var(--border)); border-radius: var(--radius); color: var(--text-2); font-size: .88rem; text-decoration: none; }
+.upgrade-banner:hover { border-color: #e0a600; color: var(--text); }
+.upgrade-banner .ub-go { margin-left: auto; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.nav-more { opacity: .8; margin-top: 14px; }
+.nav-more::before { content: ""; position: absolute; left: 10px; right: 10px; top: -8px; border-top: 1px solid var(--border); }
 .nav-lock { margin-left: auto; font-size: .75rem; }
 .locked-card { text-align: center; max-width: 640px; margin: var(--pad) auto; padding: calc(var(--pad) * 2); }
 .locked-card .locked-icon { font-size: 2.4rem; }
@@ -1290,6 +1324,7 @@ body.acc-locked .ai-fab { display: none; }
 .assign-list { display: grid; gap: 6px; margin: 8px 0; }
 .assign-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: var(--radius); background: var(--surface-2); }
 .assign-row small { display: block; color: var(--text-2); }
+.assign-row.locked { opacity: .6; }
 .assign-row input[type="date"] { min-height: 32px; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; }
 .room-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
 .room-bar h4 { margin: 0; }

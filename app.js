@@ -52,7 +52,7 @@ const G = {
   frames: tr("Koordinaatistot ja laskimet", "Frames & calculators"),
 };
 const TOOLS = [
-  { id: "dashboard", group: G.general, name: tr("Kojelauta", "Dashboard"), icon: "dashboard", desc: tr("Yleiskatsaus kaikkiin työkaluihin.", "Overview of all tools.") },
+  { id: "dashboard", group: G.general, name: tr("Etusivu", "Home"), icon: "dashboard", desc: tr("Kurssit, omat työkalut ja kaikki työkalut yhdellä sivulla.", "Courses, your tools and every tool on one page.") },
   { id: "learn", group: G.general, name: tr("Kurssit", "Courses"), icon: "book", status: "ready",
     desc: tr("Opi robotiikkaa vaihe vaiheelta oikeilla työkaluilla — tekoälyopettaja auttaa.", "Learn robotics step by step with the real tools — an AI tutor helps.") },
   { id: "teach", group: G.general, name: tr("Opettajille", "For teachers"), icon: "cap", status: "ready",
@@ -239,7 +239,7 @@ const SHORTCUTS = [
   [tr("Vie projekti JSON-tiedostona", "Export project as JSON"), "Ctrl+E"],
   [tr("Avaa asetukset", "Open settings"), "Ctrl+,"],
   [tr("Näytä / piilota sivupalkki", "Show / hide sidebar"), "Ctrl+B"],
-  [tr("Siirry kojelautaan", "Go to dashboard"), "G → D"],
+  [tr("Siirry etusivulle", "Go to the home page"), "G → D"],
   [tr("Siirry projekteihin", "Go to projects"), "G → P"],
   [tr("Siirry asetuksiin", "Go to settings"), "G → S"],
   [tr("Näytä pikanäppäimet", "Show shortcuts"), "?"],
@@ -291,6 +291,7 @@ function set(key, value) {
 /* ===== Asetusten soveltaminen ===== */
 const mqDark = matchMedia("(prefers-color-scheme: dark)");
 const mqMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let lessonNarrow = false; // kurssipaneeli auki → kapea sivupalkki (setLessonLayout)
 
 function resolvedTheme() {
   return settings.theme === "system" ? (mqDark.matches ? "graphite" : "light") : settings.theme;
@@ -313,7 +314,7 @@ function applySettings() {
   // Asennetun sovelluksen ikkunan otsikkopalkki teeman värillä
   $('meta[name="theme-color"]')?.setAttribute("content", getComputedStyle(root).getPropertyValue("--bg").trim() || "#0f1115");
 
-  $("#app").classList.toggle("collapsed", !!settings.sidebarCollapsed);
+  applySidebar();
   $("#statusbar").hidden = !settings.statusbar;
   document.querySelectorAll("[data-tip]").forEach((el) => {
     if (settings.tooltips) el.title = el.dataset.tip; else el.removeAttribute("title");
@@ -858,19 +859,26 @@ document.addEventListener("click", (e) => {
 // Opettajille-sivu näkyy listoissa vain opettajille (Teacher-taso); suora linkki näyttää tasoesittelyn
 const toolListed = (t) => t.nav !== false && (t.id !== "teach" || !window.Plans || Plans.canTeach());
 
+// Valikossa näkyvät vain avoimet työkalut; lukitut kootaan yhteen riviin (ne näkyvät etusivun hakemistossa ja Tasot-sivulla)
+const navShown = (t) => toolListed(t) && (!window.Plans || Plans.canTool(t.id));
+
 function renderNav() {
   const groups = {};
   const f = favs();
-  if (f.length) groups[tr("Suosikit", "Favourites")] = f.map((id) => TOOLS.find((t) => t.id === id)).filter(toolListed);
+  if (f.length) groups[tr("Suosikit", "Favourites")] = f.map((id) => TOOLS.find((t) => t.id === id)).filter((t) => t && navShown(t));
   if (!groups[tr("Suosikit", "Favourites")]?.length) delete groups[tr("Suosikit", "Favourites")];
-  TOOLS.filter(toolListed).forEach((t) => (groups[t.group] ||= []).push(t));
+  TOOLS.filter(navShown).forEach((t) => (groups[t.group] ||= []).push(t));
+  const locked = TOOLS.filter((t) => toolListed(t) && !navShown(t)).length;
   $("#nav").innerHTML = Object.entries(groups).map(([g, items]) => `
     <div class="nav-group-title">${g}</div>
     ${items.map((t) => `
-      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${window.Plans && !Plans.canTool(t.id) ? "locked" : ""} ${t.id === "teach" ? "nav-teach" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
-        ${icon(t.icon)}<span class="label">${t.name}</span>${window.Plans && !Plans.canTool(t.id) ? `<span class="nav-lock" aria-label="${tr("Lukittu", "Locked")}" title="${Plans.NAMES[Plans.tierForTool(t.id)]}">🔒</span>` : ""}
+      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${t.id === "teach" ? "nav-teach" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
+        ${icon(t.icon)}<span class="label">${t.name}</span>
       </a>`).join("")}
-  `).join("");
+  `).join("") + (locked ? `
+    <a href="#/plans" class="nav-item nav-more" data-route="plans" data-tip="${tr("Lukitut työkalut", "Locked tools")}">
+      ${icon("star")}<span class="label">${tr(`Lukitut työkalut (${locked})`, `Locked tools (${locked})`)}</span><span class="nav-lock" aria-hidden="true">🔒</span>
+    </a>` : "");
 }
 
 let currentImpl = null;
@@ -953,116 +961,94 @@ function router() {
 }
 
 /* ===== Sivut ===== */
-// Aloitusoppaan polut: mitä kannattaa kokeilla ensin ja miksi
-const GOALS = {
-  learn: { name: tr("Opiskelen robotiikkaa", "I'm learning robotics"), desc: tr("Aloita perusteista ja kokeile, miten asiat toimivat.", "Start from the basics and see how things work."),
-    tools: [["learn", tr("Ohjatut kurssit: paras tapa aloittaa", "Guided courses: the best way to start")], ["fk", tr("Näe, miten nivelkulmat liikuttavat käsivartta", "See how joint angles move an arm")], ["pid", tr("Opi säätötekniikan perusta liukusäätimillä", "Learn the basics of control with sliders")],
-            ["path", tr("Katso reittihakualgoritmit animaationa", "Watch path-finding algorithms animate")], ["rot", tr("Ymmärrä kvaterniot ja Euler-kulmat", "Understand quaternions and Euler angles")]] },
-  teach: { name: tr("Opetan robotiikkaa", "I teach robotics"), desc: tr("Valmiit oppitunnit, monisteet ja luokan edistyminen ilman oppilastilejä.", "Ready lessons, worksheets and class progress without student accounts."),
-    tools: [["teach", tr("Kolme valmista oppituntia opettajan ohjeineen ja monisteineen", "Three ready lessons with teacher guides and worksheets")], ["learn", tr("Kymmenen kurssia, jotka toimivat itsenäisinä oppitunteina", "Ten courses that work as stand-alone lessons")],
-            ["build2d", tr("Oppilaat rakentavat oman robotin", "Students build their own robot")], ["pid", tr("Säätötekniikka kokeilemalla", "Control engineering by experimenting")]] },
-  build: { name: tr("Rakennan robottia", "I'm building a robot"), desc: tr("Mitoita osat, laske virrat ja testaa oikealla laitteella.", "Size parts, compute currents and test real hardware."),
-    tools: [["motor", tr("Riittävätkö moottorit robotillesi?", "Are your motors strong enough?")], ["power", tr("Kauanko akku kestää ja riittääkö säädin?", "How long does the battery last?")],
-            ["serial", tr("Piirrä anturidata suoraan mikrokontrollerista", "Plot sensor data straight from your board")], ["sim2d", tr("Testaa ohjauslogiikka ennen oikeaa robottia", "Test control logic before the real robot")]] },
-};
-
-function goal() { try { return localStorage.getItem("robolab-goal") || ""; } catch { return ""; } }
+// Etusivu: yksi selvä pääpolku (kurssi), omat pikalinkit ja kaikki työkalut tiiviinä hakemistona.
+// Sivupalkki listaa samat työkalut, joten etusivulla ei toisteta niiden pitkiä kuvauksia.
+const STARTER_TOOLS = ["build2d", "sim2d", "motor", "pid", "path", "cv", "fk", "power"];
 
 function dashboardPage() {
-  const tools = TOOLS.filter((t) => t.id !== "dashboard" && t.id !== "projects" && toolListed(t));
-  const teacher = window.Plans && Plans.canTeach();
-  const card = (t, why) => `
-    <a class="card" href="#/${t.id}">
-      <div class="card-icon">${icon(t.icon)}</div>
-      <div><h3>${t.name}</h3><p>${why || t.desc}</p></div>
-      <div class="card-foot"><span>${t.group}</span>${window.Plans && !Plans.canTool(t.id) ? Plans.badge(Plans.tierForTool(t.id)) : favs().includes(t.id) ? `<span class="fav-mini" aria-label="${tr("Suosikki", "Favourite")}">★</span>` : `<span>${tr("Avaa", "Open")} →</span>`}</div>
-    </a>`;
   const byId = (id) => TOOLS.find((t) => t.id === id);
-  const g = goal();
-  const welcome = !g ? `
-    <section class="card welcome" aria-labelledby="wl-title">
-      <h2 id="wl-title">${tr("Tervetuloa RoboLabiin! Mitä haluat tehdä?", "Welcome to RoboLab! What would you like to do?")}</h2>
-      <p>${tr("Valitse, niin näytämme hyvät työkalut aloittamiseen. Kaikki työkalut ovat silti aina käytössä.", "Pick one and we'll suggest good tools to start with. Every tool stays available.")}</p>
-      <div class="goal-list">
-        ${Object.entries(GOALS).map(([k, v]) => `<button class="goal" data-goal="${k}"><b>${v.name}</b><small>${v.desc}</small></button>`).join("")}
-      </div>
-      <div class="first-step">
-        <button class="btn primary" data-resume="start">▶ ${tr("Aloita ensimmäinen kurssi: Miten robotti toimii (15 min)", "Start the first course: How a robot works (15 min)")}</button>
-        <span class="note">${tr("Ei vaadi ohjelmointia eikä tiliä. Robotti-opas neuvoo vaihe kerrallaan.", "No programming or account needed. A robot guide helps you step by step.")}</span>
-      </div>
-      <button class="link-btn" data-goal="skip">${tr("Ohita — näytä vain kaikki työkalut", "Skip — just show all tools")}</button>
-    </section>` : "";
-  const rec = g && GOALS[g] ? `
-    <h2 class="section-title">${tr("Suositellut sinulle", "Recommended for you")} · ${GOALS[g].name} <button class="link-btn" data-goal="reset" style="margin-left:8px">${tr("vaihda", "change")}</button></h2>
-    <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${GOALS[g].tools.map(([id, why]) => id === "teach" && !teacher
-      ? card(byId("plans"), tr("Teacher-taso: valmiit oppitunnit, luokkakoodit oppilaille ja luokan edistyminen", "Teacher plan: ready lessons, class codes for students and class progress"))
-      : card(byId(id), why)).join("")}</div>` : "";
-  // Opettajalle oma, selvä aloituskohta kojelaudan alkuun
+  const open = (t) => !window.Plans || Plans.canTool(t.id);
+  const teacher = window.Plans && Plans.canTeach();
+  const acc = typeof Accounts !== "undefined" ? Accounts.current() : null;
+  const courses = window.Courses?.list?.() || [];
+  const started = courses.some((c) => c.progress > 0);
+  const ac = window.Courses?.resumable?.() || window.Courses?.active();
+
+  // Pääpolku: kesken oleva kurssi, ensimmäinen kurssi tai kurssilista
+  const lead = ac ? {
+    attr: `data-resume="${ac.id}"`, kicker: tr("Jatka siitä, mihin jäit", "Pick up where you left off"),
+    title: esc(ac.title), text: tr(`Vaihe ${ac.step}/${ac.steps}`, `Step ${ac.step}/${ac.steps}`), btn: tr("Jatka kurssia", "Continue course"), pct: (ac.step - 1) / ac.steps,
+  } : !started ? {
+    attr: `data-resume="start"`, kicker: tr("Uusi täällä? Aloita tästä", "New here? Start here"),
+    title: tr("Ensimmäinen kurssi: miten robotti toimii", "First course: how a robot works"),
+    text: tr("Rakenna robotti, kokeile sitä fysiikalla ja ohjaa se maaliin. Noin 20 minuuttia, ei ohjelmointia eikä tiliä.", "Build a robot, try it with physics and drive it to a goal. About 20 minutes, no programming or account needed."),
+    btn: tr("Aloita kurssi", "Start the course"),
+  } : {
+    attr: "data-learn", kicker: tr("Kurssit", "Courses"), title: tr("Valitse seuraava kurssi", "Choose your next course"),
+    text: tr(`${courses.filter((c) => c.progress >= 1).length}/${courses.length} kurssia suoritettu.`, `${courses.filter((c) => c.progress >= 1).length}/${courses.length} courses completed.`), btn: tr("Kurssit", "Courses"),
+  };
+  const leadHtml = `
+    <button class="card course-banner home-lead" ${lead.attr}>
+      <div class="home-lead-bot">${window.Robots ? Robots.svg("volt", ac ? "happy" : "idle", { size: 64 }) : icon("book")}</div>
+      <div class="home-lead-text"><small>${lead.kicker}</small><h2>${lead.title}</h2><p>${lead.text}</p>
+        ${lead.pct != null ? `<div class="course-progress"><span style="width:${Math.round(lead.pct * 100)}%"></span></div>` : ""}</div>
+      <span class="btn primary">${lead.btn} →</span>
+    </button>`;
+  // Luokkaan liittynyt oppilas: opettajan antamat kurssit näkyvät Kurssit-sivulla
+  const cls = window.Plans?.classInfo?.();
+  const classHtml = cls ? `<a class="home-note" href="#/learn">🏫 ${tr(`Luokka ${esc(cls.name || cls.code)}: opettajan antamat kurssit löytyvät Kurssit-sivulta`, `Class ${esc(cls.name || cls.code)}: your teacher's courses are on the Courses page`)} →</a>` : "";
   const teachHtml = teacher ? `
     <a class="card teach-banner" href="#/teach">
       <div class="card-icon">${icon("cap")}</div>
       <div><h3>${tr("Opettajan työkalut", "Teacher tools")}</h3>
-        <p>${tr("Luo luokkakoodi oppilaille, avaa valmis oppitunti monisteineen ja seuraa luokan edistymistä.", "Create a class code for students, open a ready lesson with worksheets and follow class progress.")}</p></div>
+        <p>${tr("Luokkahuoneet, oppilaiden eteneminen, valmiit oppitunnit ja monisteet.", "Classrooms, student progress, ready lessons and worksheets.")}</p></div>
       <span aria-hidden="true">→</span></a>` : "";
-  // Kurssinosto: kesken oleva kurssi jatketaan yhdellä klikkauksella
-  const ac = window.Courses?.resumable?.() || window.Courses?.active();
-  const courseHtml = `
-    <button class="card course-banner" ${ac ? `data-resume="${ac.id}"` : `data-learn`}>
-      <div class="card-icon">${icon("book")}</div>
-      <div><h3>${ac ? tr(`Jatka kurssia: ${esc(ac.title)}`, `Continue course: ${esc(ac.title)}`) : tr("Kurssit — opi robotiikkaa vaihe vaiheelta", "Courses — learn robotics step by step")}</h3>
-        <p>${ac ? tr(`Vaihe ${ac.step}/${ac.steps}`, `Step ${ac.step}/${ac.steps}`) : tr("Ohjatut tehtävät oikeissa työkaluissa, automaattinen tarkistus ja tekoälyopettaja.", "Guided tasks in the real tools, automatic checking and an AI tutor.")}</p></div>
-      <span aria-hidden="true">→</span>
-    </button>`;
-  const recent = recents().map(byId).filter(Boolean);
-  const recentHtml = recent.length ? `
-    <h2 class="section-title">${tr("Viimeksi käytetyt", "Recently used")}</h2>
-    <div class="planned-list" style="margin-bottom:calc(var(--pad)*2)">${recent.map((t) => `<a href="#/${t.id}">${icon(t.icon)}<span>${t.name}</span></a>`).join("")}</div>` : "";
-  const fv = favs().map(byId).filter(Boolean);
-  const favHtml = fv.length ? `
-    <h2 class="section-title">${tr("Suosikit", "Favourites")}</h2>
-    <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${fv.map((t) => card(t)).join("")}</div>` : "";
+
+  // Pikalinkit: suosikit ja viimeksi käytetyt avoimet työkalut, aluksi hyvät aloitustyökalut
+  const isTool = (t) => t && t.nav !== false && !["dashboard", "learn", "projects", "teach"].includes(t.id) && toolListed(t) && open(t);
+  let quick = [...new Set([...favs(), ...recents()])].map(byId).filter(isTool);
+  const quickTitle = quick.length ? tr("Omat työkalut", "Your tools") : tr("Hyviä aloitustyökaluja", "Good tools to start with");
+  if (!quick.length) quick = STARTER_TOOLS.map(byId).filter(isTool);
+  const quickHtml = `
+    <h2 class="section-title">${quickTitle}</h2>
+    <div class="home-quick">${quick.slice(0, 6).map((t) => `
+      <a href="#/${t.id}" title="${esc(t.desc)}">${icon(t.icon)}<span>${t.name}</span>${favs().includes(t.id) ? `<span class="fav-mini" aria-label="${tr("Suosikki", "Favourite")}">★</span>` : ""}</a>`).join("")}</div>`;
+
+  // Kaikki työkalut ryhmittäin nimilistana; lukitut näkyvät himmeinä tasomerkillä
+  const groups = {};
+  TOOLS.filter((t) => t.group !== G.general && toolListed(t)).forEach((t) => (groups[t.group] ||= []).push(t));
+  const dirHtml = `
+    <h2 class="section-title">${tr("Kaikki työkalut", "All tools")}</h2>
+    <div class="home-dir">${Object.entries(groups).map(([g, items]) => `
+      <section class="home-group"><h3>${g}</h3>
+        ${items.map((t) => `<a href="#/${t.id}" class="${open(t) ? "" : "locked"}" title="${esc(t.desc)}">${icon(t.icon)}<span>${t.name}</span>${open(t) ? "" : Plans.badge(Plans.tierForTool(t.id))}</a>`).join("")}
+      </section>`).join("")}</div>`;
+  const upgradeHtml = window.Plans && Plans.current().plan === "free" ? `
+    <a class="upgrade-banner" href="#/plans">⭐ ${tr("Osa työkaluista ja kursseista on lukittu. Opettajan luokkakoodilla saat Education-tason maksutta.", "Some tools and courses are locked. With your teacher's class code you get the Education plan for free.")}
+      <span class="ub-go">${tr("Tasot ja hinnat", "Plans and pricing")} →</span></a>` : "";
   return `
     <div class="page-head">
       <div>
-        <h1>${tr("Kojelauta", "Dashboard")}</h1>
-        <p>${tr("Robotiikan laskenta-, suunnittelu- ja simulaatiotyökalut yhdessä paikassa.", "Robotics calculation, design and simulation tools in one place.")}</p>
+        <h1>${acc?.name ? tr(`Hei, ${esc(acc.name)}!`, `Hi, ${esc(acc.name)}!`) : tr("Tervetuloa RoboLabiin!", "Welcome to RoboLab!")}</h1>
+        <p>${tr("Opi robotiikkaa kursseilla tai kokeile työkaluja vapaasti.", "Learn robotics on the courses or try the tools freely.")}</p>
       </div>
     </div>
-    ${welcome}
     ${teachHtml}
-    ${courseHtml}
-    ${window.Plans && Plans.current().plan === "free" ? `<a class="card upgrade-banner" href="#/plans">
-      <span class="ub-star" aria-hidden="true">⭐</span>
-      <div><b>${tr("Avaa kaikki kurssit ja työkalut", "Unlock all courses and tools")}</b>
-        <span>${tr(`Education ${Plans.PRICES.education.month} €/kk — ilmainen opettajan luokkakoodilla. Pro ${Plans.PRICES.pro.month} €/kk: kaikki työkalut ja kurssit.`, `Education €${Plans.PRICES.education.month}/mo — free with your teacher's class code. Pro €${Plans.PRICES.pro.month}/mo: every tool and course.`)}</span></div>
-      <span class="ub-go">${tr("Katso tasot", "See plans")} →</span></a>` : ""}
-    <div class="stats">
-      <a class="card stat" href="#/projects"><div class="k">${tr("Projekti", "Project")}</div><div class="v small">${esc(activeProject().name)}</div></a>
-      <button class="card stat stat-btn" id="dash-search"><div class="k">${tr("Etsi työkalu tai asetus", "Find a tool or setting")}</div><div class="v small">${tr("Haku", "Search")} <kbd>Ctrl+K</kbd></div></button>
-      <button class="card stat stat-btn" id="dash-ai"><div class="k">${tr("Tekoälyavustaja", "AI assistant")}</div><div class="v small">${icon("spark")} ${tr("Kysy apua", "Ask for help")} <kbd>Ctrl+I</kbd></div></button>
-    </div>
-    ${rec}${favHtml}${recentHtml}
-    <h2 class="section-title">${tr("Kaikki työkalut", "All tools")} (${tools.length})</h2>
-    <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${tools.map((t) => card(t)).join("")}</div>
-    <p class="note dash-links">${tr("Ohjeet ja tunnetut rajoitukset", "Docs and known limitations")}: <a href="https://github.com/0ippi/RoboLab#readme" target="_blank" rel="noopener">README</a>
-      · <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ilmoita ongelmasta tai ehdota parannusta", "Report a problem or suggest an improvement")}</a>
-      · ${tr("Tietosi pysyvät tässä selaimessa", "Your data stays in this browser")} (<a href="#/settings">${tr("lue lisää", "read more")}</a>)
+    ${leadHtml}
+    ${classHtml}
+    ${quickHtml}
+    ${dirHtml}
+    ${upgradeHtml}
+    <p class="note dash-links"><a href="https://github.com/0ippi/RoboLab#readme" target="_blank" rel="noopener">${tr("Ohjeet", "Docs")}</a>
+      · <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ilmoita ongelmasta", "Report a problem")}</a>
       · <a href="tietosuoja.html" target="_blank" rel="noopener">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>
   `;
 }
 
 document.addEventListener("click", (e) => {
-  if (e.target.closest("#dash-search")) { openPalette(); return; }
   if (e.target.closest("[data-learn]")) { location.hash = "#/learn"; return; }
   const resume = e.target.closest("[data-resume]");
   if (resume) { Courses.start(resume.dataset.resume); return; }
-  const g = e.target.closest("[data-goal]")?.dataset.goal;
-  if (!g) return;
-  try {
-    if (g === "reset") localStorage.removeItem("robolab-goal");
-    else localStorage.setItem("robolab-goal", g);
-  } catch {}
-  router();
 });
 
 function axisColor(i) {
@@ -1310,11 +1296,12 @@ let fps = 0;
 function renderStatusbar() {
   const bar = $("#statusbar");
   const rep = { euler: "Euler " + settings.eulerOrder, quat: tr("Kvaternio", "Quaternion"), axisangle: tr("Akseli–kulma", "Axis–angle"), matrix: tr("Matriisi", "Matrix") }[settings.rotationRep];
+  // Yksiköt ja simulaation asetukset vain edistyneessä tilassa: aloittelijalle ne ovat turhaa tekstiä
   bar.innerHTML = `
-    <span>${settings.lengthUnit} · ${settings.angleUnit === "deg" ? "deg" : "rad"} · ${settings.massUnit}</span>
+    ${settings.advanced ? `<span>${settings.lengthUnit} · ${settings.angleUnit === "deg" ? "deg" : "rad"} · ${settings.massUnit}</span>
     <span class="hide-sm">${rep}</span>
     <span class="hide-sm">${settings.upAxis}-${tr("ylös", "up")} · ${settings.handedness === "right" ? tr("oikeakätinen", "right-handed") : tr("vasenkätinen", "left-handed")}</span>
-    <span class="hide-sm">dt ${settings.timestep} ms</span>
+    <span class="hide-sm">dt ${settings.timestep} ms</span>` : ""}
     <span class="spacer"></span>
     ${saveStatusHtml()}
     <button class="sb-btn" id="sb-undo" title="${tr("Kumoa (Ctrl+Z)", "Undo (Ctrl+Z)")}" aria-label="${tr("Kumoa", "Undo")}">${icon("undo")}</button>
@@ -1487,8 +1474,15 @@ $("#shortcuts-dialog").addEventListener("mousedown", (e) => { if (e.target.id ==
 $("#shortcuts-dialog button").onclick = closeShortcuts;
 
 /* ===== Muut toiminnot ===== */
+// Kurssin oppituntipaneelin ollessa auki sivupalkki kapenee kuvakkeiksi, jotta työkalu mahtuu kahteen sarakkeeseen
+// (säätimet näkymän vieressä). Käyttäjän oma asetus ei muutu, ja sivupalkin voi silti avata (Ctrl+B).
+function applySidebar() { $("#app").classList.toggle("collapsed", !!settings.sidebarCollapsed || lessonNarrow); }
+function setLessonLayout(on) { lessonNarrow = on; applySidebar(); }
+window.setLessonLayout = setLessonLayout;
+
 function toggleSidebar() {
   if (matchMedia("(max-width: 860px)").matches) $("#app").classList.toggle("mobile-open");
+  else if (lessonNarrow && !settings.sidebarCollapsed) setLessonLayout(false);
   else set("sidebarCollapsed", !settings.sidebarCollapsed);
 }
 

@@ -768,6 +768,63 @@ async function test(name, fn) {
     w.Courses.stop();
   });
 
+  await test("Kurssit: jokaisen vaiheen tehtävät ovat alussa tekemättä ja tarkistukset osuvat työkalun oikeisiin osiin", async () => {
+    useDevice("A"); fresh(); await boot();
+    const C = w.Courses._courses, problems = [];
+    // Tarkistusten valitsimet, jotka ilmestyvät vasta edellisen tehtävän jälkeen (esim. tila vaihtuu)
+    const later = new Set(["#tr-play", "#s3-joints", "#mb-goal"]);
+    const progress = () => JSON.parse(ls().get("robolab-courses-v1") || "{}").c || {};
+    for (const course of C) {
+      w.Courses.start(course.id);
+      await sleep(300);
+      for (const [i, step] of course.steps.entries()) {
+        w.document.querySelector(`#lesson [data-l="go"][data-i="${i}"]`).click();
+        await waitFor(() => w.location.hash === "#/" + step.tool && w.document.querySelector("#content .page-head"), 6000, `${course.id}/${step.id}: työkalu`);
+        await sleep(["nn2d", "nn3d", "build2d", "build3d"].includes(step.tool) ? 1500 : 900);
+        const done = Object.keys(progress()[course.id]?.steps?.[step.id]?.tasks || {}).filter((id) => !step.tasks.find((t) => t.id === id)?.auto);
+        if (done.length) problems.push(`${course.id}/${step.id}: valmiina heti alussa: ${done.join(", ")}`);
+        for (const t of step.tasks) {
+          // did(ctx, "click" tai [tyypit], "valitsin") — valitsin voi sisältää toisenlaisia lainausmerkkejä
+          for (const m of String(t.check || "").matchAll(/,\s*(?:\[[^\]]*\]|"[a-z]+"),\s*(["'`])((?:(?!\1).)+)\1\)/g)) {
+            for (const sel of m[2].split(",").map((s) => s.trim())) {
+              if (!later.has(sel) && !w.document.querySelector(sel)) problems.push(`${course.id}/${step.id}/${t.id}: valitsinta ${sel} ei löydy`);
+            }
+          }
+        }
+      }
+      w.Courses.stop();
+    }
+    ok(!problems.length, problems.join(" · "));
+  });
+
+  await test("Aloita tästä -kurssi: rungon ja pyöräparin rakentaminen kuittaa tehtävät, Mobiilirobotti näyttää pyörien nopeudet", async () => {
+    useDevice("A"); fresh(); await boot();
+    w.Courses.start("start");
+    await waitFor(() => w.location.hash === "#/build2d" && w.document.querySelector('#rb-parts button[data-type="box"]'), 6000, "rakentaja");
+    await sleep(800);
+    const tasks = () => JSON.parse(ls().get("robolab-courses-v1")).c.start.steps.parts.tasks;
+    w.document.querySelector('#rb-parts button[data-type="box"]').click();
+    await waitFor(() => tasks().body, 3000, "runko");
+    ok(!tasks().wheels, "pyörät kuittautuivat ilman pyöriä");
+    w.document.querySelector("#rb-addWheel").click(); // yksi pyörä ei riitä
+    await sleep(1000);
+    ok(!tasks().wheels, "yksi pyörä kuittasi kahden pyörän tehtävän");
+    const B = w.__builder;
+    B.select("body", B.S.model.root);
+    await sleep(200);
+    w.document.querySelector("#rb-addWheelPair").click();
+    await waitFor(() => tasks().wheels, 3000, "pyöräpari");
+    w.document.querySelector('[data-tab="check"]').click();
+    await waitFor(() => tasks().check, 3000, "Tarkistus-välilehti");
+    const turn = w.Courses._courses.find((c) => c.id === "start").steps.findIndex((s) => s.id === "turn");
+    w.document.querySelector(`#lesson [data-l="go"][data-i="${turn}"]`).click();
+    await waitFor(() => w.location.hash === "#/sim2d" && w.document.querySelector("#mb-stats"), 4000, "mobiilirobotti");
+    await sleep(500);
+    ok(/Vasen pyörä|Left wheel/.test(w.document.querySelector("#mb-stats").textContent), "pyörien nopeudet puuttuvat");
+    w.Courses.stop();
+    fresh(); await boot(); // seuraavat testit aloittavat puhtaasta projektista
+  });
+
   await test("Loppukoe: viimeisen vaiheen jälkeen kolme kysymystä, pisteet ensimmäisistä vastauksista", async () => {
     const start = w.Courses._courses.find((c) => c.id === "start"), exam = w.Courses.exams.start;
     eq(Object.keys(w.Courses.exams).length, w.Courses._courses.length, "jokaisella kurssilla loppukoe");
@@ -830,6 +887,7 @@ async function test(name, fn) {
     q("parts").querySelector('[data-type="box"]').click(); await sleep(150);
     B.select("body", B.S.model.root); q("addWheelPair").click(); await sleep(100);
     B.select(null);
+    q("focusBtn").click(); await sleep(150); // koko robotti näkyviin (kapeampi näkymä, kun osat ovat vieressä)
     const cv = q("view"), r = cv.getBoundingClientRect();
     const ev = (type, x, y) => cv.dispatchEvent(new w.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 1 }));
     ev("pointerdown", r.left + 4, r.top + 4); ev("pointermove", r.left + 50, r.top + 50); ev("pointermove", r.right - 4, r.bottom - 4); ev("pointerup", r.right - 4, r.bottom - 4);
@@ -896,13 +954,15 @@ async function test(name, fn) {
     window.__robolabPlanOverride = null; window.__robolabSupabaseMock = null; useDevice("A"); fresh(); await boot();
     eq(w.Plans.current().plan, "free", "taso");
     ok(!w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi piilossa");
-    ok(w.document.querySelector(".upgrade-banner"), "kojelaudan mainos puuttuu");
-    ok(w.document.querySelector('.nav-item.locked[data-route="pid"] .nav-lock'), "lukkoa ei näy valikossa");
+    ok(w.document.querySelector(".upgrade-banner"), "etusivun tasomaininta puuttuu");
+    // Valikossa vain avoimet työkalut; lukitut yhdellä rivillä ja etusivun hakemistossa tasomerkillä
+    ok(!w.document.querySelector('.nav-item[data-route="pid"]'), "lukittu työkalu näkyy valikossa");
+    ok(/\(\d+\)/.test(w.document.querySelector(".nav-more")?.textContent || ""), "Lukitut työkalut -rivi puuttuu");
+    ok(w.document.querySelector('.home-group a.locked[href="#/pid"] .plan-badge'), "lukittu työkalu puuttuu etusivun hakemistosta");
+    ok(w.document.querySelector('.home-lead[data-resume="start"]'), "ensimmäisen kurssin aloitus puuttuu etusivulta");
+    ok(!w.document.querySelector(".welcome, .stats, .goal-list"), "vanhat etusivun osat näkyvät yhä");
     ok(!w.document.querySelector('.nav-item[data-route="teach"]'), "Opettajille näkyy valikossa muulle kuin opettajalle");
-    ok(!w.document.querySelector('#content a.card[href="#/teach"]') && !w.document.querySelector(".teach-banner"), "Opettajille näkyy kojelaudalla");
-    w.localStorage.setItem("robolab-goal", "teach"); await go("#/projects", 100); await go("#/dashboard", 300);
-    ok(!w.document.querySelector('#content a.card[href="#/teach"]') && w.document.querySelector('#content a.card[href="#/plans"]'), "opettajan suositus ei ohjaa Tasot-sivulle");
-    w.localStorage.removeItem("robolab-goal");
+    ok(!w.document.querySelector('#content a[href="#/teach"]') && !w.document.querySelector(".teach-banner"), "Opettajille näkyy etusivulla");
     await go("#/pid");
     ok(w.document.querySelector(".locked-card"), "PID ei ole lukittu");
     ok(!w.document.querySelector("#pid-results"), "lukittu työkalu avautui");

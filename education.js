@@ -567,10 +567,13 @@ const Education = (() => {
       <details class="room-assign" ${assigned.size ? "" : "open"}>
         <summary><b>${tr("Luokan kurssit", "Class courses")}</b> · ${assigned.size ? tr(`${assigned.size} valittu`, `${assigned.size} selected`) : tr("valitse kurssit, jotka luokan pitää suorittaa", "choose the courses the class must complete")}</summary>
         <p class="note">${tr("Valitut kurssit näkyvät oppilaille Kurssit-sivun alussa järjestyksessä. Palautuspäivä on vapaaehtoinen.", "The selected courses show to students at the top of the Courses page in order. The due date is optional.")}</p>
-        <div class="assign-list">${Courses._courses.map((c) => `<label class="assign-row">
-          <input type="checkbox" data-assign="${c.id}" ${assigned.has(c.id) ? "checked" : ""}>
-          <span><b>${esc(c.title)}</b><small>${esc(c.level)} · ~${c.minutes} min</small></span>
-          <input type="date" data-due="${c.id}" value="${esc(assigned.get(c.id) || "")}" aria-label="${tr("Palautuspäivä", "Due date")}"></label>`).join("")}</div>
+        <div class="assign-list">${Courses._courses.map((c) => {
+          // Luokkakoodilla oppilas saa Education-tason: muiden tasojen kursseja hän ei voi avata
+          const ok = !window.Plans || ["free", "education"].includes(Plans.tierForCourse(c.id));
+          return `<label class="assign-row ${ok ? "" : "locked"}">
+          <input type="checkbox" data-assign="${c.id}" ${assigned.has(c.id) ? "checked" : ""} ${ok || assigned.has(c.id) ? "" : "disabled"}>
+          <span><b>${esc(c.title)}</b><small>${esc(c.level)} · ~${c.minutes} min${ok ? "" : ` · ${tr("ei sisälly oppilaiden Education-tasoon", "not included in the students' Education plan")}`}</small></span>
+          <input type="date" data-due="${c.id}" value="${esc(assigned.get(c.id) || "")}" aria-label="${tr("Palautuspäivä", "Due date")}" ${ok || assigned.has(c.id) ? "" : "disabled"}></label>`; }).join("")}</div>
         <div class="row-actions"><button class="btn primary" data-edu="room-save">${tr("Tallenna kurssit", "Save courses")}</button></div>
       </details>
       <div class="room-bar"><h4>${tr("Oppilaiden eteneminen", "Student progress")}</h4>

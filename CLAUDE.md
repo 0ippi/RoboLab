@@ -22,6 +22,14 @@ Kun muutat sovellusta:
 
 ## Kurssien tarkistukset
 - Jokaisella tehtävällä on `check`; toimintoja (napit, valinnat, vedot) seurataan `did(ctx, tyyppi, valitsin)`-apurilla vaiheen alusta (`ctx.t0`). Katso/lue-tehtävä ilman checkiä kuitataan, kun työkalu on ollut auki `look` sekuntia (oletus 8). Tein sen -nappia ei ole.
+- Tehtävän pitää olla mahdollinen siinä työkalussa, johon vaihe vie (esim. 2D-rakentaja näyttää robotin sivulta: siinä ei voi kääntyä; kääntyminen opetetaan Mobiilirobotti 2D:ssä). Tarkista teksti, nappien nimet ja vihjeiden luvut työkalun koodista tai ajamalla ne.
+- Tehtävä ei saa olla valmis vaiheen alussa oletustilalla (`auto: true` vain tarkoituksella). `enter()` valmistelee vaiheen kerran (esim. PID-kesto `pidDuration`, kartan palautus). Tilannekohtaiset apurit: `driven` (fysiikkatestin ajomatka, `builderStatus().x/x0/run`), `turnedSince` (`sim2dStatus().spin/arc`), `pidPeak`, `pathLen`, `wheelsOf`.
+- Älä viittaa tekstissä vasempaan/oikeaan reunaan: kurssipaneelin kanssa työkalu voi olla yhdessä sarakkeessa. Nimeä kortti tai nappi.
+- `tests-app.html` käy jokaisen kurssin jokaisen vaiheen läpi: tehtävät ovat alussa tekemättä ja `did()`-valitsimet löytyvät työkalusta.
+
+## Etusivu ja valikko
+- Etusivu (`dashboardPage` app.js:ssä): pääpolku (jatka kurssia / ensimmäinen kurssi), omat työkalut (suosikit ja viimeksi käytetyt) ja kaikki työkalut ryhmittäin nimilistana. Ei isoja mainoksia: ilmaiselle tasolle yksi `.upgrade-banner`-rivi.
+- Sivupalkissa vain avoimet työkalut (`navShown`); lukitut ovat yhdellä `.nav-more`-rivillä (→ Tasot). Kurssipaneelin ollessa auki sivupalkki kapenee (`setLessonLayout`), käyttäjän asetus ei muutu.
 
 ## Mallit ja valitsimet
 - Valmiit robotit: `robosim/core/models.js` (2D) ja `robosim/3d/models3d.js` (3D). Hahmot (`CHARACTER_KEYS` library.js:ssä) näkyvät valitsimissa omana osionaan.
