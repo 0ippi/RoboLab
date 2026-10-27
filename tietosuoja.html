@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tietosuojaseloste · RoboLab</title>
+<link rel="icon" href="icons/favicon-32.png">
+<style>
+  :root { --bg: #f6f7f9; --surface: #fff; --text: #1b1f24; --text-2: #4b5563; --border: #d9dde3; --accent: #2563eb; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111418; --surface: #1a1f25; --text: #e7eaee; --text-2: #a7b0bb; --border: #2c333b; --accent: #7aa7ff; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin: 16px 0; }
+  h1 { font-size: 1.7rem; margin: 8px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 24px 0 6px; }
+  .meta, small { color: var(--text-2); }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; vertical-align: top; border-top: 1px solid var(--border); padding: 8px 6px; }
+  ul { padding-left: 20px; }
+  nav { display: flex; gap: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main>
+  <nav><a href="./">← RoboLab</a><a href="#en">English</a></nav>
+  <h1>Tietosuojaseloste</h1>
+  <p class="meta">RoboLab · päivitetty 27.10.2026</p>
+
+  <div class="card">
+    <p><b>Lyhyesti:</b> RoboLabia voi käyttää ilman tiliä, jolloin kaikki tiedot pysyvät omassa selaimessasi eikä niitä lähetetä minnekään. Jos luot vapaaehtoisen pilvitilin, tallennamme sähköpostiosoitteesi, nimesi tai nimimerkkisi ja RoboLab-tietosi, jotta ne toimivat kaikilla laitteillasi. Emme käytä analytiikkaa, mainoksia tai seurantaa emmekä myy tai luovuta tietoja markkinointiin.</p>
+  </div>
+
+  <h2>1. Rekisterinpitäjä ja yhteydenotot</h2>
+  <p>Palvelun ylläpitäjä on RoboLabin kehittäjä (GitHub: <a href="https://github.com/0ippi">0ippi</a>). Tietosuojaa koskevat kysymykset: <a href="https://github.com/0ippi/RoboLab/issues">github.com/0ippi/RoboLab/issues</a>. Älä kirjoita henkilötietoja julkiseen viestiin: kerro, että haluat ottaa yhteyttä tietosuoja-asiassa, niin sovimme yksityisen yhteystavan.</p>
+
+  <h2>2. Mitä tietoja käsitellään</h2>
+  <table>
+    <tr><th>Tilanne</th><th>Tiedot</th><th>Missä</th></tr>
+    <tr><td>Käyttö ilman tiliä</td><td>Projektit, kurssien eteneminen, omat robotit, asetukset ja paikalliset käyttäjätilit</td><td>Vain omassa selaimessasi (localStorage). Eivät lähde laitteelta.</td></tr>
+    <tr><td>Pilvitili (vapaaehtoinen)</td><td>Sähköposti, salasanan tiiviste, nimi tai nimimerkki, RoboLab-tiedot (projektit, kurssit, robotit, asetukset; ei API-avainta) ja kirjautumisajat</td><td>Supabase, EU (Frankfurt)</td></tr>
+    <tr><td>Tilaus</td><td>Taso (Free, Education, Teacher, Pro), voimassaolo ja oppilaspaikat. Maksun yhteydessä maksupalvelun asiakas- ja tilaustunnus.</td><td>Supabase, EU. Korttitiedot käsittelee vain maksupalvelu, eivät ne tule RoboLabille.</td></tr>
+    <tr><td>Opettajan luokkakoodi</td><td>Luokan nimi, koodi, paikkamäärä ja voimassaolo</td><td>Supabase, EU</td></tr>
+    <tr><td>Oppilas syöttää luokkakoodin</td><td>Satunnainen laitetunnus (ei nimeä, ei tiliä), jotta samaa paikkaa ei käytetä kahdesti</td><td>Supabase, EU</td></tr>
+    <tr><td>Edistymistiedosto opettajalle</td><td>Nimimerkki, luokkatunnus ja kurssien eteneminen</td><td>Tiedosto, jonka oppilas itse antaa opettajalle. Opettajan näkymä pitää sen vain muistissa.</td></tr>
+    <tr><td>Volt Claude API -avaimella (vapaaehtoinen)</td><td>Voltille kirjoittamasi viestit ja halutessasi avoimen työkalun arvot</td><td>Lähetetään suoraan omalla avaimellasi Anthropicille vastausta varten</td></tr>
+  </table>
+
+  <h2>3. Käsittelyn tarkoitus ja peruste</h2>
+  <ul>
+    <li><b>Pilvitili ja synkronointi:</b> palvelun tarjoaminen, jota käyttäjä on itse pyytänyt (sopimus).</li>
+    <li><b>Tilaukset ja luokkakoodit:</b> maksetun tason ja oppilaspaikkojen hallinta (sopimus) sekä kirjanpito, kun maksuja käsitellään (lakisääteinen velvoite).</li>
+    <li><b>Tietoturva:</b> kirjautumisen ja palvelun väärinkäytön estäminen (oikeutettu etu).</li>
+  </ul>
+  <p>Tietoja ei käytetä profilointiin, mainontaan eikä automaattisiin päätöksiin.</p>
+
+  <h2>4. Lapset ja koulut</h2>
+  <p>Pilvitilin voi luoda 13 vuotta täyttänyt tai nuorempi huoltajan luvalla. Oppilaat eivät tarvitse tiliä: opettajan luokkakoodi toimii ilman nimeä tai sähköpostia. Kouluja suosittelemme ohjeistamaan oppilaita käyttämään edistymistiedostoissa nimimerkkiä. Jos koulu tai kunta haluaa sopia henkilötietojen käsittelystä, ota yhteyttä.</p>
+
+  <h2>5. Palveluntarjoajat</h2>
+  <ul>
+    <li><b>Supabase</b>: tietokanta ja kirjautuminen, palvelimet EU:ssa (Frankfurt).</li>
+    <li><b>GitHub Pages</b>: sivuston jakelu. GitHub voi tallentaa teknisiä lokitietoja, kuten IP-osoitteen.</li>
+    <li><b>jsDelivr</b>: ohjelmakirjastojen jakelu (esim. 3D-grafiikka). Pyynnöt näkyvät jakeluverkolle kuten mikä tahansa verkkosivun lataus.</li>
+    <li><b>Hugging Face</b>: jos itse lataat Voltin ilmaisen kielimallin, mallitiedostot ladataan sieltä. Malli toimii sen jälkeen omalla laitteellasi.</li>
+    <li><b>Anthropic</b>: vain jos lisäät oman Claude API -avaimen.</li>
+    <li><b>Maksupalvelu</b> (esim. Stripe): vain kun ostat tilauksen verkossa.</li>
+  </ul>
+  <p>Osa palveluntarjoajista on Yhdysvalloissa. Niiden kanssa siirrot perustuvat EU:n vakiosopimuslausekkeisiin tai EU–USA-tietosuojakehykseen.</p>
+
+  <h2>6. Säilytysaika</h2>
+  <p>Pilvitilin tiedot säilytetään, kunnes poistat tilin. Poisto poistaa tilin, synkronoidut tiedot, tilaustiedon ja opettajan luokat. Oppilaiden laitetunnukset poistuvat, kun luokka poistetaan. Kirjanpitoon liittyvät maksutiedot säilytetään lain vaatiman ajan. Selaimeen tallennetut tiedot ovat omassa hallinnassasi.</p>
+
+  <h2>7. Oikeutesi</h2>
+  <ul>
+    <li><b>Tietojen saaminen ja siirto:</b> profiilin varmuuskopio vie kaikki tietosi tiedostoon.</li>
+    <li><b>Oikaisu:</b> voit muuttaa nimesi ja tietosi sovelluksessa.</li>
+    <li><b>Poisto:</b> Profiili → Poista pilvitili poistaa tilin ja kaikki sen tiedot pysyvästi.</li>
+    <li><b>Muut pyynnöt</b> (esim. vastustaminen tai rajoittaminen): ota yhteyttä kohdan 1 mukaisesti.</li>
+  </ul>
+  <p>Voit myös tehdä valituksen valvontaviranomaiselle. Suomessa se on tietosuojavaltuutetun toimisto (<a href="https://tietosuoja.fi">tietosuoja.fi</a>).</p>
+
+  <h2>8. Tietoturva</h2>
+  <p>Yhteydet ovat salattuja (HTTPS). Pilvessä jokainen käyttäjä pääsee rivitason oikeuksien (RLS) avulla käsiksi vain omiin tietoihinsa. Salasanoja ei tallenneta selväkielisinä. Selaimen paikallista tallennusta ei salata, joten kuka tahansa saman laitteen käyttäjä voi lukea sen.</p>
+
+  <h2 id="en">In English</h2>
+  <div class="card">
+    <p>RoboLab works without an account; then all data stays in your browser and is not sent anywhere. If you create an optional cloud account, we store your email, password hash, name or alias and your RoboLab data in Supabase (EU, Frankfurt) so it works on all your devices. Plans, class codes and a random device ID (for students using a class code, no name needed) are stored there too. Card details are handled only by the payment provider. We use no analytics, ads or tracking and never sell data. Service providers: Supabase (EU), GitHub Pages, jsDelivr, Hugging Face (only if you download the free AI model), Anthropic (only with your own API key) and a payment provider (only when buying). Accounts are for ages 13+ or younger with a guardian's permission. You can export your data with the profile backup and delete your cloud account and all its data under Profile. Questions: <a href="https://github.com/0ippi/RoboLab/issues">GitHub issues</a> (don't post personal data publicly). You can also complain to your data protection authority.</p>
+  </div>
+</main>
+</body>
+</html>

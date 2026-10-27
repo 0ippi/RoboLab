@@ -854,15 +854,19 @@ document.addEventListener("click", (e) => {
 });
 
 /* ===== Navigaatio ===== */
+// Opettajille-sivu näkyy listoissa vain opettajille (Teacher- ja Pro-taso); suora linkki näyttää tasoesittelyn
+const toolListed = (t) => t.nav !== false && (t.id !== "teach" || !window.Plans || Plans.canTeach());
+
 function renderNav() {
   const groups = {};
   const f = favs();
-  if (f.length) groups[tr("Suosikit", "Favourites")] = f.map((id) => TOOLS.find((t) => t.id === id));
-  TOOLS.filter((t) => t.nav !== false).forEach((t) => (groups[t.group] ||= []).push(t));
+  if (f.length) groups[tr("Suosikit", "Favourites")] = f.map((id) => TOOLS.find((t) => t.id === id)).filter(toolListed);
+  if (!groups[tr("Suosikit", "Favourites")]?.length) delete groups[tr("Suosikit", "Favourites")];
+  TOOLS.filter(toolListed).forEach((t) => (groups[t.group] ||= []).push(t));
   $("#nav").innerHTML = Object.entries(groups).map(([g, items]) => `
     <div class="nav-group-title">${g}</div>
     ${items.map((t) => `
-      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${window.Plans && !Plans.canTool(t.id) ? "locked" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
+      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${window.Plans && !Plans.canTool(t.id) ? "locked" : ""} ${t.id === "teach" ? "nav-teach" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
         ${icon(t.icon)}<span class="label">${t.name}</span>${window.Plans && !Plans.canTool(t.id) ? `<span class="nav-lock" aria-label="${tr("Lukittu", "Locked")}" title="${Plans.NAMES[Plans.tierForTool(t.id)]}">🔒</span>` : ""}
       </a>`).join("")}
   `).join("");
@@ -964,7 +968,8 @@ const GOALS = {
 function goal() { try { return localStorage.getItem("robolab-goal") || ""; } catch { return ""; } }
 
 function dashboardPage() {
-  const tools = TOOLS.filter((t) => t.id !== "dashboard" && t.id !== "projects" && t.nav !== false);
+  const tools = TOOLS.filter((t) => t.id !== "dashboard" && t.id !== "projects" && toolListed(t));
+  const teacher = window.Plans && Plans.canTeach();
   const card = (t, why) => `
     <a class="card" href="#/${t.id}">
       <div class="card-icon">${icon(t.icon)}</div>
@@ -988,7 +993,16 @@ function dashboardPage() {
     </section>` : "";
   const rec = g && GOALS[g] ? `
     <h2 class="section-title">${tr("Suositellut sinulle", "Recommended for you")} · ${GOALS[g].name} <button class="link-btn" data-goal="reset" style="margin-left:8px">${tr("vaihda", "change")}</button></h2>
-    <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${GOALS[g].tools.map(([id, why]) => card(byId(id), why)).join("")}</div>` : "";
+    <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${GOALS[g].tools.map(([id, why]) => id === "teach" && !teacher
+      ? card(byId("plans"), tr("Teacher-taso: valmiit oppitunnit, luokkakoodit oppilaille ja luokan edistyminen", "Teacher plan: ready lessons, class codes for students and class progress"))
+      : card(byId(id), why)).join("")}</div>` : "";
+  // Opettajalle oma, selvä aloituskohta kojelaudan alkuun
+  const teachHtml = teacher ? `
+    <a class="card teach-banner" href="#/teach">
+      <div class="card-icon">${icon("cap")}</div>
+      <div><h3>${tr("Opettajan työkalut", "Teacher tools")}</h3>
+        <p>${tr("Luo luokkakoodi oppilaille, avaa valmis oppitunti monisteineen ja seuraa luokan edistymistä.", "Create a class code for students, open a ready lesson with worksheets and follow class progress.")}</p></div>
+      <span aria-hidden="true">→</span></a>` : "";
   // Kurssinosto: kesken oleva kurssi jatketaan yhdellä klikkauksella
   const ac = window.Courses?.resumable?.() || window.Courses?.active();
   const courseHtml = `
@@ -1014,6 +1028,7 @@ function dashboardPage() {
       </div>
     </div>
     ${welcome}
+    ${teachHtml}
     ${courseHtml}
     ${window.Plans && Plans.current().plan === "free" ? `<a class="card upgrade-banner" href="#/plans">
       <span class="ub-star" aria-hidden="true">⭐</span>
@@ -1030,7 +1045,8 @@ function dashboardPage() {
     <div class="grid" style="margin-bottom:calc(var(--pad)*2)">${tools.map((t) => card(t)).join("")}</div>
     <p class="note dash-links">${tr("Ohjeet ja tunnetut rajoitukset", "Docs and known limitations")}: <a href="https://github.com/0ippi/RoboLab#readme" target="_blank" rel="noopener">README</a>
       · <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ilmoita ongelmasta tai ehdota parannusta", "Report a problem or suggest an improvement")}</a>
-      · ${tr("Tietosi pysyvät tässä selaimessa", "Your data stays in this browser")} (<a href="#/settings">${tr("lue lisää", "read more")}</a>)</p>
+      · ${tr("Tietosi pysyvät tässä selaimessa", "Your data stays in this browser")} (<a href="#/settings">${tr("lue lisää", "read more")}</a>)
+      · <a href="tietosuoja.html" target="_blank" rel="noopener">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>
   `;
 }
 
@@ -1359,7 +1375,7 @@ const TOOL_KEYWORDS = {
 function commands() {
   const app = tr("Sovellus", "App");
   return [
-    ...TOOLS.map((t) => ({ label: t.name, group: t.group, icon: t.icon, keywords: t.desc + " " + (TOOL_KEYWORDS[t.id] || ""), run: () => (location.hash = "#/" + t.id) })),
+    ...TOOLS.filter((t) => t.id !== "teach" || toolListed(t)).map((t) => ({ label: t.name, group: t.group, icon: t.icon, keywords: t.desc + " " + (TOOL_KEYWORDS[t.id] || ""), run: () => (location.hash = "#/" + t.id) })),
     { label: tr("Asetukset", "Settings"), group: app, icon: "gear", run: () => (location.hash = "#/settings") },
     ...SECTIONS.map((s) => ({ label: tr("Asetukset: ", "Settings: ") + s.title, group: app, icon: "gear", keywords: s.desc + " " + (s.fields || []).map((f) => f.label || "").join(" "), run: () => openSettingsSection(s.id) })),
     { label: tr("Tekoälyavustaja", "AI assistant"), group: app, icon: "spark", run: () => window.Assistant?.open() },

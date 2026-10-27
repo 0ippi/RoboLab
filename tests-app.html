@@ -32,7 +32,7 @@ window.__robolabPlanOverride = "pro";
 // Pilvitilin testiversio: Supabase-asiakkaan pienin tarvittava osa muistissa. "Palvelin" on yhteinen,
 // istunto tallentuu laitteen (tallennus-Mapin) omaan avaimeen kuten oikeassa kirjastossa.
 function makeSupabaseMock() {
-  const server = { users: new Map(), rows: new Map(), subs: new Map(), classes: new Map(), clock: 0, confirm: false };
+  const server = { users: new Map(), rows: new Map(), subs: new Map(), classes: new Map(), devs: new Set(), clock: 0, confirm: false };
   const S = () => window.__robolabStores.local;
   const sess = () => { try { return JSON.parse(S().get("rlcloud-auth")); } catch { return null; } };
   const ts = () => new Date(Date.UTC(2026, 0, 1) + ++server.clock * 1000).toISOString();
@@ -107,6 +107,12 @@ function makeSupabaseMock() {
         const code = Array.from({ length: 8 }, () => A[Math.floor(Math.random() * A.length)]).join("");
         server.classes.set(code, { code, teacher: uid, name: args.p_name, seats: args.p_seats, valid_until: new Date(Date.now() + 365 * 864e5).toISOString(), devices: new Set() });
         return { data: { code, seats: args.p_seats }, error: null };
+      }
+      if (name === "am_developer") return uid ? { data: server.devs.has(uid), error: null } : err("not authenticated");
+      if (name === "dev_set_plan") {
+        if (!server.devs.has(uid)) return err("not-developer");
+        server.subs.set(uid, { plan: args.p_plan, seats: args.p_seats || 0, valid_until: null });
+        return { data: { plan: args.p_plan, valid_until: null, seats: args.p_seats || 0 }, error: null };
       }
       if (name === "my_classes") return { data: [...server.classes.values()].filter((c) => c.teacher === uid).map((c) => ({ code: c.code, name: c.name, seats: c.seats, valid_until: c.valid_until, used: c.devices.size })), error: null };
       if (name === "delete_class") { const c = server.classes.get(args.p_code); if (c?.teacher === uid) server.classes.delete(args.p_code); return { data: null, error: null }; }
@@ -633,6 +639,11 @@ async function test(name, fn) {
     ok(!w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi piilossa");
     ok(w.document.querySelector(".upgrade-banner"), "kojelaudan mainos puuttuu");
     ok(w.document.querySelector('.nav-item.locked[data-route="pid"] .nav-lock'), "lukkoa ei näy valikossa");
+    ok(!w.document.querySelector('.nav-item[data-route="teach"]'), "Opettajille näkyy valikossa muulle kuin opettajalle");
+    ok(!w.document.querySelector('#content a.card[href="#/teach"]') && !w.document.querySelector(".teach-banner"), "Opettajille näkyy kojelaudalla");
+    w.localStorage.setItem("robolab-goal", "teach"); await go("#/projects", 100); await go("#/dashboard", 300);
+    ok(!w.document.querySelector('#content a.card[href="#/teach"]') && w.document.querySelector('#content a.card[href="#/plans"]'), "opettajan suositus ei ohjaa Tasot-sivulle");
+    w.localStorage.removeItem("robolab-goal");
     await go("#/pid");
     ok(w.document.querySelector(".locked-card"), "PID ei ole lukittu");
     ok(!w.document.querySelector("#pid-results"), "lukittu työkalu avautui");
@@ -709,15 +720,41 @@ async function test(name, fn) {
     pm.server.subs.set(uid, { plan: "teacher", seats: 0, valid_until: null });
     await w.Plans.refresh({ force: true });
     eq(w.Plans.canTeach(), true, "Opettajille"); eq(w.Plans.canTool("nn3d"), false, "Pro-työkalu");
+    ok(w.document.querySelector('.nav-item.nav-teach[data-route="teach"]'), "Opettajille puuttuu valikosta");
+    await go("#/dashboard", 300);
+    ok(w.document.querySelector('.teach-banner[href="#/teach"]'), "opettajan aloituskohta puuttuu kojelaudalta");
     await go("#/teach", 800);
     ok(!w.document.querySelector(".locked-card"), "Opettajille lukittu");
     ok(w.document.querySelector("#edu-newclass"), "luontilomake puuttuu");
+    eq(w.document.querySelectorAll('.edu-steps [data-edu="jump"]').length, 3, "pikaohjeen vaiheet");
     const r = await w.Cloud.rpc("create_class", { p_name: "8A", p_seats: 5 });
     ok(/^[A-Z2-9]{8}$/.test(r.code), "koodi: " + r.code);
     let e = null; try { await w.Cloud.rpc("create_class", { p_name: "8B", p_seats: 1 }); } catch (x) { e = x.raw; }
     ok(/no-seats/.test(e || ""), "paikkaraja: " + e);
     await go("#/dashboard", 200); await go("#/teach", 800);
     ok(w.document.querySelector("#edu-classes").textContent.includes(r.code), "luokka ei näy listassa");
+  });
+
+  await test("Kehittäjätila: vain kehittäjä näkee tasonvaihtimen ja voi vaihtaa omaa tasoaan", async () => {
+    const uid = G("Accounts").current().cloudUid;
+    pm.server.subs.delete(uid);
+    await w.Plans.refresh({ force: true });
+    await go("#/plans", 300);
+    ok(!w.document.querySelector(".dev-card"), "tavallinen käyttäjä näkee kehittäjätilan");
+    let e = null; try { await w.Cloud.rpc("dev_set_plan", { p_plan: "pro", p_seats: 0 }); } catch (x) { e = x.raw || x.message; }
+    ok(/not-developer/.test(e || ""), "palvelin salli tasonvaihdon: " + e);
+    pm.server.devs.add(uid);
+    await w.Plans.refresh({ force: true });
+    eq(w.Plans.isDeveloper(), true, "kehittäjä");
+    await go("#/dashboard", 100); await go("#/plans", 300);
+    ok(w.document.querySelector(".dev-card"), "kehittäjätila puuttuu");
+    w.document.querySelector('[data-dev-plan="teacher"]').click();
+    await waitFor(() => w.Plans.current().plan === "teacher", 3000, "tason vaihto");
+    eq(w.Plans.canTeach(), true, "Teacher avasi Opettajille");
+    await waitFor(() => w.document.querySelector('[data-dev-plan="pro"]'), 2000, "napit");
+    w.document.querySelector('[data-dev-plan="pro"]').click();
+    await waitFor(() => w.Plans.current().plan === "pro", 3000, "Pro");
+    ok(!w.document.querySelector("#upgrade-btn").hidden, "kehittäjä ei pääse Tasot-sivulle Pro-tasolla");
     window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro"; useDevice("A");
   });
 

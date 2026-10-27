@@ -39,7 +39,8 @@
         ${up ? `<label class="field"><span>${tr("Nimi", "Name")}</span><input id="cl-name" maxlength="40" autocomplete="nickname"></label>` : ""}
         <label class="field"><span>${tr("Sähköposti", "Email")}</span><input id="cl-email" type="email" autocomplete="email" maxlength="200" value="${esc(opts.email || "")}"></label>
         <label class="field"><span>${tr("Salasana", "Password")}${up ? tr(" (vähintään 8 merkkiä)", " (at least 8 characters)") : ""}</span><input id="cl-pw" type="password" autocomplete="${up ? "new-password" : "current-password"}"></label>
-        ${up ? `<label class="acc-check"><input type="checkbox" id="cl-age"> ${tr("Olen vähintään 13-vuotias, tai huoltajani on antanut luvan.", "I am at least 13 years old, or my guardian has given permission.")}</label>` : ""}
+        ${up ? `<label class="acc-check"><input type="checkbox" id="cl-age"> ${tr("Olen vähintään 13-vuotias, tai huoltajani on antanut luvan.", "I am at least 13 years old, or my guardian has given permission.")}</label>
+        <p class="note small">${tr("Tilin luomalla hyväksyt, että tietosi tallennetaan EU:ssa sijaitsevaan pilveen.", "By creating an account you agree that your data is stored in a cloud in the EU.")} <a href="tietosuoja.html" target="_blank" rel="noopener">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>` : ""}
         <p class="acc-err" id="cl-err" role="alert" ${msg ? "" : "hidden"}>${esc(msg)}</p>
         <div class="acc-actions">
           <button type="button" class="btn" data-back>${tr("Takaisin", "Back")}</button>

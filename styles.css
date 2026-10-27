@@ -1240,3 +1240,19 @@ body.acc-locked .ai-fab { display: none; }
 .class-active { color: var(--ok); }
 .class-code { font-family: ui-monospace, monospace; letter-spacing: .12em; }
 .plans-faq { padding-left: 18px; margin: 0; line-height: 1.6; }
+/* Opettajalle näkyvät aloituskohdat */
+.teach-banner { display: flex; align-items: center; gap: 14px; margin-bottom: calc(var(--pad) * 1.5); text-decoration: none; color: inherit; border-color: #c27c0e; background: linear-gradient(135deg, rgba(194, 124, 14, .14), var(--surface) 70%); }
+.teach-banner > div:nth-child(2) { flex: 1; min-width: 0; }
+.teach-banner h3 { margin: 0 0 2px; }
+.teach-banner p { margin: 0; color: var(--text-2); font-size: .9rem; }
+.nav-item.nav-teach .label { font-weight: 600; }
+.nav-item.nav-teach svg { color: #c27c0e; }
+.edu-steps { list-style: none; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); padding: 0; margin: var(--pad) 0 0; }
+.edu-steps li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.edu-steps .link-btn { text-align: left; padding: 0; }
+.edu-steps span { color: var(--text-2); font-size: .88rem; }
+/* Kehittäjätila (Tasot-sivu) */
+.dev-card { border: 1px dashed var(--accent); margin-bottom: var(--pad); }
+.dev-plans { flex-wrap: wrap; }
+.dev-seats { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .85rem; color: var(--text-2); }
+.dev-seats input { width: 80px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface-2); color: var(--text); font: inherit; }

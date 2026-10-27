@@ -352,12 +352,17 @@ const Education = (() => {
           <div><h2>${tr("Robotiikkaa luokassa ilman valmistelutaakkaa", "Robotics in class without the prep work")}</h2>
           <p>${tr("Valmiissa oppitunneissa on tavoitteet, tunnin kulku minuutteineen, oppilaan moniste, ratkaisut ja arviointikriteerit. Oppilaat tarvitsevat vain selaimen: ei tilejä, ei asennuksia eikä robotteja.",
             "The ready-made lessons include goals, a minute-by-minute plan, a student worksheet, solutions and assessment criteria. Students only need a browser: no accounts, no installs and no robots.")}</p></div></div>
+        <ol class="edu-steps">
+          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-classes"><b>${tr("1. Luo luokkakoodi", "1. Create a class code")}</b></button><span>${tr("Oppilaat syöttävät sen ja saavat kurssit auki ilman tilejä.", "Students enter it and get the courses without accounts.")}</span></li>
+          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-lessons"><b>${tr("2. Valitse oppitunti", "2. Pick a lesson")}</b></button><span>${tr("Tulosta opettajan ohje ja oppilaan moniste.", "Print the teacher guide and the student worksheet.")}</span></li>
+          <li><button class="link-btn" data-edu="jump" data-to="edu-sec-progress"><b>${tr("3. Katso edistyminen", "3. See progress")}</b></button><span>${tr("Tuo oppilaiden palauttamat tiedostot tunnin lopuksi.", "Import the files students hand in at the end of the lesson.")}</span></li>
+        </ol>
       </div>
 
-      <h2 class="section-title">${tr("Luokkakoodit oppilaille", "Class codes for students")}</h2>
+      <h2 class="section-title" id="edu-sec-classes">${tr("Luokkakoodit oppilaille", "Class codes for students")}</h2>
       <div class="card" id="edu-classes">${classesIntroHtml()}</div>
 
-      <h2 class="section-title">${tr("Valmiit oppitunnit", "Ready-made lessons")}</h2>
+      <h2 class="section-title" id="edu-sec-lessons">${tr("Valmiit oppitunnit", "Ready-made lessons")}</h2>
       <div class="edu-lessons">${LESSONS.map((L) => `
         <article class="card edu-lesson">
           <div class="edu-lesson-top">${Robots.svg(L.guide, "idle", { size: 56 })}
@@ -378,7 +383,7 @@ const Education = (() => {
             <td><button class="btn small" data-edu="copy" data-c="${c.id}">${tr("Kopioi linkki", "Copy link")}</button></td></tr>`).join("")}</tbody></table>
       </div>
 
-      <h2 class="section-title">${tr("Luokan edistyminen", "Class progress")}</h2>
+      <h2 class="section-title" id="edu-sec-progress">${tr("Luokan edistyminen", "Class progress")}</h2>
       <div class="card">
         <p>${tr("Oppilas valitsee Kurssit-sivun lopusta 'Palauta edistyminen opettajalle', kirjoittaa luokkatunnuksen ja nimimerkin ja tallentaa tiedoston. Kerää tiedostot esimerkiksi oppimisalustan palautuskansioon ja tuo ne tähän.",
           "The student picks 'Hand in progress to the teacher' at the end of the Courses page, types the class code and an alias, and saves the file. Collect the files, e.g. in your learning platform's hand-in folder, and import them here.")}</p>
@@ -481,6 +486,7 @@ const Education = (() => {
     if (!b) return;
     const L = LESSONS.find((x) => x.id === b.dataset.id);
     const act = b.dataset.edu;
+    if (act === "jump") { document.getElementById(b.dataset.to)?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     if (act === "open" && L) { showDetail(L); return; }
     if (act === "start" && L) { Courses.start(L.course); return; }
     if (act === "print-teacher" && L) { printHtml(L.title, teacherDoc(L)); return; }

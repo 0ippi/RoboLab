@@ -110,7 +110,9 @@ const Plans = (() => {
       if (force || !p || Date.now() - (p.checked || 0) > 60000) {
         try {
           const r = await Cloud.rpc("my_plan");
-          all[acc.cloudUid] = { plan: FEATURES[r?.plan] ? r.plan : "free", until: r?.valid_until || null, seats: r?.seats || 0, checked: Date.now() };
+          let dev = false;
+          try { dev = (await Cloud.rpc("am_developer")) === true; } catch {} // puuttuu, jos supabase-dev.sql:ää ei ole ajettu
+          all[acc.cloudUid] = { plan: FEATURES[r?.plan] ? r.plan : "free", until: r?.valid_until || null, seats: r?.seats || 0, checked: Date.now(), dev };
           write(PLAN_KEY, all);
         } catch {}
       }
@@ -146,6 +148,27 @@ const Plans = (() => {
     return current();
   }
   function removeClass() { write(CLASS_KEY, null); changed(); }
+
+  /* ===== Kehittäjätila ===== */
+  // Kehittäjä (Supabase: developers-taulu) voi vaihtaa oman tilinsä tason testausta varten. Palvelin tarkistaa oikeuden.
+  function isDeveloper() {
+    const acc = typeof Accounts !== "undefined" ? Accounts.current() : null;
+    return !!(acc?.cloud && read(PLAN_KEY)?.[acc.cloudUid]?.dev);
+  }
+  async function devSetPlan(plan, seats = 0) {
+    await Cloud.rpc("dev_set_plan", { p_plan: plan, p_seats: seats });
+    return refresh({ force: true });
+  }
+  function devHtml(cur) {
+    const acc = Accounts.current();
+    const seats = read(PLAN_KEY)?.[acc.cloudUid]?.seats || 0;
+    return `<div class="card dev-card">
+      <h3 class="card-title">🛠 ${tr("Kehittäjätila", "Developer mode")}</h3>
+      <p class="note">${tr("Vaihda oman tilisi tasoa testausta varten. Muutos tallentuu pilvitilillesi ja näkyy kaikilla laitteillasi. Vain kehittäjäksi merkityt tilit näkevät tämän.", "Switch your own account's plan for testing. The change is saved to your cloud account and shows on all your devices. Only accounts marked as developers see this.")}</p>
+      <div class="row-actions dev-plans">${Object.keys(FEATURES).map((p) => `<button class="btn ${cur.plan === p ? "primary" : ""}" data-dev-plan="${p}" ${cur.plan === p ? 'aria-pressed="true"' : ""}>${NAMES[p]}</button>`).join("")}</div>
+      <label class="dev-seats">${tr("Teacher-lisäpaikat", "Teacher extra seats")} <input type="number" id="dev-seats" min="0" max="995" value="${seats}"></label>
+    </div>`;
+  }
 
   /* ===== Osto ===== */
   // Maksulinkit (esim. Stripe Payment Links) tulevat cloud-config.js:stä. Tilaus liitetään pilvitiliin.
@@ -207,6 +230,7 @@ const Plans = (() => {
     el.innerHTML = `
       ${toolHead(tool, acc?.cloud ? `<button class="btn" data-plans="refresh">${tr("Tarkista tilaus", "Check subscription")}</button>` : "")}
       <p class="plans-now">${tr("Nykyinen tasosi", "Your plan")}: ${badge(cur.plan)} ${cur.sources.map((s) => s.from === "class" ? tr(" (luokkakoodilla)", " (class code)") : s.until ? ` · ${tr("voimassa", "valid until")} ${new Date(s.until).toLocaleDateString(tr("fi-FI", "en-GB"))}` : "").join("")}</p>
+      ${isDeveloper() ? devHtml(cur) : ""}
       <div class="plan-grid">
         <article class="card plan-card">
           <h2>Free</h2><div class="price"><b>0 €</b></div><div class="price-alt">${tr("aina ilmainen, ei tiliä", "always free, no account")}</div>
@@ -248,8 +272,17 @@ const Plans = (() => {
           </ul></div>
       </div></div>`;
     el.onclick = async (e) => {
-      const b = e.target.closest("[data-buy],[data-plans]");
+      const b = e.target.closest("[data-buy],[data-plans],[data-dev-plan]");
       if (!b) return;
+      if (b.dataset.devPlan) {
+        el.querySelectorAll("[data-dev-plan]").forEach((x) => (x.disabled = true));
+        try {
+          await devSetPlan(b.dataset.devPlan, Math.max(0, Math.round(+el.querySelector("#dev-seats")?.value || 0)));
+          toast(tr(`Kehittäjätila: tasosi on nyt ${current().name}`, `Developer mode: your plan is now ${current().name}`));
+        } catch (err) { toast(err.message); }
+        router();
+        return;
+      }
       if (b.dataset.buy) { buy(b.dataset.buy); return; }
       if (b.dataset.plans === "refresh") { b.disabled = true; await refresh({ force: true }); toast(tr(`Tasosi: ${current().name}`, `Your plan: ${current().name}`)); router(); return; }
       if (b.dataset.plans === "remove-class") { if (confirm(tr("Poistetaanko luokkakoodi tältä laitteelta? Education-taso poistuu käytöstä.", "Remove the class code from this device? The Education plan will be turned off."))) { removeClass(); router(); } }
@@ -275,7 +308,7 @@ const Plans = (() => {
     const b = document.getElementById("upgrade-btn");
     if (!b) return;
     const cur = current();
-    b.hidden = cur.plan === "pro";
+    b.hidden = cur.plan === "pro" && !isDeveloper(); // kehittäjä pääsee aina vaihtamaan tasoa
     b.innerHTML = cur.plan === "free" ? `⭐ <span>${tr("Päivitä", "Upgrade")}</span>` : `⭐ <span>${esc(cur.name)}</span>`;
     b.title = cur.plan === "free" ? tr("Avaa lisää kursseja ja työkaluja", "Unlock more courses and tools") : tr("Tasosi ja muut tasot", "Your plan and other plans");
   }
@@ -296,7 +329,7 @@ const Plans = (() => {
 
   TOOL_IMPL.plans = { render };
 
-  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass,
+  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, isDeveloper, devSetPlan,
     lockedHtml, classBoxHtml, bindClassForm, badge, buy, deviceId, onChange: (f) => listeners.add(f), _changed: changed };
 })();
 window.Plans = Plans;
