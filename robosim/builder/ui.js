@@ -1283,6 +1283,16 @@ export function mount(root, dim, tool) {
   frame();
   if (dim === '3d') initPhysics();
 
+  // Ensimmäisellä käyttökerralla lyhyt opastus (kurssin aikana kurssipaneeli opastaa)
+  if (!window.Courses?.active()) setTimeout(() => {
+    if (dead) return;
+    coachTour('build' + dim, [
+      { sel: '#rb-parts', text: tr('Aloita lisäämällä osa: laatikko käy rungoksi. Valmiin robotin saat pohjaksi yläreunan Uusi / pohja -valikosta.', 'Start by adding a part: a box makes a good body. A ready robot is available as a template from the New / template menu at the top.') },
+      { sel: '#rb-addWheelPair', text: tr('Valitse runko ja lisää valmisosia: pyörät, jalat, käsivarsi, anturit, jousijalka tai kosketusanturi. Ne kiinnittyvät nivelillä valittuun osaan.', 'Select the body and add ready-made pieces: wheels, legs, an arm, sensors, a spring leg or a touch sensor. They attach to the selected part with joints.') },
+      { sel: '#rb-testBtn', text: tr('Testaa fysiikka: robotti putoaa maahan ja voit ajaa sitä. Kun se toimii, paina Kouluta simulaatiossa, niin neuroverkko oppii ohjaamaan sitä.', 'Test the physics: the robot drops to the ground and you can drive it. When it works, press Train in simulation and a neural network learns to control it.') },
+    ]);
+  }, 800);
+
   return {
     unmount() {
       dead = true;
