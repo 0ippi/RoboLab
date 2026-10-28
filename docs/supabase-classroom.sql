@@ -1,6 +1,7 @@
 -- RoboLabin luokkahuoneet (Supabase). Aja docs/supabase-plans.sql:n jälkeen: SQL Editor → New query → Run.
--- Oppilas liittyy luokkaan luokkakoodilla ja nimimerkillä ilman tiliä. Palvelin tallentaa vain satunnaisen
--- laitetunnuksen, nimimerkin ja kurssien etenemisen (ei nimiä, sähköposteja eikä vastauksia).
+-- Oppilas liittyy luokkaan luokkakoodilla ja nimimerkillä ilman tiliä. Palvelin tallentaa vain satunnaisen tunnuksen
+-- (sarake device: saman laitteen jokaisella käyttäjällä on oma), nimimerkin ja kurssien etenemisen
+-- (ei nimiä, sähköposteja eikä vastauksia). Tiedoston voi ajaa uudelleen: se ei poista olemassa olevia tietoja.
 -- Opettaja (luokan omistaja) näkee oppilaiden etenemisen ja valitsee kurssit, jotka luokan pitää suorittaa.
 
 alter table public.class_activations add column if not exists alias text not null default '';
@@ -98,6 +99,17 @@ begin
 end $$;
 revoke all on function public.report_progress(text, text, jsonb) from public;
 grant execute on function public.report_progress(text, text, jsonb) to anon, authenticated;
+
+-- Oppilas poistuu luokasta itse (2.14.0): paikka vapautuu ja eteneminen poistuu. Oppilaan sovellus todistaa jäsenyyden
+-- satunnaisella tunnuksellaan (p_device), jota vain sen laitteen kyseinen käyttäjä tietää.
+create or replace function public.leave_class(p_code text, p_device text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.class_activations where code = upper(trim(p_code)) and device = p_device;
+  if not found then raise exception 'no-member'; end if;
+end $$;
+revoke all on function public.leave_class(text, text) from public;
+grant execute on function public.leave_class(text, text) to anon, authenticated;
 
 -- Opettaja: luokan oppilaat ja heidän etenemisensä (vain luokan omistaja)
 create or replace function public.class_overview(p_code text) returns json
