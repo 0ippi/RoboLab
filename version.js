@@ -3,6 +3,21 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.15.0", date: "2026-10-28",
+    fi: ["Korjaus: kurssin oppituntipaneeli ei enää peitä Tasot ja hinnat -sivua, etusivua tai muita yleissivuja. Se piiloutuu niillä ja palaa, kun avaat työkalun, eikä kurssi keskeydy.",
+      "Sivupalkissa ovat nyt kaikki työkalut samoissa ryhmissä kuin etusivulla. Lukitut näkyvät lukolla, ja niistä näkee, millä tasolla ne saa käyttöön.",
+      "Tasot ja hinnat: jokaisella tasolla on kohderyhmä ja lause ”Valitse tämä, jos…”. Pro on itseopiskelijalle ja Teacher opettajalle, ja kortit kertovat myös, mitä taso ei sisällä.",
+      "Uusi Ohjeet ja tuki -sivu: usein kysytyt kysymykset ja lomake, jolla voit lähettää viestin kehittäjälle ilman tiliä. Ohjeet ja yhteydenotot eivät enää vie GitHubiin, ja tietosuojaseloste avautuu sovelluksen sisällä.",
+      "Yläpalkin polku näyttää yleissivuilla RoboLab. Työkaluissa projektin nimen vihje kertoo, että työ tallentuu siihen automaattisesti. Haku löytää myös kurssit.",
+      "Päivitä-nappi näkyy ilmaisella tasolla vain lukitulla sivulla, ja FPS-laskuri on oletuksena piilossa (Asetukset → Visualisointi tai osoitteen ?debug)."],
+    en: ["Fix: the course lesson panel no longer covers the Plans & pricing page, the home page or other general pages. It hides there and comes back when you open a tool, and the course isn't interrupted.",
+      "The sidebar now lists every tool in the same groups as the home page. Locked tools show a lock and tell which plan unlocks them.",
+      "Plans & pricing: every plan shows who it is for and a “Choose this if…” line. Pro is for self-learners and Teacher for teachers, and the cards also say what a plan doesn't include.",
+      "New Help & support page: frequently asked questions and a form for sending a message to the developer without an account. Help and contact links no longer go to GitHub, and the privacy policy opens inside the app.",
+      "The path in the top bar shows RoboLab on general pages. In tools, the project name's hint says your work is saved there automatically. Search also finds courses.",
+      "On the Free plan the Upgrade button only shows on a locked page, and the FPS counter is hidden by default (Settings → Visualisation or ?debug in the address)."],
+  },
+  {
     version: "2.14.0", date: "2026-10-28",
     fi: ["Luokkahuone: oppilas voi poistua luokasta Kurssit- tai Profiili-sivulla, ja paikka vapautuu opettajan luokasta. Luokkajäsenyys kuuluu nyt käyttäjälle, joka liittyi: saman koneen muut käyttäjät ja pilvitilit eivät ole luokassa.",
       "Neuroverkkosimulaatiot: populaation tai algoritmin vaihto kesken koulutuksen ei enää pysäytä koulutusta virheeseen, GA:n paras robotti säilyy maaston vaihtuessa, nopea koulutus jatkuu taustavälilehdellä täydellä nopeudella ja jumiin jäänyt palkkiofunktio pysäytetään ilmoituksen kanssa. Lisäasetukset avautuvat keskeyttämättä koulutusta, uusinnan säätimet toimivat koko näytön tilassa ja koulutusajojen vertailu toimii kielen vaihdon jälkeenkin.",
