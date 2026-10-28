@@ -52,7 +52,7 @@
     S.busy = true; draw();
     try {
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: +opts.baud });
+      await port.open({ baudRate: +opts.baud, bufferSize: 65536 }); // iso puskuri: nopea data ei katkaise yhteyttä
       stopDemo();
       clearData();
       S.port = port; S.connected = true; S.source = "live";
@@ -65,28 +65,39 @@
     }
   }
 
+  // Lukusilmukka. Palautuvat virheet (väärä baudinopeus: Framing/Parity/Break, BufferOverrun) eivät katkaise
+  // yhteyttä: lukija rakennetaan uudelleen niin kauan kuin portti on luettavissa.
   async function readLoop() {
-    const decoder = new TextDecoderStream();
-    S.pipe = S.port.readable.pipeTo(decoder.writable).catch(() => {});
-    S.reader = decoder.readable.getReader();
-    let buf = "";
-    try {
-      for (;;) {
-        const { value, done } = await S.reader.read();
-        if (done) break;
-        buf += value;
-        let i;
-        while ((i = buf.indexOf("\n")) >= 0) {
-          onLine(buf.slice(0, i).replace(/\r$/, ""));
-          buf = buf.slice(i + 1);
+    let restarts = 0;
+    while (S.connected && S.port?.readable && restarts++ < 20) {
+      const decoder = new TextDecoderStream();
+      S.pipe = S.port.readable.pipeTo(decoder.writable).catch(() => {});
+      S.reader = decoder.readable.getReader();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await S.reader.read();
+          if (done) break;
+          restarts = 0;
+          buf += value;
+          let i;
+          while ((i = buf.indexOf("\n")) >= 0) {
+            onLine(buf.slice(0, i).replace(/\r$/, ""));
+            buf = buf.slice(i + 1);
+          }
         }
+      } catch (e) {
+        if (/Framing|Parity|Break|BufferOverrun/i.test(e.name + " " + e.message)) addLine(tr("Lukuvirhe (tarkista baudinopeus): ", "Read error (check the baud rate): ") + e.message, "sys");
+        else addLine(tr("Yhteys katkesi: ", "Connection lost: ") + e.message, "sys");
+        schedule();
+      } finally {
+        try { S.reader.releaseLock(); } catch {}
       }
-    } catch (e) {
-      addLine(tr("Yhteys katkesi: ", "Connection lost: ") + e.message, "sys");
-    } finally {
-      S.reader.releaseLock();
-      if (S.connected) await disconnect(true);
+      try { await S.pipe; } catch {}
+      if (!S.connected) return;
+      if (!S.port?.readable) break;
     }
+    if (S.connected) await disconnect(true);
   }
 
   async function disconnect(silent) {
@@ -101,14 +112,19 @@
   }
 
   async function send(text) {
-    if (!S.connected) return;
-    const writer = S.port.writable.getWriter();
+    if (!S.connected || !S.port?.writable) return;
+    let writer;
     try {
+      writer = S.port.writable.getWriter();
       await writer.write(new TextEncoder().encode(text + opts.lineEnd));
       addLine("→ " + text, "tx");
-      schedule();
+    } catch (e) {
+      // Esim. irrotettu laite tai edellinen lähetys yhä kesken
+      addLine(tr("Lähetys epäonnistui: ", "Sending failed: ") + e.message, "sys");
+      toast(tr("Lähetys epäonnistui: ", "Sending failed: ") + e.message);
     } finally {
-      writer.releaseLock();
+      try { writer?.releaseLock(); } catch {}
+      schedule();
     }
   }
 
@@ -136,28 +152,40 @@
     S.demoTimer = 0;
   }
 
+  // Desimaalipilkku-asetuksella CSV tehdään suomalaiselle Excelille: erotin ; ja luvuissa pilkku
   function toCsv() {
+    const fi = settings.decimalSep === ",", sep = fi ? ";" : ",";
+    const num = (v) => (v === "" || v == null ? "" : fi ? String(v).replace(".", ",") : String(v));
     const head = ["time_s", ...S.names];
-    const lines = [head.join(",")];
-    for (const r of S.rows) lines.push([r.t.toFixed(4), ...S.names.map((n) => r.values[n] ?? "")].join(","));
+    const lines = [head.join(sep)];
+    for (const r of S.rows) lines.push([num(r.t.toFixed(4)), ...S.names.map((n) => num(r.values[n] ?? ""))].join(sep));
     return lines.join("\n");
   }
 
   function openCsv(file) {
     file.text().then((txt) => {
-      const rows = txt.trim().split(/\r?\n/);
-      const head = rows.shift().split(",").map((h) => h.trim());
-      const ti = head.findIndex((h) => /^(time|t|aika)/i.test(h));
+      const rows = txt.replace(/^﻿/, "").trim().split(/\r?\n/);
+      const first = rows.shift() || "";
+      // Erotin otsikkorivistä: puolipiste (suomalainen Excel), sarkain tai pilkku. Puolipisteen ja sarkaimen kanssa
+      // luvuissa voi olla desimaalipilkku.
+      const sep = first.includes(";") ? ";" : first.includes("\t") ? "\t" : ",";
+      const num = (s) => { const t = String(s ?? "").trim().replace(/^"|"$/g, ""); return t === "" ? NaN : Number(sep === "," ? t : t.replace(",", ".")); };
+      const head = first.split(sep).map((h) => h.trim().replace(/^"|"$/g, ""));
+      // Aikasarake vain tarkalla nimellä (temp, tilt, tavoite… eivät ole aikaa); millisekunnit muutetaan sekunneiksi
+      let ti = head.findIndex((h) => /^time_s$/i.test(h));
+      if (ti < 0) ti = head.findIndex((h) => /^(time|t|aika)(_?(s|ms))?$/i.test(h));
+      const tScale = ti >= 0 && /ms$/i.test(head[ti]) ? 0.001 : 1;
       stopDemo();
       if (S.connected) disconnect();
       clearData();
       S.source = file.name;
       S.names = head.filter((_, i) => i !== ti);
       rows.forEach((line, idx) => {
-        const cells = line.split(",");
+        const cells = line.split(sep);
         const values = {};
-        head.forEach((h, i) => { if (i !== ti && cells[i] !== "" && cells[i] !== undefined && !Number.isNaN(+cells[i])) values[h] = +cells[i]; });
-        S.rows.push({ t: ti >= 0 ? +cells[ti] : idx, values });
+        head.forEach((h, i) => { const v = num(cells[i]); if (i !== ti && Number.isFinite(v)) values[h] = v; });
+        const t = ti >= 0 ? num(cells[ti]) * tScale : NaN;
+        S.rows.push({ t: Number.isFinite(t) ? t : idx, values });
       });
       addLine(tr(`Avattu ${file.name}: ${S.rows.length} riviä, sarjat ${S.names.join(", ")}`, `Opened ${file.name}: ${S.rows.length} rows, series ${S.names.join(", ")}`), "sys");
       opts.window = 0; // näytä koko tallenne
@@ -185,7 +213,7 @@
             <h3 class="card-title">${tr("Tallenne", "Recording")}</h3>
             <div class="row-actions" style="margin-top:0">
               <button class="btn" id="sr-save">${tr("Tallenna CSV", "Save CSV")}</button>
-              <label class="btn">${tr("Avaa CSV…", "Open CSV…")}<input type="file" id="sr-open" accept=".csv,text/csv" hidden></label>
+              <button class="btn" id="sr-open-btn">${tr("Avaa CSV…", "Open CSV…")}</button><input type="file" id="sr-open" accept=".csv,.txt,text/csv" hidden>
               <button class="btn" id="sr-clear">${tr("Tyhjennä", "Clear")}</button>
             </div>
             <p class="note" style="margin-top:10px" id="sr-count"></p>
@@ -201,7 +229,7 @@
           <div class="card">
             <h3 class="card-title">${tr("Kuvaaja", "Plot")}
               <span style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:.82rem;color:var(--text-3)">${tr("Näytä", "Show")}
-                <select id="sr-window" style="min-width:0;height:28px">
+                <select id="sr-window" style="min-width:0;height:28px" aria-label="${tr("Näytettävät mittausrivit", "Data rows to show")}">
                   ${[[200, tr("200 viim.", "last 200")], [500, tr("500 viim.", "last 500")], [2000, tr("2000 viim.", "last 2000")], [0, tr("kaikki", "all")]].map(([v, l]) => `<option value="${v}" ${+opts.window === v ? "selected" : ""}>${l}</option>`).join("")}
                 </select></span></h3>
             <canvas class="plot" id="sr-plot"></canvas>
@@ -219,8 +247,9 @@
 
     el.querySelector("#sr-save").onclick = () => {
       if (!S.rows.length) { toast(tr("Ei tallennettavaa dataa", "No data to save")); return; }
-      downloadFile(`sarjaportti-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`, toCsv(), "text/csv");
+      downloadFile(`sarjaportti-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`, "﻿" + toCsv(), "text/csv");
     };
+    el.querySelector("#sr-open-btn").onclick = () => el.querySelector("#sr-open").click();
     el.querySelector("#sr-open").onchange = (e) => { if (e.target.files[0]) openCsv(e.target.files[0]); e.target.value = ""; };
     el.querySelector("#sr-clear").onclick = () => { clearData(); draw(); };
     el.querySelector("#sr-window").onchange = (e) => { opts.window = +e.target.value; save(); schedule(); };
@@ -262,7 +291,7 @@
         <p class="note" style="margin-top:6px">${tr("Baudinopeus on tiedonsiirron nopeus. Sen pitää olla sama kuin laitteen koodissa, esim. Serial.begin(115200) → 115200; väärällä nopeudella näkyy sotkua.", "The baud rate is the data transfer speed. It must match the device code, e.g. Serial.begin(115200) → 115200; a wrong rate shows garbage.")}</p>
         <div class="field" style="margin-top:12px">
           <label>${tr("Rivinvaihto lähetettäessä", "Line ending when sending")}<small>${tr("Merkki, joka lisätään jokaisen lähetetyn viestin perään, jotta laite tunnistaa viestin päättyneen. Arduinolle yleensä LF (\\n).", "A character added after each message you send so the device knows the message ended. Usually LF (\\n) for Arduino.")}</small></label>
-          <select id="sr-le">${[["\n", "LF (\\n)"], ["\r\n", "CR+LF (\\r\\n)"], ["\r", "CR (\\r)"], ["", tr("Ei mitään", "None")]].map(([v, l]) => `<option value="${JSON.stringify(v).slice(1, -1)}" ${opts.lineEnd === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <select id="sr-le" aria-label="${tr("Rivinvaihto lähetettäessä", "Line ending when sending")}">${[["\n", "LF (\\n)"], ["\r\n", "CR+LF (\\r\\n)"], ["\r", "CR (\\r)"], ["", tr("Ei mitään", "None")]].map(([v, l]) => `<option value="${JSON.stringify(v).slice(1, -1)}" ${opts.lineEnd === v ? "selected" : ""}>${l}</option>`).join("")}</select>
         </div>
         <div class="row-actions"><button class="link-btn" id="sr-demo">${S.demoTimer ? tr("Pysäytä demo", "Stop demo") : tr("Ei laitetta? Kokeile demodatalla", "No device? Try with demo data")}</button></div>`;
       conn.querySelector("#sr-baud").onchange = (e) => { opts.baud = +e.target.value; save(); };

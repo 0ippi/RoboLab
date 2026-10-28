@@ -28,17 +28,21 @@
     return { preset: id, chain, q: [...p.q] };
   }
 
-  // Korjaa tuodun tai tallennetun ketjun puuttuvat ja virheelliset kentät
+  // Korjaa tuodun tai tallennetun ketjun puuttuvat ja virheelliset kentät. Pituudet enintään ±100 m:
+  // valtava pituus tekisi näkymän ruudukosta miljoonia viivoja ja jäädyttäisi välilehden.
   const num = (v, d = 0) => (Number.isFinite(+v) && v !== null && v !== "" ? +v : d);
+  const LEN_MAX = 100;
+  const len = (v, d = 0) => Math.max(-LEN_MAX, Math.min(LEN_MAX, num(v, d)));
   function normalizeChain(c) {
     const joints = (Array.isArray(c?.joints) ? c.joints : []).slice(0, 12).map((j) => {
       const type = j?.type === "P" ? "P" : "R";
-      const lo = num(j?.min, type === "R" ? -Math.PI : 0), hi = num(j?.max, type === "R" ? Math.PI : 0.2);
-      return { type, theta: num(j?.theta), d: num(j?.d), a: num(j?.a), alpha: num(j?.alpha), min: Math.min(lo, hi), max: Math.max(lo, hi) };
+      const lim = type === "R" ? num : len;
+      const lo = lim(j?.min, type === "R" ? -Math.PI : 0), hi = lim(j?.max, type === "R" ? Math.PI : 0.2);
+      return { type, theta: num(j?.theta), d: len(j?.d), a: len(j?.a), alpha: num(j?.alpha), min: Math.min(lo, hi), max: Math.max(lo, hi) };
     });
     if (!joints.length) throw new Error(tr("käsivarressa ei ole niveliä", "the arm has no joints"));
-    const out = { convention: c.convention === "modified" ? "modified" : "classic", joints, tool: { a: num(c.tool?.a), alpha: num(c.tool?.alpha) } };
-    if (out.convention === "classic" && c.base) out.base = { a: num(c.base.a), alpha: num(c.base.alpha) };
+    const out = { convention: c.convention === "modified" ? "modified" : "classic", joints, tool: { a: len(c.tool?.a), alpha: num(c.tool?.alpha) } };
+    if (out.convention === "classic" && c.base) out.base = { a: len(c.base.a), alpha: num(c.base.alpha) };
     return out;
   }
 
@@ -96,6 +100,8 @@
       ],
       onSelect: (v) => {
         if (v === "custom") return;
+        // Tallentamaton oma käsivarsi (DH-taulukosta) korvataan vain luvalla
+        if (unsaved.length && settings.confirmReset && !confirm(tr("Nykyistä omaa käsivartta ei ole tallennettu omiin käsivarsiin. Korvataanko se? Voit kumota muutoksen (Ctrl+Z).", "The current custom arm is not saved to my arms. Replace it? You can undo the change (Ctrl+Z)."))) { bindPreset(host, arm, apply); return; }
         if (v.startsWith("lib:")) {
           const r = Library.get("arm", v.slice(4));
           if (r) apply({ preset: v, chain: normalizeChain(r.data.chain), q: [...r.data.q] });
@@ -203,9 +209,13 @@
         arm = a; arm._adv = keepAdv;
         saveArm(arm); view.destroy(); render(root, tool);
       });
+      // Nollaus päivittää vain nivelet: näkymän kuvakulma ja zoomaus säilyvät
       el.querySelector("#fk-zero").onclick = () => {
         arm.q = arm.chain.joints.map((j) => Math.min(j.max, Math.max(j.min, 0)));
-        saveArm(arm); view.destroy(); render(root, tool);
+        arm.q.forEach((v, i) => (qs["q" + i] = v));
+        el.querySelector("#fk-joints").innerHTML = fieldsHtml(fields, qs, true);
+        saveArm(arm);
+        update();
       };
       el.querySelector("#fk-adv").onclick = () => { arm._adv = !adv; saveArm(arm); view.destroy(); render(root, tool); };
       update();
@@ -268,7 +278,7 @@
         ...(analytic ? [] : [
           { key: "lambda", label: tr("Vaimennus λ", "Damping λ"), help: tr("Suurempi = vakaampi lähellä singulariteettia, mutta hitaampi", "Higher = more stable near singularities, but slower"), adv: true, min: 0, max: 1, step: 0.01,
             info: tr("DLS-ratkaisijan vaimennuskerroin, joka estää nivelkulmia hyppimästä lähellä singulariteettia. Tyypillisesti 0,01–0,1.", "Damping factor of the DLS solver that keeps joint angles from jumping near singularities. Typically 0.01–0.1.") },
-          { key: "maxIter", label: tr("Iteraatioita enintään", "Max iterations"), adv: true, min: 1, max: 5000, step: 10,
+          { key: "maxIter", label: tr("Iteraatioita enintään", "Max iterations"), adv: true, min: 1, max: 5000, step: 10, int: true,
             info: tr("Kuinka monta parannusaskelta ratkaisija enintään ottaa ennen kuin luovuttaa. Yleensä 100–500 riittää.", "How many improvement steps the solver takes at most before giving up. Usually 100–500 is enough.") },
           { key: "tol", label: tr("Toleranssi", "Tolerance"), unit: lenLabel, factor: lenF, adv: true, min: 1e-9 / lenF(), max: 1 / lenF(), step: 0.0001 / lenF(),
             info: tr("Kuinka lähelle kohdetta kärjen pitää päästä, jotta ratkaisu hyväksytään. Tyypillisesti 0,1 mm (0,0001 m).", "How close the tip must get to the target for the solution to be accepted. Typically 0.1 mm (0.0001 m).") },
@@ -378,11 +388,15 @@
           return false;
         },
         onDrag: moveTo,
-        onEnd: () => { if (gizmo.drag) { gizmo.drag = null; persist(); view.draw(); } },
+        // Vedon lopuksi ratkaistaan uudelleen myös lattian yläpuolelle jäävän asennon haulla (raskas, ei vedon aikana)
+        onEnd: () => { if (gizmo.drag) { gizmo.drag = null; solve(); persist(); view.draw(); } },
       });
       bindViewTools(el, "ik-vt", view);
+      const q0 = JSON.stringify(arm.q);
       solve();
       view.draw();
+      // Avattaessa ratkaistu asento tallennetaan (ilman kumoamisaskelta), jotta FK ja trajektorigeneraattori näkevät saman asennon
+      if (JSON.stringify(arm.q) !== q0) saveToolState("arm", { preset: arm.preset, chain: arm.chain, q: arm.q, _adv: arm._adv }, { undo: false });
     }
 
     function persist() {
@@ -406,9 +420,10 @@
         const target = mode === "pos3" ? ik.target : mode === "planar" ? ik.target.slice(0, 2) : [ik.target[0], ik.target[1], ik.phi];
         const opts = { mode, lambda: ik.lambda, maxIter: ik.maxIter, tol: ik.tol };
         let r = Kin.ikDls(chain, arm.q, target, opts);
-        // Jos ratkaisu painuu lattian läpi, kokeillaan muita alkuarvauksia ja valitaan lattian yläpuolelle jäävä
+        // Jos ratkaisu painuu lattian läpi, kokeillaan muita alkuarvauksia ja valitaan lattian yläpuolelle jäävä.
+        // Vedon aikana haku jätetään väliin (jopa kymmeniä ratkaisuja joka ruudulla nykisi): se tehdään vedon lopuksi.
         let below = armBelowFloor(chain, r.q);
-        if (below > 1e-3 && ik.target[2] >= 0) {
+        if (below > 1e-3 && ik.target[2] >= 0 && !gizmo?.drag) {
           const seeds = [PRESETS[arm.preset]?.q, ...Array.from({ length: 10 }, (_, s) => chain.joints.map((j, i) => {
             const u = (Math.sin((s + 1) * 12.9898 + (i + 1) * 78.233) * 43758.5453) % 1; // toistettava näennäissatunnainen
             const lo = Math.max(j.min, -Math.PI), hi = Math.min(j.max, Math.PI);
@@ -523,7 +538,7 @@
       arm = loadArm();
       el.innerHTML = `
         ${toolHead(tool, `
-          <label class="btn">${tr("Tuo…", "Import…")}<input type="file" id="dh-import" accept=".json,application/json" hidden></label>
+          <label class="btn" tabindex="0" role="button">${tr("Tuo…", "Import…")}<input type="file" id="dh-import" accept=".json,application/json" hidden></label>
           <button class="btn" id="dh-export">${tr("Vie JSON", "Export JSON")}</button>`)}
         <div class="card" style="margin-bottom:var(--pad)">
           <h3 class="card-title">${tr("Taulukko", "Table")}
@@ -613,14 +628,15 @@
     function drawTable() {
       const adv = settings.advanced;
       const mod = arm.chain.convention === "modified";
-      const num = (i, key, v, f) => `<td><input type="text" inputmode="decimal" data-j="${i}" data-k="${key}" data-f="${f}" value="${fmtInput(v / f, 5)}"></td>`;
+      const NAMES = { theta: "θ", d: "d", a: "a", alpha: "α", min: "min", max: "max" };
+      const num = (i, key, v, f) => `<td><input type="text" inputmode="decimal" data-j="${i}" data-k="${key}" data-f="${f}" value="${fmtInput(v / f, 5)}" aria-label="${i === "tool" ? tr("Työkalu", "Tool") : i === "base" ? tr("Kanta", "Base") : tr(`Nivel ${i + 1}`, `Joint ${i + 1}`)}: ${NAMES[key]}"></td>`;
       const sub = (s) => (mod ? `${s}<sub>i−1</sub>` : s);
       el.querySelector("#dh-table").innerHTML = `
         <tr><th>#</th><th>${tr("Tyyppi", "Type")}</th><th>θ [${angLabel()}]</th><th>d [${lenLabel()}]</th><th>${sub("a")} [${lenLabel()}]</th><th>${sub("α")} [${angLabel()}]</th>
           ${adv ? "<th>min</th><th>max</th>" : ""}<th></th></tr>
         ${arm.chain.joints.map((j, i) => `<tr>
           <td class="n">${i + 1}</td>
-          <td style="width:110px"><select data-j="${i}" data-k="type">
+          <td style="width:110px"><select data-j="${i}" data-k="type" aria-label="${tr(`Nivel ${i + 1}: tyyppi`, `Joint ${i + 1}: type`)}">
             <option value="R" ${j.type === "R" ? "selected" : ""}>${tr("Kiertyvä", "Revolute")}</option>
             <option value="P" ${j.type === "P" ? "selected" : ""}>${tr("Liukuva", "Prismatic")}</option></select></td>
           ${num(i, "theta", j.theta, angF())}${num(i, "d", j.d, lenF())}${num(i, "a", j.a, lenF())}${num(i, "alpha", j.alpha, angF())}
@@ -628,25 +644,33 @@
           <td class="x"><button class="del" data-del="${i}" title="${tr("Poista nivel", "Remove joint")}" aria-label="${tr("Poista nivel", "Remove joint")}">✕</button></td>
         </tr>`).join("")}
         ${mod ? `<tr class="tool-row"><td class="n">T</td><td><span class="note">${tr("Työkalu", "Tool")}</span></td><td></td><td></td>
-          ${num("tool", "a", arm.chain.tool.a, lenF())}${num("tool", "alpha", arm.chain.tool.alpha, angF())}${adv ? "<td></td><td></td>" : ""}<td></td></tr>` : ""}`;
+          ${num("tool", "a", arm.chain.tool.a, lenF())}${num("tool", "alpha", arm.chain.tool.alpha, angF())}${adv ? "<td></td><td></td>" : ""}<td></td></tr>` : ""}
+        ${!mod && arm.chain.base && (arm.chain.base.a || arm.chain.base.alpha) ? `<tr class="tool-row" title="${tr("Modifioidun DH:n ensimmäisen rivin a₀ ja α₀: siirtymä ennen ensimmäistä niveltä", "a₀ and α₀ from the first row of modified DH: an offset before the first joint")}"><td class="n">K</td><td><span class="note">${tr("Kanta", "Base")}</span></td><td></td><td></td>
+          ${num("base", "a", arm.chain.base.a, lenF())}${num("base", "alpha", arm.chain.base.alpha, angF())}${adv ? "<td></td><td></td>" : ""}<td></td></tr>` : ""}`;
 
       const table = el.querySelector("#dh-table");
       table.oninput = (e) => {
         const t = e.target, i = t.dataset.j, k = t.dataset.k;
         if (!k) return;
-        const target = i === "tool" ? arm.chain.tool : arm.chain.joints[+i];
+        const target = i === "tool" ? arm.chain.tool : i === "base" ? arm.chain.base : arm.chain.joints[+i];
         if (k === "type") {
           const fresh = t.value === "R" ? Rj(0) : Pj();
           Object.assign(target, { type: t.value, min: fresh.min, max: fresh.max });
           arm.q[+i] = 0;
         } else {
           const v = parseInput(t.value);
-          t.classList.toggle("invalid", v === null);
-          if (v === null) return;
-          target[k] = v * +t.dataset.f;
-          if ((k === "min" || k === "max") && target.min > target.max) { t.classList.add("invalid"); t.title = "min > max"; return; }
-          t.title = "";
-          if (i !== "tool") arm.q[+i] = Math.min(target.max, Math.max(target.min, arm.q[+i]));
+          const val = v === null ? null : v * +t.dataset.f;
+          // Tarkistus ennen kuin malli muuttuu: min > max tai yli 100 m pituus ei päädy tallennukseen
+          const isLen = k === "d" || k === "a" || ((k === "min" || k === "max") && target.type === "P");
+          const other = k === "min" ? target.max : k === "max" ? target.min : null;
+          const bad = val === null || (isLen && Math.abs(val) > LEN_MAX) || (k === "min" && val > other) || (k === "max" && val < other);
+          t.classList.toggle("invalid", bad);
+          t.title = bad && val !== null ? (isLen && Math.abs(val) > LEN_MAX ? tr(`Enintään ±${LEN_MAX} m`, `At most ±${LEN_MAX} m`) : "min > max") : "";
+          if (bad) return;
+          target[k] = val;
+          // Toisen rajan virhemerkintä pois, kun pari on taas kunnossa
+          if (k === "min" || k === "max") table.querySelectorAll(`[data-j="${i}"][data-k="min"], [data-j="${i}"][data-k="max"]`).forEach((x) => { x.classList.remove("invalid"); x.title = ""; });
+          if (i !== "tool" && i !== "base") arm.q[+i] = Math.min(target.max, Math.max(target.min, arm.q[+i]));
         }
         arm.preset = "custom";
         saveArm(arm);

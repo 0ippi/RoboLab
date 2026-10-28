@@ -27,10 +27,10 @@
             <h3 class="card-title">${tr("Euler-kulmat", "Euler angles")} <span class="badge">${angLabel()}</span></h3>
             <div class="fields">
               <div class="field"><label>${tr("Järjestys", "Order")}</label><div class="field-ctl">
-                <select id="r-order">${ORDERS.map((o) => `<option ${o === state.order ? "selected" : ""}>${o}</option>`).join("")}</select>
-                ${adv ? `<select id="r-frame">
+                <select id="r-order" aria-label="${tr("Euler-kulmien järjestys", "Euler angle order")}">${ORDERS.map((o) => `<option ${o === state.order ? "selected" : ""}>${o}</option>`).join("")}</select>
+                <select id="r-frame" aria-label="${tr("Sisäinen (liikkuva koordinaatisto) vai ulkoinen (kiinteä)", "Intrinsic (moving frame) or extrinsic (fixed)")}">
                   <option value="intrinsic" ${state.frame === "intrinsic" ? "selected" : ""}>${tr("Sisäinen", "Intrinsic")}</option>
-                  <option value="extrinsic" ${state.frame === "extrinsic" ? "selected" : ""}>${tr("Ulkoinen", "Extrinsic")}</option></select>` : ""}
+                  <option value="extrinsic" ${state.frame === "extrinsic" ? "selected" : ""}>${tr("Ulkoinen", "Extrinsic")}</option></select>
               </div></div>
               <div class="tri" id="r-euler-fields"></div>
             </div>

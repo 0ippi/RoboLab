@@ -28,7 +28,7 @@
         info: tr("Päällä robotti voi liikkua 8 suuntaan (myös vinottain), jolloin reitit ovat lyhyempiä ja luonnollisempia. Pois päältä vain 4 suuntaa.", "When on, the robot can move in 8 directions (diagonals too), giving shorter, more natural paths. When off, only 4 directions.") },
       { key: "weight", label: tr("Heuristiikan paino", "Heuristic weight"), help: tr("1 = lyhin reitti taattu, suurempi = nopeampi mutta ei aina lyhin", "1 = shortest path guaranteed, higher = faster but not always shortest"), adv: true, min: 0, max: 10, step: 0.1, when: () => st.algo === "astar",
         info: tr("Kerroin etäisyysarviolle maaliin. 0 = Dijkstra, 1 = tavallinen A*, 1,5–3 = painotettu A*, joka tutkii vähemmän soluja mutta voi antaa hieman pidemmän reitin.", "Multiplier for the distance-to-goal estimate. 0 = Dijkstra, 1 = normal A*, 1.5–3 = weighted A*, which explores fewer cells but may return a slightly longer path.") },
-      { key: "iters", label: tr("Iteraatioita", "Iterations"), min: 10, max: 20000, step: 100, when: () => !A.grid,
+      { key: "iters", label: tr("Iteraatioita", "Iterations"), min: 10, max: 20000, step: 100, int: true, when: () => !A.grid,
         info: tr("Kuinka monta satunnaista näytettä puuhun yritetään lisätä. Enemmän = reitti löytyy varmemmin ja RRT* lyhentää sitä lisää, mutta laskenta hidastuu. Tyypillisesti 1000–5000.", "How many random samples are tried for the tree. More = a path is found more reliably and RRT* shortens it further, but computing is slower. Typically 1000–5000.") },
       { key: "step", label: tr("Askelpituus", "Step size"), unit: tr("solua", "cells"), adv: true, min: 0.2, max: 20, step: 0.1, when: () => !A.grid,
         info: tr("Kuinka pitkän oksan puu kasvattaa kerralla. Pieni askel pääsee kapeista käytävistä, suuri täyttää avoimen tilan nopeammin. Tyypillisesti 1–3 solua.", "How long a branch the tree grows at a time. A small step fits through narrow passages, a large one fills open space faster. Typically 1–3 cells.") },
@@ -124,10 +124,11 @@
       GridMap.save(GridMap.resize(map, s[0], s[1]));
       router();
     };
+    // Oletuskartta voi olla eri kokoinen kuin nykyinen: koko sivu piirretään uudelleen (kokovalinta ja selite ajan tasalle)
     el.querySelector("#pt-default").onclick = () => {
       const d = GridMap.defaultMap();
-      map = { ...d, grid: { w: d.w, h: d.h, occ: Uint8Array.from(d.occ, (c) => (c === "1" ? 1 : 0)) } };
-      GridMap.save(map); gv.setSize(map.w, map.h); run(true);
+      GridMap.save({ ...d, grid: { w: d.w, h: d.h, occ: Uint8Array.from(d.occ, (c) => (c === "1" ? 1 : 0)) } });
+      router();
     };
     el.querySelector("#pt-adv").onclick = () => { st._adv = !adv; save(); unmount(); render(root, tool); };
     el.querySelector("#pt-play").onclick = () => (anim.playing ? stop() : play());
@@ -191,8 +192,16 @@
     if (b) b.textContent = tr("▶ Toista haku", "▶ Play search");
   }
 
+  // Ruudukkohaku on nopea, joten reitti päivittyy vedon aikana. RRT/RRT* voi viedä satoja millisekunteja:
+  // sen haku ajetaan vasta, kun veto päättyy (muuten piirtäminen nykii).
+  let stale = false;
+  const replan = () => { if (ALGOS[st.algo].grid) run(true); else { stale = true; gv.draw(); } };
   function onPointer(c, phase) {
-    if (phase === "up") { if (painting) GridMap.save(map); painting = false; last = null; return; }
+    if (phase === "up") {
+      if (painting) GridMap.save(map);
+      if (stale) { stale = false; run(true); }
+      painting = false; last = null; return;
+    }
     if (!c.inside) return;
     const i = c.i, j = c.j, idx = j * map.w + i;
     const isStart = map.start[0] === i && map.start[1] === j, isGoal = map.goal[0] === i && map.goal[1] === j;
@@ -201,7 +210,7 @@
       map[st.brush] = [i, j];
       map.grid.occ[idx] = 0;
       painting = true;
-      run(true);
+      replan();
       return;
     }
     const val = st.brush === "wall" ? 1 : 0;
@@ -214,7 +223,7 @@
     else paint(i, j);
     last = [i, j];
     painting = true;
-    run(true);
+    replan();
   }
 
   function drawGrid(g) {
@@ -257,13 +266,13 @@
         <tr><th>${tr("Algoritmi", "Algorithm")}</th><th>${tr("Pituus", "Length")} [${lenLabel()}]</th><th>${tr("Tutkittu", "Explored")}</th><th>${tr("Aika", "Time")} [ms]</th><th></th></tr>
         ${rows.map(({ a, r }) => `<tr>
           <td>${ALGOS[a].name}</td>
-          <td>${r.found ? fmtLen(r.cost * map.cell, 2) : tr("ei reittiä", "no path")}</td>
+          <td>${r.found ? fmtLen(r.cost * map.cell, 2) : r.kind === "grid" ? tr("ei reittiä", "no path") : tr("ei löytynyt", "not found")}</td>
           <td>${r.kind === "grid" ? r.expanded.length : r.nodes.length}</td>
           <td>${fmt(r.ms, 1)}</td>
           <td>${r.found && Math.abs(r.cost - best) < 1e-6 ? `<span class="badge ok">${tr("lyhin", "shortest")}</span>` : r.found ? `+${fmt(((r.cost - best) / best) * 100, 0)} %` : ""}</td>
         </tr>`).join("")}
       </table></div>
-      <p class="note" style="margin-top:8px">${tr("RRT-algoritmien tulokset riippuvat satunnaissiemenestä.", "RRT results depend on the random seed.")} ${st.diagonal ? tr("Vinoliike sallittu.", "Diagonal moves allowed.") : tr("Vain suorat liikkeet.", "Straight moves only.")}</p>`;
+      <p class="note" style="margin-top:8px">${tr("RRT-algoritmien tulokset riippuvat satunnaissiemenestä, ja kapeissa käytävissä ne eivät aina löydä reittiä annetuilla iteraatioilla.", "RRT results depend on the random seed, and in narrow corridors they don't always find a path within the given iterations.")} ${st.diagonal ? tr("Vinoliike sallittu.", "Diagonal moves allowed.") : tr("Vain suorat liikkeet.", "Straight moves only.")}</p>`;
   }
 
   function unmount() {

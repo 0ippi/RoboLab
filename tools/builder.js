@@ -20,7 +20,15 @@
           return;
         }
         if (my !== token || currentRoute() !== "build" + dim) return; // käyttäjä ehti vaihtaa sivua
-        inst = m.mount(root, dim, tool);
+        try { inst = m.mount(root, dim, tool); }
+        catch (err) {
+          // 3D-grafiikka puuttuu: oletusten palautus ei auttaisi, joten kerrotaan syy. Muut virheet näyttävät palautusnäkymän.
+          if (/webgl/i.test(String(err?.message))) {
+            root.innerHTML = `${toolHead(tool)}${alertsHtml([{ level: "err", text: tr("Rakentaja tarvitsee 3D-grafiikkaa (WebGL), joka ei ole käytössä tässä selaimessa tai laitteessa. Kokeile toista selainta tai ota laitteistokiihdytys käyttöön selaimen asetuksista.", "The builder needs 3D graphics (WebGL), which is not available in this browser or device. Try another browser or turn on hardware acceleration in the browser settings.") }])}`;
+            return;
+          }
+          throw err;
+        }
       },
       unmount() { token++; inst?.unmount(); inst = null; },
     };

@@ -118,9 +118,9 @@
               <label class="mini-toggle" title="${tr("Kappaleet luovat varjon maahan ja toisiinsa", "Parts cast shadows on the ground and each other")}" ${st.shaded ? "" : "hidden"}>
                 <input type="checkbox" id="s3-shadows" ${st.shadows ? "checked" : ""}> ${tr("Varjot", "Shadows")}</label>` : ""}
               <button data-v="3d">3D</button><button data-v="top">${tr("Ylhäältä", "Top")}</button><button data-v="front">${tr("Edestä", "Front")}</button></span></h3>
-            <canvas class="view3" id="s3-view" style="height:460px"></canvas>
-            <canvas class="view3" id="s3-gl" style="height:460px" hidden aria-label="${tr("Varjostettu 3D-näkymä robottimallista. Nuolinäppäimet kääntävät, plus ja miinus zoomaavat, 0 palauttaa.", "Shaded 3D view of the robot model. Arrow keys rotate, plus and minus zoom, 0 resets.")}"></canvas>
-            <p class="note" style="margin-top:8px">${viewHint()} ${tr("Akselit: x punainen, y vihreä, z sininen.", "Axes: x red, y green, z blue.")}</p>
+            <canvas class="view3" id="s3-view" style="height:min(460px, 60vh)"></canvas>
+            <canvas class="view3" id="s3-gl" style="height:min(460px, 60vh)" hidden aria-label="${tr("Varjostettu 3D-näkymä robottimallista. Nuolinäppäimet kääntävät, plus ja miinus zoomaavat, 0 palauttaa.", "Shaded 3D view of the robot model. Arrow keys rotate, plus and minus zoom, 0 resets.")}"></canvas>
+            <p class="note" style="margin-top:8px">${viewHint()} ${settings.axisColors === "cmy" ? tr("Akselit: x oranssi, y sininen, z violetti.", "Axes: x orange, y blue, z purple.") : tr("Akselit: x punainen, y vihreä, z sininen.", "Axes: x red, y green, z blue.")}</p>
           </div>
           <div id="s3-right"></div>
         </div>
@@ -158,7 +158,18 @@
   function renderTf() {
     const left = el.querySelector("#s3-left"), top = el.querySelector("#s3-top");
     const names = st.frames.map((f) => f.name);
-    const num = (i, k, j, v, f) => `<td><input type="text" inputmode="decimal" data-i="${i}" data-k="${k}" data-j="${j}" data-f="${f}" value="${fmtInput(v / f, 5)}"></td>`;
+    const AX = ["x", "y", "z", "roll", "pitch", "yaw"];
+    const num = (i, k, j, v, f) => `<td><input type="text" inputmode="decimal" data-i="${i}" data-k="${k}" data-j="${j}" data-f="${f}" value="${fmtInput(v / f, 5)}" aria-label="${esc(st.frames[i].name)}: ${AX[(k === "rpy" ? 3 : 0) + j]}"></td>`;
+    // Vanhemmaksi ei voi valita kehyksen omaa jälkeläistä (silmukka): jälkeläiset jätetään valikosta pois
+    const descendantsOf = (name) => {
+      const out = new Set([name]);
+      for (let added = true; added;) { added = false; for (const x of st.frames) if (out.has(x.parent) && !out.has(x.name)) { out.add(x.name); added = true; } }
+      return out;
+    };
+    const parentOptions = (f) => {
+      const own = descendantsOf(f.name);
+      return names.filter((n) => !own.has(n) || n === f.parent).map((n) => `<option ${n === f.parent ? "selected" : ""}>${esc(n)}</option>`).join("");
+    };
     // Kehystaulukko on leveä, joten se on koko leveydellä sarakkeiden yläpuolella
     top.innerHTML = `
       <div class="card" style="margin-bottom:var(--pad)">
@@ -166,10 +177,10 @@
         <div class="table-wrap"><table class="dh-table" id="s3-frames">
           <tr><th>${tr("Nimi", "Name")}</th><th>${tr("Vanhempi", "Parent")}</th><th>x</th><th>y</th><th>z</th><th>roll</th><th>pitch</th><th>yaw</th><th></th></tr>
           ${st.frames.map((f, i) => `<tr class="${f.name === st.sel ? "sel" : ""}">
-            <td><input type="text" data-i="${i}" data-k="name" value="${esc(f.name)}" style="min-width:110px;font-family:var(--mono)"></td>
-            <td><select data-i="${i}" data-k="parent" style="min-width:110px">
+            <td><input type="text" data-i="${i}" data-k="name" value="${esc(f.name)}" style="min-width:110px;font-family:var(--mono)" aria-label="${tr("Kehyksen nimi", "Frame name")}"></td>
+            <td><select data-i="${i}" data-k="parent" style="min-width:110px" aria-label="${esc(tr(`Kehyksen ${f.name} vanhempi`, `Parent of frame ${f.name}`))}">
               <option value="">—</option>
-              ${names.filter((n) => n !== f.name).map((n) => `<option ${n === f.parent ? "selected" : ""}>${esc(n)}</option>`).join("")}
+              ${parentOptions(f)}
             </select></td>
             ${[0, 1, 2].map((j) => num(i, "xyz", j, f.xyz[j], lenF())).join("")}
             ${[0, 1, 2].map((j) => num(i, "rpy", j, f.rpy[j], angF())).join("")}
@@ -193,9 +204,9 @@
       <div class="card">
         <h3 class="card-title">${tr("Muunnos kehysten välillä", "Transform between frames")}</h3>
         <div class="field-ctl" style="flex-wrap:wrap">
-          <select id="s3-from">${names.map((n) => `<option ${n === st.from ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+          <select id="s3-from" aria-label="${tr("Lähtökehys", "Source frame")}">${names.map((n) => `<option ${n === st.from ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
           <span class="note">→</span>
-          <select id="s3-to">${names.map((n) => `<option ${n === st.to ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
+          <select id="s3-to" aria-label="${tr("Kohdekehys", "Target frame")}">${names.map((n) => `<option ${n === st.to ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
         </div>
         <p class="note" style="margin:8px 0 12px">${tr(`Kehyksen <b>${esc(st.to)}</b> asento kehyksessä <b>${esc(st.from)}</b> (vrt. <code>tf2_echo ${esc(st.from)} ${esc(st.to)}</code>).`, `Pose of frame <b>${esc(st.to)}</b> in frame <b>${esc(st.from)}</b> (cf. <code>tf2_echo ${esc(st.from)} ${esc(st.to)}</code>).`)}</p>
         <div id="s3-tf"></div>
@@ -219,10 +230,12 @@
         save(); updateTf();
         return;
       }
-      if (k === "parent") { f.parent = t.value; save(); updateTf(); return; }
-      const v = parseInput(t.value);
-      t.classList.toggle("invalid", v === null);
-      if (v === null) return;
+      if (k === "parent") { f.parent = t.value; save(); renderTf(); return; }
+      // Sijainti enintään ±1 km: valtava luku tekisi näkymän ruudukosta liian raskaan
+      const v = parseInput(t.value), bad = v === null || (k === "xyz" && Math.abs(v * +t.dataset.f) > 1000);
+      t.classList.toggle("invalid", bad);
+      t.title = bad && v !== null ? tr("Sijainti enintään ±1000 m", "Position at most ±1000 m") : "";
+      if (bad) return;
       f[k][+t.dataset.j] = v * +t.dataset.f;
       save(); updateTf();
     };
@@ -254,6 +267,9 @@
       save(); renderTf();
     };
     el.querySelector("#s3-reset").onclick = () => {
+      // Oma puu korvataan vain luvalla (muutoksen voi kumota)
+      const custom = JSON.stringify(st.frames) !== JSON.stringify(DEFAULT_FRAMES);
+      if (custom && settings.confirmReset && !confirm(tr("Korvataanko oma TF-puusi esimerkkipuulla? Voit kumota muutoksen (Ctrl+Z).", "Replace your own TF tree with the example tree? You can undo the change (Ctrl+Z)."))) return;
       st.frames = DEFAULT_FRAMES.map((f) => ({ ...f, xyz: [...f.xyz], rpy: [...f.rpy] }));
       Object.assign(st, { sel: "camera_optical", from: "base_link", to: "camera_optical", armFrame: "" });
       save(); renderTf();
@@ -316,7 +332,7 @@
       <div class="card">
         <h3 class="card-title">${tr("Malli", "Model")}</h3>
         <div class="row-actions" style="margin-top:0">
-          <label class="btn">${tr("Lataa URDF…", "Load URDF…")}<input type="file" id="s3-file" accept=".urdf,.xml,text/xml" hidden></label>
+          <label class="btn" tabindex="0" role="button">${tr("Lataa URDF…", "Load URDF…")}<input type="file" id="s3-file" accept=".urdf,.xml,text/xml" hidden></label>
           <button class="btn" id="s3-sample">${tr("Esimerkkirobotti", "Example robot")}</button>
         </div>
         <details style="margin-top:12px">
@@ -345,7 +361,10 @@
       if (!f) return;
       f.text().then((txt) => { st.urdf = txt; st.q = {}; save(); renderUrdf(); });
     };
-    el.querySelector("#s3-sample").onclick = () => { st.urdf = SAMPLE_URDF; st.q = {}; save(); renderUrdf(); };
+    el.querySelector("#s3-sample").onclick = () => {
+      if (st.urdf !== SAMPLE_URDF && settings.confirmReset && !confirm(tr("Korvataanko URDF-teksti esimerkkirobotilla? Voit kumota muutoksen (Ctrl+Z).", "Replace the URDF text with the example robot? You can undo the change (Ctrl+Z)."))) return;
+      st.urdf = SAMPLE_URDF; st.q = {}; save(); renderUrdf();
+    };
     el.querySelector("#s3-zero").onclick = () => { st.q = {}; save(); drawJoints(); refresh(); };
     el.querySelector("#s3-text").oninput = (e) => {
       clearTimeout(parseTimer);
@@ -433,7 +452,7 @@
   function drawScene(v) {
     const ext = v.opts.extent;
     if (settings.showGrid) {
-      const step = ext > 2 ? 0.5 : ext > 0.6 ? 0.1 : 0.05;
+      const step = ext > 0.6 ? View3.gridStep(ext) : 0.05; // iso puu: harvempi ruudukko (enintään ~24 viivaa)
       v.grid(Math.ceil(ext / step) * step, step, cssColor("var(--border)"));
     }
     if (st.mode === "tf") drawTf(v, ext); else drawUrdf(v, ext);

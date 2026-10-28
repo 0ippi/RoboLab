@@ -32,7 +32,7 @@
     const fields = [
       { key: "speed", label: tr("Robotin nopeus", "Robot speed"), unit: "m/s", type: "slider", min: 0.1, max: 2, step: 0.1,
         info: tr("Kuinka nopeasti robotti ajaa. Pienet sisärobotit ajavat tyypillisesti 0,2–0,5 m/s; hitaampi ajo antaa enemmän mittauksia metriä kohden.", "How fast the robot drives. Small indoor robots typically drive 0.2–0.5 m/s; driving slower gives more scans per metre.") },
-      { key: "beams", label: tr("Lidar-säteitä", "Lidar beams"), type: "slider", min: 4, max: 360, step: 1,
+      { key: "beams", label: tr("Lidar-säteitä", "Lidar beams"), type: "slider", min: 4, max: 360, step: 1, int: true,
         info: tr("Montako etäisyysmittausta lidar tekee yhden kierroksen aikana. Edullinen 360° lidar: noin 360; muutaman ToF-anturin rengas: 4–12. Enemmän säteitä = kartta valmistuu nopeammin.", "How many range measurements the lidar takes per revolution. A cheap 360° lidar: about 360; a ring of a few ToF sensors: 4–12. More beams = the map fills in faster.") },
       { key: "range", label: tr("Lidarin kantama", "Lidar range"), unit: lenLabel, factor: lenF, type: "slider", min: 0.3 / lenF(), max: 10 / lenF(), step: 0.1 / lenF(),
         info: tr("Pisin etäisyys, jonka anturi mittaa. Edullinen lidar 6–12 m, ToF-anturi noin 1–2 m (VL53L1X jopa 4 m). Kantaman ulkopuolelta ei saada tietoa, joten robotin on ajettava lähemmäs.", "The longest distance the sensor measures. A cheap lidar 6–12 m, a ToF sensor about 1–2 m (VL53L1X up to 4 m). Nothing is learned beyond the range, so the robot has to drive closer.") },
@@ -116,6 +116,7 @@
 
     gv = new GridView(el.querySelector("#oc-canvas"), {
       draw: drawMap,
+      keyboard: false, // nuolet ohjaavat robottia myös, kun karttaa on klikattu (ei ruudukon kohdistinta)
       onPointer: (c, phase) => {
         if (phase !== "down" || !c.inside) return;
         sim.exploring = false;
@@ -135,7 +136,9 @@
 
   function onKey(e) {
     if (!e.key.startsWith("Arrow")) return;
-    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+    // Lomakekentät ja valikot (esim. Esimerkit-valikon nuolinavigointi) käyttävät nuolia itse
+    const a = document.activeElement;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(a?.tagName) || a?.closest?.('[role="menu"], [role="dialog"], .coach')) return;
     e.preventDefault();
     keys[e.key] = e.type === "keydown";
     if (e.type === "keydown") { sim.exploring = false; sim.path = []; sim.goal = null; updateButtons(); }

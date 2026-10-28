@@ -126,7 +126,8 @@
     s.loads.push({ name: m.joint ? tr("Nivelmoottori", "Joint motor") : tr("Vetomoottori", "Drive motor"), qty: m.motors, avg: Math.round(m.iMotor * 1000), peak: Math.round(m.iStall * 1000), rail: "bat", kind: "motor" });
     saveToolState("power", s);
     if (visible) { drawLoads(); update(); }
-    toast(tr(`Lisätty ${m.motors} moottoria: ${Math.round(m.iMotor * 1000)} mA ajossa, ${Math.round(m.iStall * 1000)} mA jumissa`, `Added ${m.motors} motors: ${Math.round(m.iMotor * 1000)} mA running, ${Math.round(m.iStall * 1000)} mA stalled`));
+    const one = m.motors === 1;
+    toast(tr(`Lisätty ${m.motors} ${one ? "moottori" : "moottoria"}: ${Math.round(m.iMotor * 1000)} mA ajossa, ${Math.round(m.iStall * 1000)} mA jumissa`, `Added ${m.motors} ${one ? "motor" : "motors"}: ${Math.round(m.iMotor * 1000)} mA running, ${Math.round(m.iStall * 1000)} mA stalled`));
   }
 
   function drawFields() {
@@ -145,14 +146,14 @@
     table.innerHTML = `
       <tr><th>${tr("Nimi", "Name")}</th><th>${tr("Kpl", "Qty")}</th><th>${tr("Keski mA", "Avg mA")}</th><th>${tr("Huippu mA", "Peak mA")}</th>${noReg ? "" : `<th>${tr("Syöttö", "Supply")}</th>`}<th>${tr("Tyyppi", "Type")}</th><th></th></tr>
       ${state.loads.map((l, i) => `<tr>
-        <td><input type="text" data-l="${i}:name" value="${esc(l.name)}" aria-label="${tr("Nimi", "Name")}"></td>
-        <td style="width:62px"><input type="number" data-l="${i}:qty" min="1" max="999" step="1" value="${l.qty}" aria-label="${tr("Määrä", "Quantity")}"></td>
-        <td style="width:92px"><input type="number" data-l="${i}:avg" min="0" max="1000000" step="1" value="${l.avg}" aria-label="${tr("Keskivirta", "Average current")}"></td>
-        <td style="width:92px"><input type="number" data-l="${i}:peak" min="0" max="1000000" step="1" value="${l.peak}" aria-label="${tr("Huippuvirta", "Peak current")}"></td>
-        ${noReg ? "" : `<td style="width:110px"><select data-l="${i}:rail" aria-label="${tr("Syöttö", "Supply")}">
+        <td class="name"><input type="text" data-l="${i}:name" value="${esc(l.name)}" aria-label="${tr("Nimi", "Name")}"></td>
+        <td style="width:54px"><input type="number" data-l="${i}:qty" min="1" max="999" step="1" value="${l.qty}" aria-label="${tr("Määrä", "Quantity")}"></td>
+        <td style="width:78px"><input type="number" data-l="${i}:avg" min="0" max="1000000" step="1" value="${l.avg}" aria-label="${tr("Keskivirta", "Average current")}"></td>
+        <td style="width:78px"><input type="number" data-l="${i}:peak" min="0" max="1000000" step="1" value="${l.peak}" aria-label="${tr("Huippuvirta", "Peak current")}"></td>
+        ${noReg ? "" : `<td style="width:100px"><select data-l="${i}:rail" aria-label="${tr("Syöttö", "Supply")}">
           <option value="reg" ${l.rail === "reg" ? "selected" : ""}>${tr("Säädin", "Regulator")}</option>
           <option value="bat" ${l.rail === "bat" ? "selected" : ""}>${tr("Akku", "Battery")}</option></select></td>`}
-        <td style="width:110px"><select data-l="${i}:kind" aria-label="${tr("Tyyppi", "Type")}">
+        <td style="width:100px"><select data-l="${i}:kind" aria-label="${tr("Tyyppi", "Type")}">
           <option value="other" ${l.kind !== "motor" ? "selected" : ""}>${tr("Muu", "Other")}</option>
           <option value="motor" ${l.kind === "motor" ? "selected" : ""}>${tr("Moottori", "Motor")}</option></select></td>
         <td class="x"><button class="del" data-del="${i}" title="${tr("Poista", "Remove")}" aria-label="${tr("Poista", "Remove")}">✕</button></td>

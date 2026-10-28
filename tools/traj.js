@@ -20,6 +20,9 @@
   const isLen = () => st.mode === "axis" && st.quantity === "length";
   const f = () => (isLen() ? lenF() : angF());
   const u = () => (isLen() ? lenLabel() : angLabel());
+  // Kuvaajien yksikkö: käsivarressa kiertyvät nivelet kulmana ja liukuvat pituutena (sekamuoto "° / m")
+  const uPlot = (p = "") => (st.mode === "arm" && arm?.chain.joints.some((j) => j.type === "P") && arm.chain.joints.some((j) => j.type === "R")
+    ? `${angLabel()}${p} / ${lenLabel()}${p}` : `${u()}${p}`);
 
   function render(root, tool) {
     el = root;
@@ -47,6 +50,7 @@
               <div class="fields" id="tr-joints" style="margin-top:10px"></div>
               <div class="row-actions">
                 <button class="btn" id="tr-from-arm" title="${tr("Kopioi nykyinen asento kinematiikkatyökaluista", "Copy the current pose from the kinematics tools")}">${tr("Alku = nykyinen asento", "Start = current pose")}</button>
+                <button class="btn" id="tr-to-arm" title="${tr("Kopioi nykyinen asento kinematiikkatyökaluista loppuasennoksi", "Copy the current pose from the kinematics tools as the end pose")}">${tr("Loppu = nykyinen asento", "End = current pose")}</button>
               </div>` : ""}
             <button class="link-btn" id="tr-adv" style="margin-top:12px">${adv ? tr("Piilota lisäsyötteet", "Hide advanced inputs") : tr("Näytä lisäsyötteet", "Show advanced inputs")}</button>
           </div>
@@ -58,13 +62,13 @@
           ${st.mode === "arm" ? `<div class="card">
             <h3 class="card-title">${tr("Käsivarsi", "Arm")} <span class="view-tools"><button id="tr-play">${tr("▶ Toista", "▶ Play")}</button><span class="note" id="tr-time"></span></span></h3>
             <div class="row-actions" style="margin:0 0 8px">${armViewTools("tr-vt")}</div>
-            <canvas class="view3" id="tr-view" style="height:340px"></canvas>
+            <canvas class="view3" id="tr-view" style="height:min(340px, 55vh)"></canvas>
             <p class="note" style="margin-top:8px">${viewHint()}</p>
           </div>` : ""}
-          <div class="card"><h3 class="card-title">${tr("Paikka", "Position")}</h3><canvas class="plot small" id="tr-p"></canvas></div>
-          <div class="card"><h3 class="card-title">${tr("Nopeus", "Velocity")}</h3><canvas class="plot small" id="tr-v"></canvas></div>
-          <div class="card"><h3 class="card-title">${tr("Kiihtyvyys", "Acceleration")}</h3><canvas class="plot small" id="tr-a"></canvas></div>
-          ${adv ? `<div class="card"><h3 class="card-title">${tr("Nykäys (jerk)", "Jerk")}</h3><canvas class="plot small" id="tr-j"></canvas></div>` : ""}
+          <div class="card"><h3 class="card-title">${tr("Paikka", "Position")} [${uPlot()}]</h3><canvas class="plot small" id="tr-p"></canvas></div>
+          <div class="card"><h3 class="card-title">${tr("Nopeus", "Velocity")} [${uPlot("/s")}]</h3><canvas class="plot small" id="tr-v"></canvas></div>
+          <div class="card"><h3 class="card-title">${tr("Kiihtyvyys", "Acceleration")} [${uPlot("/s²")}]</h3><canvas class="plot small" id="tr-a"></canvas></div>
+          ${adv ? `<div class="card"><h3 class="card-title">${tr("Nykäys (jerk)", "Jerk")} [${uPlot("/s³")}]</h3><canvas class="plot small" id="tr-j"></canvas></div>` : ""}
         </div>
       </div>`;
 
@@ -81,6 +85,10 @@
       drawJointFields();
       el.querySelector("#tr-from-arm").onclick = () => {
         st.armStart = [...window.loadArmModel().q];
+        save(); drawJointFields(); compute();
+      };
+      el.querySelector("#tr-to-arm").onclick = () => {
+        st.armEnd = [...window.loadArmModel().q];
         save(); drawJointFields(); compute();
       };
       view = new ArmView(el.querySelector("#tr-view"), { lift: armLift(arm.chain),
@@ -193,17 +201,24 @@
     const lead = axes.lead || axes[0];
     result = { axes, samples, lead };
 
-    const vMax = Math.max(...samples.map((s) => s.vMax)), aMax = Math.max(...samples.map((s) => s.aMax)), jMax = Math.max(...samples.map((s) => s.jMax));
-    const per = (p) => `${u()}/s${p}`;
+    // Käsivarressa kiertyvät (kulma) ja liukuvat (pituus) nivelet raportoidaan erikseen omissa yksiköissään
+    const isP = (i) => st.mode === "arm" && arm.chain.joints[i]?.type === "P";
+    const peak = (key, which) => Math.max(0, ...samples.filter((_, i) => isP(i) === which).map((s) => s[key]));
+    const vMax = Math.max(...samples.map((s) => s.vMax)), aMax = Math.max(...samples.map((s) => s.aMax));
+    const hasR = samples.some((_, i) => !isP(i)), hasP = samples.some((_, i) => isP(i));
+    const per = (p) => `${u()}/s${p}`, perL = (p) => `${lenLabel()}/s${p}`;
     const vOver = vMax > st.vmax * (1 + 1e-6), aOver = aMax > st.amax * (1 + 1e-6);
     el.querySelector("#tr-results").innerHTML = resultTiles([
       { label: tr("Kesto", "Duration"), value: fmt(lead.T, 3), unit: "s" },
-      { label: tr("Huippunopeus", "Peak velocity"), value: fmt(vMax / f(), 2), unit: per(""), level: P.timed && vOver ? "warn" : "" },
-      { label: tr("Huippukiihtyvyys", "Peak acceleration"), value: fmt(aMax / f(), 2), unit: per("²"), level: P.timed && aOver ? "warn" : "" },
+      ...(hasR ? [{ label: hasP ? tr("Huippunopeus (kiertyvät)", "Peak velocity (revolute)") : tr("Huippunopeus", "Peak velocity"), value: fmt(peak("vMax", false) / f(), 2), unit: per(""), level: P.timed && vOver ? "warn" : "" },
+        { label: hasP ? tr("Huippukiihtyvyys (kiertyvät)", "Peak acceleration (revolute)") : tr("Huippukiihtyvyys", "Peak acceleration"), value: fmt(peak("aMax", false) / f(), 2), unit: per("²"), level: P.timed && aOver ? "warn" : "" }] : []),
+      ...(hasP ? [{ label: tr("Huippunopeus (liukuvat)", "Peak velocity (prismatic)"), value: fmt(peak("vMax", true) / lenF(), 3), unit: perL("") },
+        { label: tr("Huippukiihtyvyys (liukuvat)", "Peak acceleration (prismatic)"), value: fmt(peak("aMax", true) / lenF(), 3), unit: perL("²") }] : []),
       // Trapetsissa ja kuutiopolynomissa kiihtyvyys hyppää, joten nykäys on teoriassa ääretön hyppäyskohdissa
       ...(st._adv ?? settings.advanced ? [(st.profile === "trap" || st.profile === "cubic") && lead.T > 0
         ? { label: tr("Huippunykäys", "Peak jerk"), value: "∞", unit: per("³"), sub: tr("kiihtyvyys muuttuu hyppäyksellisesti", "acceleration changes in steps") }
-        : { label: tr("Huippunykäys", "Peak jerk"), value: fmt(jMax / f(), 1), unit: per("³") }] : []),
+        : hasR ? { label: tr("Huippunykäys", "Peak jerk"), value: fmt(peak("jMax", false) / f(), 1), unit: per("³") }
+          : { label: tr("Huippunykäys", "Peak jerk"), value: fmt(peak("jMax", true) / lenF(), 1), unit: perL("³") }] : []),
     ]);
 
     const alerts = [];
@@ -262,7 +277,7 @@
     if (!result?.tip) return;
     const q = result.axes.map((a) => a.sample(anim.t)[0]);
     if (settings.showGrid) {
-      const ext = v.opts.extent, step = ext > 1.5 ? 0.5 : 0.1;
+      const ext = v.opts.extent, step = View3.gridStep(ext);
       v.grid(Math.ceil(ext / step) * step, step, cssColor("var(--border)"));
     }
     v.poly(result.tip, cssColor("var(--warn)"), 1.5, [4, 4]);

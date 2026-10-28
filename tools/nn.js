@@ -14,6 +14,7 @@
   const REPLAY_RATES = [0.1, 0.25, 0.5, 1, 2];
   // Saavutukset (achievements.js): ilmoitus, kun käyttäjä kokeilee ominaisuutta ensimmäistä kertaa
   const achieve = (id) => window.Achievements?.unlock(id);
+  const gensText = (n) => (n === 1 ? tr("1 sukupolvi", "1 generation") : tr(`${n} sukupolvea`, `${n} generations`));
 
   // Lyhyt tiiviste (FNV-1a): kisaan ja vertailuun kelpaavat vain saman robotin aivot
   function hashStr(s) {
@@ -148,17 +149,21 @@
       this.r = new RS.Renderer(canvas);
       this.manual = false;
       canvas.addEventListener("wheel", (e) => { e.preventDefault(); this.r.zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false });
+      // Kamera siirtyy käsin vasta yli 5 px:n vedosta: napautus tai reittipisteen klikkaus ei lopeta seurantaa
       let drag = null;
-      canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+      canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false }; canvas.setPointerCapture(e.pointerId); });
       canvas.addEventListener("pointermove", (e) => {
         if (!drag) return;
+        if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return;
+        drag.moved = true;
         this.r.camX -= (e.clientX - drag.x) / this.r.scale;
         this.r.camY += (e.clientY - drag.y) / this.r.scale;
-        drag = { x: e.clientX, y: e.clientY };
+        drag.x = e.clientX; drag.y = e.clientY;
         this.manual = true;
       });
       canvas.addEventListener("pointerup", () => { drag = null; });
       canvas.addEventListener("dblclick", () => { this.manual = false; });
+      canvas.setAttribute("title", tr("Veto siirtää kameraa, rulla zoomaa, tuplaklikkaus palauttaa seurannan", "Drag moves the camera, scroll zooms, double-click restores following"));
       onClickNotDrag(canvas, (e) => this.onPick?.(this.r.toWorld(e.clientX, e.clientY)));
       this.ro = new ResizeObserver(() => this.r.resize());
       this.ro.observe(canvas);
@@ -482,17 +487,24 @@
     const taskLabel = () => (st.taskKey === "custom" ? (st.goal ? tr("Oma tavoite", "Custom goal") : tr("Oma tehtävä", "Custom task")) : be.TASKS[st.taskKey]?.name || "");
     const usesTarget = () => /targetDist|s\.target/.test(taskCode());
 
+    // Paras tunnettu aivo: ennätys, ES:n keskiarvo tai GA:n eliitti (forgetBest nollaa ennätyksen; GA:lla ei ole keskiarvoa)
+    const eliteOf = (t) => (t && (t.best || t.mean || t.pop?.[0] || t.init)) || null;
+
     function writeBrain() {
       // Projekti on voinut vaihtua kesken (koulutus kuuluu siihen projektiin, jossa työkalu avattiin)
       if (activeProject().id !== S.projectId) return;
-      const t = S.trainer, p = t.best || t.mean;
+      const t = S.trainer, p = eliteOf(t);
       const brain = {
         layers: S.layers, params: p ? Array.from(p, (v) => +v.toPrecision(6)) : null,
         bestFitness: isFinite(t.bestFitness) ? t.bestFitness : null, gen: S.gen, history: S.history.slice(-300),
       };
-      saveToolState(brainKey, brain, { undo: false });
-      saveToolState(statsKey, { generation: S.gen, bestFitness: brain.bestFitness, lastBest: S.last?.best ?? null, lastMean: S.last?.mean ?? null,
-        model: modelRaw()?.name, task: st.taskKey === "custom" ? "custom" : be.TASKS[st.taskKey].name, terrain: st.terrain }, { undo: false });
+      // Aivot ja tilanne yhdellä tallennuksella (koko projektien tallennus on iso, joten ei kahdesti peräkkäin)
+      const proj = activeProject();
+      proj.tools[brainKey] = brain;
+      proj.tools[statsKey] = { generation: S.gen, bestFitness: brain.bestFitness, lastBest: S.last?.best ?? null, lastMean: S.last?.mean ?? null,
+        model: modelRaw()?.name, task: st.taskKey === "custom" ? "custom" : be.TASKS[st.taskKey].name, terrain: st.terrain };
+      proj.updated = Date.now();
+      saveProjects();
     }
     // Aivot tallennetaan joka sukupolven jälkeen, mutta enintään puolentoista sekunnin välein: nopeassa koulutuksessa
     // koko projektin kirjoittaminen selaimen tallennukseen kymmeniä kertoja sekunnissa hidastaisi kaikkea.
@@ -507,7 +519,10 @@
     const flushBrain = () => { if (brainTimer && S?.trainer) saveBrain(true); };
 
     /* ----- Koulutusajot: tallennetut aivot ja oppimiskäyrät vertailua ja kisaa varten ----- */
-    const modelSig = () => hashStr(JSON.stringify(S.model));
+    // Mallin tiiviste ilman nimeä ja kuvausta: valmiin robotin nimi vaihtuu kielen mukaan ja omaa robottia voi nimetä
+    // uudelleen, mutta aivot sopivat yhä. legacySig = ennen 2.14.0:aa tallennettujen ajojen tiiviste.
+    const modelSig = () => { const { name, description, desc, ...phys } = S.model; return hashStr(JSON.stringify(phys)); };
+    const legacySig = () => hashStr(JSON.stringify(S.model));
     // Tuotu projekti voi sisältää mitä tahansa, joten jokainen ajo tarkistetaan ennen käyttöä
     function runs() {
       const list = activeProject().tools[runsKey]?.list;
@@ -518,7 +533,7 @@
     }
     const saveRuns = (list) => saveToolState(runsKey, { list }, { undo: false });
     const runColor = (i) => seriesColor(i + 1); // 0 = nykyinen koulutus
-    const sameBrainShape = (r) => r.sig === modelSig() && JSON.stringify(r.layers) === JSON.stringify(S.layers);
+    const sameBrainShape = (r) => (r.sig === modelSig() || r.sig === legacySig()) && JSON.stringify(r.layers) === JSON.stringify(S.layers);
     // Oppimiskäyrä tiivistettynä: enintään 150 pistettä [sukupolvi, paras]
     function curveOf(history, gen) {
       const n = history.length, step = Math.max(1, Math.ceil(n / 150)), out = [];
@@ -571,15 +586,18 @@
       S.vizObs = new Float32Array(S.layers[0]);
       const saved = useSaved && activeProject().tools[brainKey];
       let init = null;
-      if (saved?.params && JSON.stringify(saved.layers) === JSON.stringify(S.layers) && saved.params.length === RS.Brain.paramCount(S.layers)) {
+      // Tallennus voi olla tuotu tiedostosta: painojen pitää olla lukuja ja historian rivien kelvollisia
+      if (Array.isArray(saved?.params) && JSON.stringify(saved.layers) === JSON.stringify(S.layers) && saved.params.length === RS.Brain.paramCount(S.layers)
+        && saved.params.every(Number.isFinite)) {
         init = Float32Array.from(saved.params);
-        S.gen = saved.gen || 0; S.history = saved.history || [];
+        S.gen = Number.isInteger(saved.gen) && saved.gen > 0 ? saved.gen : 0;
+        S.history = (Array.isArray(saved.history) ? saved.history : []).filter((h) => h && Number.isFinite(h.best) && Number.isFinite(h.mean)).slice(-1000);
       } else {
         if (saved?.params) toast(tr("Tallennetut aivot eivät sovi tähän robottiin, joten aloitetaan alusta.", "The saved brain does not fit this robot, so training starts over."));
         S.gen = 0; S.history = [];
       }
       S.trainer = RS.makeTrainer(st.algo, S.layers, opts(), init || (be.calm ? calmInit(S.layers) : null));
-      if (init && saved.bestFitness != null) S.trainer.bestFitness = saved.bestFitness;
+      if (init && Number.isFinite(saved.bestFitness)) S.trainer.bestFitness = saved.bestFitness;
       S.last = S.history.at(-1) || null;
     }
 
@@ -591,12 +609,14 @@
 
     // Algoritmin tai populaation vaihto säilyttää opitun
     function rebuildTrainer() {
-      const t = S.trainer, init = t && (t.best || t.mean), bf = t ? t.bestFitness : -Infinity;
-      S.trainer = RS.makeTrainer(st.algo, S.layers, opts(), init || null);
+      const t = S.trainer, init = eliteOf(t), bf = t ? t.bestFitness : -Infinity;
+      S.trainer = RS.makeTrainer(st.algo, S.layers, opts(), init);
       S.trainer.bestFitness = bf;
+      // Tavallisessa koulutuksessa käynnissä oleva episodi kuuluu vanhalle kouluttajalle: uusi sukupolvi heti
+      if (S.mode === "train" && !useParallel()) setEpisode(S.trainer.ask());
     }
 
-    const currentBest = () => (S.trainer && (S.trainer.best || S.trainer.mean)) || RS.Brain.randomParams(S.layers);
+    const currentBest = () => eliteOf(S.trainer) || RS.Brain.randomParams(S.layers);
 
     // Omat reittipisteet episodin kohteiksi. 2D: maassa kulkevan robotin piste asettuu maan tasalle (y puuttuu),
     // ilmassa liikkuvan (mallissa oma kohdealue) klikattuun korkeuteen. 3D: ilmassa liikkuvalle kohdealueen keskikorkeus.
@@ -620,6 +640,7 @@
       S.episode = be.episode({ model: S.model, taskFn: o.taskFn || S.taskFn, terrain: o.terrain || st.terrain, seed: o.seed ?? ((Math.random() * 1e9) | 0), population,
         layers: S.layers, duration: o.duration || st.duration, targets: "targets" in o ? o.targets : wpTargets() });
       S.race = o.race || null;
+      S.ownWp = !("targets" in o); // haasteella omat kohteet: käyttäjän reittipisteitä ei piirretä
       view.setEpisode(S.episode, S.race?.colors);
       if (old) be.free(old);
       S.snap = true;
@@ -629,6 +650,8 @@
 
     function setMode(mode) {
       if (S.mode === "train" && mode !== "train") flushBrain();
+      // Reittipisteiden asettaminen päättyy, kun koulutus, uusinta tai kisa alkaa (klikkaus vaihtaisi muuten episodin)
+      if (mode !== "idle" && S.placing) { S.placing = false; drawWaypointRow(); el.querySelector("#nn-view")?.classList.remove("placing"); }
       S.mode = mode;
       const tb = el.querySelector("#nn-train"), rb = el.querySelector("#nn-replay");
       tb.innerHTML = mode === "train" ? `❚❚ ${tr("Tauko", "Pause")}` : `▶ ${tr("Kouluta", "Train")}`;
@@ -655,8 +678,8 @@
     }
 
     const confirmReset = () => S.gen === 0 || RS.ask(S.gen >= 10
-      ? tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nNykyinen koulutus tallentuu Koulutusajot-listaan, josta sen voi ottaa myöhemmin takaisin käyttöön.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nThe current training is saved to the Training runs list, where you can bring it back later.`)
-      : tr(`Tämä nollaa opitut aivot (${S.gen} sukupolvea). Jatketaanko?\n\nVoit tallentaa ne ensin Vie aivot -painikkeella.`, `This resets the learned brain (${S.gen} generations). Continue?\n\nYou can save it first with Export brain.`), tr("Nollaa ja jatka", "Reset and continue"));
+      ? tr(`Tämä nollaa opitut aivot (${gensText(S.gen)}). Jatketaanko?\n\nNykyinen koulutus tallentuu Koulutusajot-listaan, josta sen voi ottaa myöhemmin takaisin käyttöön.`, `This resets the learned brain (${gensText(S.gen)}). Continue?\n\nThe current training is saved to the Training runs list, where you can bring it back later.`)
+      : tr(`Tämä nollaa opitut aivot (${gensText(S.gen)}). Jatketaanko?\n\nVoit tallentaa ne ensin Vie aivot -painikkeella.`, `This resets the learned brain (${gensText(S.gen)}). Continue?\n\nYou can save it first with Export brain.`), tr("Nollaa ja jatka", "Reset and continue"));
 
     function finishGeneration(fit) {
       S.trainer.tell(fit);
@@ -690,6 +713,7 @@
       forgetBest(); // vaikeamman maaston pisteet eivät ole vertailukelpoisia
       const last = i + 1 === order.length - 1;
       status(tr(`Oppiminen tasaantui, joten maasto vaihtui vaikeampaan: ${be.TERRAINS[st.terrain]}${last ? " (vaikein)" : ""}.`, `Learning levelled off, so the terrain changed to a harder one: ${be.TERRAINS[st.terrain]}${last ? " (the hardest)" : ""}.`), "ok");
+      S.statusHold = performance.now() + 6000; // koulutuksen tilarivi ei peitä ilmoitusta heti
       toast(tr(`Maasto: ${be.TERRAINS[st.terrain]}`, `Terrain: ${be.TERRAINS[st.terrain]}`));
       if (last) achieve("curriculum");
     }
@@ -704,19 +728,32 @@
     const useParallel = () => st.parallel !== false && !S.noParallel && typeof Worker !== "undefined";
     async function trainParallel() {
       const trainer = S.trainer, t0 = performance.now();
+      let done = false, timer = 0;
       try {
         pool ||= new TrainPool(dim);
-        const fit = await pool.run({ model: S.model, code: taskCode(), terrain: st.terrain, seed: (Math.random() * 1e9) | 0,
-          layers: S.layers, duration: st.duration, population: trainer.ask(), targets: wpTargets() });
+        // Vahtikoira: jumiin jäänyt palkkiofunktio (esim. loputon silmukka) pysäyttäisi koulutuksen hiljaa.
+        // Raja on reilu: vähintään minuutti, 20 × tavallinen sukupolvi tai populaation ja episodin koon mukaan.
+        const limit = Math.max(60000, 20 * (S.genMs || 0), st.popSize * st.duration * 3);
+        const watchdog = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("watchdog")), limit); });
+        const fit = await Promise.race([pool.run({ model: S.model, code: taskCode(), terrain: st.terrain, seed: (Math.random() * 1e9) | 0,
+          layers: S.layers, duration: st.duration, population: trainer.ask(), targets: wpTargets() }), watchdog]);
         if (dead || S.trainer !== trainer || S.mode !== "train" || !useParallel()) return;
         finishGeneration(fit);
+        done = true;
         if (++S.parGens === 20) achieve("parallel");
         S.genMs = S.genMs ? S.genMs * 0.7 + (performance.now() - t0) * 0.3 : performance.now() - t0;
         const ter = st.autoTerrain ? tr(` Maasto: ${be.TERRAINS[st.terrain]} (vaikeutuu automaattisesti).`, ` Terrain: ${be.TERRAINS[st.terrain]} (gets harder automatically).`) : "";
-        status(tr(`Koulutetaan ${pool.size} prosessoriytimellä, noin ${fmt(60000 / S.genMs, 0)} sukupolvea minuutissa. Näkymässä ajaa paras tähän mennessä löydetty robotti.`,
+        if (!(S.statusHold > performance.now())) status(tr(`Koulutetaan ${pool.size} prosessoriytimellä, noin ${fmt(60000 / S.genMs, 0)} sukupolvea minuutissa. Näkymässä ajaa paras tähän mennessä löydetty robotti.`,
           `Training on ${pool.size} processor cores, about ${fmt(60000 / S.genMs, 0)} generations a minute. The view shows the best robot found so far.`) + ter);
       } catch (err) {
         if (dead || err.message === "terminated") return;
+        if (err.message === "watchdog") {
+          pool?.terminate(); pool = null;
+          setMode("idle");
+          status(tr("Sukupolvi ei valmistunut kohtuullisessa ajassa, joten koulutus pysäytettiin. Tarkista, ettei palkkiofunktiossa ole loputonta silmukkaa, tai pienennä populaatiota tai episodin pituutta.",
+            "A generation did not finish in reasonable time, so training was stopped. Check that the reward function has no endless loop, or reduce the population or episode length."), "err");
+          return;
+        }
         if (err.message.startsWith(tr("Virhe tehtävän koodissa", "Error in the task code"))) { setMode("idle"); status(err.message, "err"); return; }
         // Työläiset eivät käynnisty (esim. vanha selain tai kirjasto ei latautunut): jatketaan tavalliseen tapaan
         console.warn(err);
@@ -725,7 +762,10 @@
         status(tr("Rinnakkaiskoulutus ei toimi tässä selaimessa, joten koulutetaan tavalliseen tapaan.", "Parallel training doesn't work in this browser, so training runs the usual way."), "warn");
         if (S.mode === "train") setEpisode(S.trainer.ask());
       } finally {
+        clearTimeout(timer);
         S.pending = null;
+        // Seuraava sukupolvi heti: taustavälilehdellä ajastimet harvenevat (jopa minuuttiin), mutta työläiset eivät
+        if (done && !dead && S.mode === "train" && useParallel()) S.pending = trainParallel();
       }
     }
 
@@ -772,10 +812,13 @@
 
     function frame() {
       if (dead) return;
-      const lerp = S.mode === "replay" && S.prevPose && S.replay.rate < 1 ? { prev: S.prevPose, alpha: RS.clamp(stepDebt, 0, 1) } : null;
-      view.draw({ showAll: st.showAll, follow: st.follow, snap: S.snap, showTarget: usesTarget() || S.placing, lerp, sensors: st.sensors,
-        orbit: S.mode === "replay" && st.orbit, waypoints: waypoints() });
-      S.snap = false;
+      // Näkymä piirretään vain, kun se on näkyvissä (vieritetty pois: ei turhaa 3D-piirtoa, akku säästyy)
+      if (S.stageVisible !== false) {
+        const lerp = S.mode === "replay" && S.prevPose && S.replay.rate < 1 ? { prev: S.prevPose, alpha: RS.clamp(stepDebt, 0, 1) } : null;
+        view.draw({ showAll: st.showAll, follow: st.follow, snap: S.snap, showTarget: usesTarget() || S.placing, lerp, sensors: st.sensors,
+          orbit: S.mode === "replay" && st.orbit, waypoints: S.ownWp ? waypoints() : [] });
+        S.snap = false;
+      }
       updateHud();
       if (++S.tick % 6 === 0) drawBrainViz();
       if (S.mode === "replay") drawReplayBar();
@@ -786,9 +829,13 @@
     function updateHud() {
       const ep = S.episode, h = el.querySelector("#nn-hud");
       if (!h) return;
+      // Nopeassa koulutuksessa näkymässä on vain paras robotti: viimeinen ruutu kertoo populaation koon
+      const par = S.mode === "train" && useParallel();
       const vals = [S.gen, f2(S.trainer?.bestFitness), f2(S.last?.best), f2(S.last?.mean), ep ? fmt(ep.t, 1) + " s" : "–",
-        ep ? `${ep.agents.filter((a) => !a.done).length} / ${ep.agents.length}` : "–"];
+        par ? String(Math.round(st.popSize)) : ep ? `${ep.agents.filter((a) => !a.done).length} / ${ep.agents.length}` : "–"];
       h.querySelectorAll("b").forEach((b, i) => { if (b.textContent !== String(vals[i])) b.textContent = vals[i]; });
+      const lastLabel = h.querySelectorAll("span")[5], want = par ? tr("Populaatio", "Population") : tr("Elossa", "Alive");
+      if (lastLabel && lastLabel.textContent !== want) lastLabel.textContent = want;
       drawRaceBox();
     }
 
@@ -843,12 +890,20 @@
       }).join("");
     }
 
+    // Kisa ja haaste käynnistetään simulaation alapuolisista korteista: näkymä vieritetään esiin
+    const showStage = () => {
+      const s = el.querySelector("#nn-stage"), r = s?.getBoundingClientRect();
+      if (r && (r.bottom < 60 || r.top > innerHeight - 60)) s.scrollIntoView({ block: "center", behavior: settings.motion === "off" ? "auto" : "smooth" });
+    };
+
     /* ----- Kisa: valitut koulutusajot ja nykyiset aivot samalla radalla ----- */
     function startRace() {
       const list = runs(), show = new Set(st.runShow || []);
       const picked = list.map((r, i) => ({ r, i })).filter(({ r }) => show.has(r.id) && sameBrainShape(r)).slice(0, RACE_MAX - 1);
       if (!picked.length) {
-        status(tr("Valitse Koulutusajot-listasta vähintään yksi saman robotin ajo (rasti), niin se kisaa nykyisiä aivoja vastaan. Tallenna ensin ajo, jos lista on tyhjä.", "Tick at least one run of the same robot in the Training runs list and it races the current brain. Save a run first if the list is empty."), "warn");
+        const msg = tr("Valitse Koulutusajot-listasta vähintään yksi saman robotin ajo (rasti), niin se kisaa nykyisiä aivoja vastaan. Tallenna ensin ajo, jos lista on tyhjä.", "Tick at least one run of the same robot in the Training runs list and it races the current brain. Save a run first if the list is empty.");
+        status(msg, "warn");
+        toast(msg); // tilarivi voi olla vieritetty pois näkyvistä
         return;
       }
       const race = {
@@ -858,6 +913,7 @@
       setMode("race");
       setEpisode([Float32Array.from(currentBest()), ...picked.map(({ r }) => Float32Array.from(r.params))], { race });
       S.raceKey = "";
+      showStage();
       status(tr(`Kisa käynnissä: ${race.names.length} aivoa samalla radalla ja samoilla kohteilla. Pisteet lasketaan tehtävän palkkiofunktiolla.`, `Race on: ${race.names.length} brains on the same track with the same targets. Points come from the task's reward function.`));
     }
     // Matka alusta: 2D eteenpäin x-suunnassa, 3D vaakatasossa mihin tahansa suuntaan
@@ -867,6 +923,7 @@
     }
     function finishRace() {
       const ep = S.episode, R = S.race;
+      if (!R) { setMode("idle"); return; }
       R.done = true;
       window.rsRaces = (window.rsRaces || 0) + 1; // kurssi seuraa päättyneitä kisoja
       const order = ep.agents.map((a, i) => i).sort((p, q) => ep.agents[q].fitness - ep.agents[p].fitness);
@@ -982,13 +1039,13 @@
       ctx.globalAlpha = 1;
       // Neuronit: väri aktivaation mukaan (−1 sininen … 0 harmaa … 1 oranssi)
       const nodes = [];
-      const border = cssColor("var(--border-strong)"), text2 = cssColor("var(--text-2)"), text3 = cssColor("var(--text-3)");
+      const border = cssColor("var(--border-strong)"), text2 = cssColor("var(--text-2)"), text3 = cssColor("var(--text-3)"), fill = cssColor("var(--surface-2)");
       for (let li = 0; li < L.length; li++) {
         const n = L[li];
         for (let j = 0; j < n; j++) {
           const x = colX(li), y = nodeY(n, j), v = acts ? acts[li][j] : 0;
           ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2);
-          ctx.fillStyle = cssColor("var(--surface-2)"); ctx.fill();
+          ctx.fillStyle = fill; ctx.fill();
           if (acts) { ctx.globalAlpha = Math.min(1, Math.abs(v)); ctx.fillStyle = v > 0 ? pos : neg; ctx.fill(); ctx.globalAlpha = 1; }
           ctx.strokeStyle = border; ctx.lineWidth = 0.8; ctx.stroke();
           const name = li === 0 ? S.io?.inputs[j]?.name : li === L.length - 1 ? S.io?.outputs[j]?.name : null;
@@ -1038,7 +1095,7 @@
             info: tr("ES kokeilee pieniä muutoksia ja siirtyy parempien suuntaan: tasainen ja luotettava (suositus). GA:ssa parhaat robotit saavat mutatoituja \"lapsia\": voi löytää yllättäviä ratkaisuja, mutta vaihtelee enemmän.", "ES tries small changes and moves toward the better ones: steady and reliable (recommended). In GA the best robots get mutated \"children\": it can find surprising solutions but varies more.") },
           { key: "parallel", label: tr("Nopea koulutus", "Fast training"), type: "toggle",
             info: tr("Laskee sukupolven kaikilla prosessoriytimillä taustalla, ja näkymässä ajaa vain paras robotti. Moninkertaisesti nopeampi, ja isokin populaatio (satoja robotteja) onnistuu. Kytke pois, jos haluat nähdä koko populaation liikkeessä.", "Computes each generation on all processor cores in the background while the view shows only the best robot. Many times faster, and even a big population (hundreds of robots) works. Turn it off to watch the whole population move.") },
-          { key: "popSize", label: tr("Populaatio", "Population"), min: 4, max: dim === "3d" ? 1000 : 2000, step: 1,
+          { key: "popSize", label: tr("Populaatio", "Population"), min: 4, max: dim === "3d" ? 1000 : 2000, step: 1, int: true,
             info: tr(`Montako robottia kokeillaan yhdessä sukupolvessa. Isompi on vakaampi mutta hitaampi. Suositus ${dim === "3d" ? "15–100" : "24–200"}; nopealla koulutuksella satojakin.`, `How many robots are tried per generation. Bigger is steadier but slower. Recommended ${dim === "3d" ? "15–100" : "24–200"}; with fast training even hundreds.`) },
           { key: "duration", label: tr("Episodin pituus", "Episode length"), unit: "s", min: 2, max: 120, step: 1,
             info: tr("Kuinka kauan yksi yritys kestää. Lyhyt (5–10 s) nopeuttaa alkua; pidennä (15–30 s), kun robotti jo liikkuu, jotta se oppii myös kestävyyttä.", "How long one attempt lasts. Short (5–10 s) speeds up the start; lengthen it (15–30 s) once the robot moves so it also learns endurance.") },
@@ -1049,6 +1106,8 @@
         ],
       };
     }
+
+    const advLabel = (a) => (a ? tr("Piilota lisäasetukset", "Hide advanced settings") : tr("Näytä lisäasetukset (mutaatio, oppimisnopeus, verkon koko)", "Show advanced settings (mutation, learning rate, network size)"));
 
     async function render(root, tool) {
       el = root;
@@ -1082,12 +1141,12 @@
             </div>
             <div class="card"><h3 class="card-title">${tr("Koulutus", "Training")}</h3>
               <div class="fields" id="nn-f-train"></div>
-              ${adv ? `<div class="field" style="margin-top:12px"><label>${tr("Piilokerrokset", "Hidden layers")} <small>${tr("neuroneja kerroksittain, esim. 32,32 — muutos nollaa aivot", "neurons per layer, e.g. 32,32 — changing resets the brain")}</small></label>
-                <div class="field-ctl"><span class="num"><input type="text" id="nn-hidden" value="${esc(st.hidden)}"></span></div></div>` : ""}
-              <button class="link-btn" data-a="adv" style="margin-top:12px">${adv ? tr("Piilota lisäasetukset", "Hide advanced settings") : tr("Näytä lisäasetukset (mutaatio, oppimisnopeus, verkon koko)", "Show advanced settings (mutation, learning rate, network size)")}</button>
+              <div class="field" id="nn-hidden-field" style="margin-top:12px" ${adv ? "" : "hidden"}><label>${tr("Piilokerrokset", "Hidden layers")} <small>${tr("neuroneja kerroksittain, esim. 32,32 — muutos nollaa aivot", "neurons per layer, e.g. 32,32 — changing resets the brain")}</small></label>
+                <div class="field-ctl"><span class="num"><input type="text" id="nn-hidden" value="${esc(st.hidden)}" aria-label="${tr("Piilokerrokset", "Hidden layers")}"></span></div></div>
+              <button class="link-btn" data-a="adv" id="nn-adv" style="margin-top:12px">${advLabel(adv)}</button>
             </div>
             <div class="card"><h3 class="card-title">${tr("Aivot", "Brain")}</h3>
-              <p class="note">${tr("Opitut aivot tallentuvat projektiin joka sukupolven jälkeen. Tiedostoon viety aivot sisältää mallin, tehtävän ja painot — ja toimii myös alkuperäisessä RoboSimissä.", "The learned brain is saved to the project after every generation. An exported brain file contains the model, task and weights — and also works in the original RoboSim.")}</p>
+              <p class="note">${tr("Opitut aivot tallentuvat projektiin joka sukupolven jälkeen. Tiedostoon viedyt aivot sisältävät mallin, tehtävän ja painot — ja toimivat myös alkuperäisessä RoboSimissä.", "The learned brain is saved to the project after every generation. An exported brain file contains the model, task and weights — and also works in the original RoboSim.")}</p>
               <div class="row-actions">
                 <button class="btn primary" data-a="deploy" title="${tr("Arduino, ESP32, Raspberry Pi Pico, Raspberry Pi… Koodi, joka ajaa opitut aivot oikealla robotilla.", "Arduino, ESP32, Raspberry Pi Pico, Raspberry Pi… Code that runs the learned brain on a real robot.")}">${icon("chip")} ${tr("Vie omalle robotille", "Put on a real robot")}</button>
               </div>
@@ -1163,7 +1222,11 @@
           </div>
         </div>`;
 
-      const speedLabel = () => { el.querySelector("#nn-speed-l").textContent = st.speed >= MAX_SPEED ? tr("maksimi", "max") : `${st.speed}×`; };
+      // Nopeassa koulutuksessa sukupolvet lasketaan taustalla täydellä nopeudella, ja näkymä näyttää parasta robottia 1×-nopeudella
+      const speedLabel = () => {
+        const fast = st.parallel !== false && !S?.noParallel;
+        el.querySelector("#nn-speed-l").textContent = st.speed >= MAX_SPEED ? (fast ? tr("maksimi (näkymä 1×)", "max (view 1×)") : tr("maksimi", "max")) : `${st.speed}×`;
+      };
       speedLabel();
       try {
         be = await B.load();
@@ -1176,6 +1239,8 @@
       el.querySelector("#nn-loading").remove();
       if (!Object.hasOwn(be.MODELS, st.modelKey) && st.modelKey !== "custom") st.modelKey = B.defaults.modelKey;
       if (!Object.hasOwn(be.TASKS, st.taskKey) && st.taskKey !== "custom") st.taskKey = B.defaults.taskKey;
+      // Tuodun projektin luvut sallitulle alueelle ennen kuin kouluttaja luodaan (esim. populaatio 1e6 veisi muistin)
+      for (const g of Object.values(fields())) clampToFields(st, g);
 
       S = { mode: "idle", episode: null, gen: 0, history: [], last: null, snap: true, tick: 0, parGens: 0, projectId: activeProject().id };
       try { setupBrain(true); }
@@ -1187,6 +1252,10 @@
       trustNote();
       view = be.view(el.querySelector("#nn-view"));
       view.onPick = addWaypoint;
+      if (typeof IntersectionObserver !== "undefined") {
+        S.stageObserver = new IntersectionObserver(([e]) => { S.stageVisible = e.isIntersecting; });
+        S.stageObserver.observe(el.querySelector("#nn-stage"));
+      }
       el.querySelector("#nn-view").addEventListener("dblclick", () => { st.follow = true; el.querySelector("#nn-follow").checked = true; view.resumeFollow(); S.snap = true; });
       drawFields();
       preview();
@@ -1222,7 +1291,7 @@
       el.querySelector("#nn-replay").onclick = () => {
         if (S.mode === "replay") { setMode("idle"); preview(); return; }
         startReplay();
-        status(S.trainer.best ? tr("Uusinta: paras tähän mennessä löydetty robotti. Hidasta liikettä nopeusnapeilla ja kelaa aikajanalla. Uusi rata vaihtaa maaston ja kohteet.", "Replay: the best robot found so far. Slow the motion down with the speed buttons and scrub the timeline. New track changes the terrain and targets.")
+        status(S.gen > 0 ? tr("Uusinta: paras tähän mennessä löydetty robotti. Hidasta liikettä nopeusnapeilla ja kelaa aikajanalla. Uusi rata vaihtaa maaston ja kohteet.", "Replay: the best robot found so far. Slow the motion down with the speed buttons and scrub the timeline. New track changes the terrain and targets.")
           : tr("Ei vielä koulutettu — näytetään satunnaiset aivot.", "Not trained yet — showing a random brain."));
       };
       // Koko näyttö: näkymä täyttää ikkunan (myös puhelimessa, jossa elementin Fullscreen API ei aina toimi),
@@ -1232,8 +1301,11 @@
         stage.querySelector('[data-fs="train"]').textContent = el.querySelector("#nn-train").textContent;
         stage.querySelector('[data-fs="replay"]').textContent = el.querySelector("#nn-replay").textContent;
       };
+      const rpBar = el.querySelector("#nn-rp"), fsBar = stage.querySelector(".nn-fs-bar");
       const setFs = (on) => {
         stage.classList.toggle("fs", on);
+        // Uusinnan säätimet (hidastus, aikajana) mukaan koko näyttöön alapalkin yläpuolelle
+        if (on) stage.insertBefore(rpBar, fsBar); else if (rpBar.parentNode === stage) stage.after(rpBar);
         document.body.classList.toggle("nn-fs-open", on);
         el.querySelector("#nn-fs").setAttribute("aria-pressed", on);
         if (on) fsSync();
@@ -1292,17 +1364,20 @@
         S.vizObserver = new IntersectionObserver(([e]) => { S.vizVisible = e.isIntersecting; if (e.isIntersecting) drawBrainViz(); });
         S.vizObserver.observe(brain);
       }
-      brain.addEventListener("mousemove", (e) => {
+      // Hiiri: neuronin tiedot osoittaessa. Kosketus: napautus näyttää (sormi on hiirtä epätarkempi, isompi säde).
+      const showTip = (e) => {
         const r = brain.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-        let best = null, bd = 12;
+        let best = null, bd = e.pointerType === "touch" ? 22 : 12;
         for (const n of S.vizNodes || []) { const d = Math.hypot(n.x - x, n.y - y); if (d < bd) { bd = d; best = n; } }
         tip.hidden = !best;
         if (!best) return;
         tip.textContent = best.v == null ? best.name : `${best.name}: ${(best.v >= 0 ? "+" : "") + best.v.toFixed(2)}`;
-        tip.style.left = Math.min(x + 12, r.width - 180) + "px";
+        tip.style.left = Math.max(0, Math.min(x + 12, r.width - 180)) + "px";
         tip.style.top = y + 12 + "px";
-      });
-      brain.addEventListener("mouseleave", () => { tip.hidden = true; });
+      };
+      brain.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") showTip(e); });
+      brain.addEventListener("pointerdown", showTip);
+      brain.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") tip.hidden = true; });
       el.querySelector(".nn-tool").addEventListener("click", onAction);
 
       // Rakentajan "Kouluta simulaatiossa" jättää robotin odottamaan
@@ -1398,6 +1473,12 @@
       S.trainer.best = null;
       S.trainer.bestFitness = -Infinity;
     }
+    // Tehtävä vaihtui kesken rinnakkaisen sukupolven: vanhalla koodilla laskettu (tai jumiin jäänyt) sukupolvi
+    // hylätään ja seuraava alkaa uudella koodilla
+    function dropPending() {
+      if (!S.pending) return;
+      pool?.terminate(); pool = null;
+    }
 
     async function onField(k) {
       if (k === "modelKey") {
@@ -1416,7 +1497,7 @@
         if (st.taskKey === "custom") return;
         delete st.taskCode;
         S.taskFn = RS.compileTask(taskCode());
-        forgetBest();
+        forgetBest(); dropPending();
         save(); drawWaypointRow(); if (S.mode === "idle") preview();
         status(tr("Tehtävä vaihdettu. Aivot säilyvät, joten robotti jatkaa oppimista uudesta tehtävästä.", "Task changed. The brain is kept, so the robot continues learning the new task."));
         return;
@@ -1446,6 +1527,13 @@
     async function onHidden(e) {
       let h;
       try { h = RS.parseHidden(e.target.value); } catch (err) { status(err.message, "err"); e.target.value = st.hidden; return; }
+      const M = RS.HIDDEN_MAX, params = RS.Brain.paramCount([S.layers[0], ...h, S.layers.at(-1)]);
+      if (!h.length || h.length > M.layers || h.some((v) => v > M.neurons) || params > M.params) {
+        status(tr(`Liian suuret aivot: enintään ${M.layers} piilokerrosta, kussakin enintään ${M.neurons} neuronia, ja painoja yhteensä enintään ${M.params} (nyt ${params}). Isommat aivot eivät mahdu selaimen tallennukseen.`,
+          `The brain is too big: at most ${M.layers} hidden layers of at most ${M.neurons} neurons, and at most ${M.params} weights in total (now ${params}). Bigger brains don't fit in browser storage.`), "err");
+        e.target.value = st.hidden;
+        return;
+      }
       if (!(await confirmReset())) { e.target.value = st.hidden; return; }
       autoArchive();
       st.hidden = h.join(",");
@@ -1467,7 +1555,7 @@
     // Tallennetun koulutusajon aivot takaisin käyttöön (nykyinen koulutus tallentuu ensin listaan)
     async function useRun(r) {
       if (!sameBrainShape(r)) return;
-      if (S.gen > 0 && !(await RS.ask(tr(`Otetaanko koulutusajon "${r.name}" aivot käyttöön? Nykyiset aivot (${S.gen} sukupolvea) korvataan${S.gen >= 10 ? ", mutta ne tallentuvat ensin Koulutusajot-listaan" : ""}.`, `Use the brain of the training run "${r.name}"? The current brain (${S.gen} generations) is replaced${S.gen >= 10 ? ", but it is saved to the Training runs list first" : ""}.`), tr("Ota käyttöön", "Use")))) return;
+      if (S.gen > 0 && !(await RS.ask(tr(`Otetaanko koulutusajon "${r.name}" aivot käyttöön? Nykyiset aivot (${gensText(S.gen)}) korvataan${S.gen >= 10 ? ", mutta ne tallentuvat ensin Koulutusajot-listaan" : ""}.`, `Use the brain of the training run "${r.name}"? The current brain (${gensText(S.gen)}) is replaced${S.gen >= 10 ? ", but it is saved to the Training runs list first" : ""}.`), tr("Ota käyttöön", "Use")))) return;
       autoArchive();
       setMode("idle");
       const p = Float32Array.from(r.params);
@@ -1523,6 +1611,8 @@
       drawChallenges();
       // Yritys näytetään uusintana samoilla ehdoilla (sama rata ja kohteet)
       startReplay({ seed: c.seed, terrain: c.terrain, duration: c.duration, taskFn, targets: undefined });
+      showStage();
+      toast(res?.passed ? tr(`Haaste "${c.name}" läpäisty!`, `Challenge "${c.name}" passed!`) : tr(`Haaste "${c.name}": ${fmtMetric(c, score)} / ${fmtMetric(c, c.goal)}`, `Challenge "${c.name}": ${fmtMetric(c, score)} / ${fmtMetric(c, c.goal)}`));
       status(res?.passed
         ? tr(`Haaste "${c.name}" läpäisty: ${fmtMetric(c, score)} (tavoite ${fmtMetric(c, c.goal)}). Uusinta näyttää yrityksen.`, `Challenge "${c.name}" passed: ${fmtMetric(c, score)} (goal ${fmtMetric(c, c.goal)}). The replay shows the attempt.`)
         : tr(`Haaste "${c.name}": ${fmtMetric(c, score)}, tavoite ${fmtMetric(c, c.goal)}. Kouluta lisää ja yritä uudelleen. Uusinta näyttää yrityksen.`, `Challenge "${c.name}": ${fmtMetric(c, score)}, goal ${fmtMetric(c, c.goal)}. Train more and try again. The replay shows the attempt.`), res?.passed ? "ok" : "warn");
@@ -1546,10 +1636,10 @@
       el.querySelector("#nn-view").classList.toggle("placing", on);
       const n = waypoints().length;
       if (on) status(tr(`Klikkaa näkymää: jokainen klikkaus lisää reittipisteen (nyt ${n}/${WAYPOINT_MAX}). Robotti kulkee pisteet järjestyksessä ja aloittaa sitten alusta. ${dim === "3d" ? "Vedä hiirellä kääntääksesi näkymää." : "Vedä hiirellä siirtääksesi näkymää, rulla zoomaa."} Paina lopuksi Valmis.`, `Click the view: every click adds a waypoint (now ${n}/${WAYPOINT_MAX}). The robot visits the points in order and then starts over. ${dim === "3d" ? "Drag to turn the view." : "Drag to move the view, scroll to zoom."} Press Done when finished.`));
-      else if (n) status(tr(`${n} reittipistettä käytössä. Robotti oppii kulkemaan ne järjestyksessä, kun tehtävässä on kohde. Paina Kouluta.`, `${n} waypoints in use. The robot learns to visit them in order when the task has a target. Press Train.`), "ok");
+      else if (n) status(tr(`${n === 1 ? "1 reittipiste" : `${n} reittipistettä`} käytössä. Robotti oppii kulkemaan ne järjestyksessä, kun tehtävässä on kohde. Paina Kouluta.`, `${n} ${n === 1 ? "waypoint" : "waypoints"} in use. The robot learns to visit them in order when the task has a target. Press Train.`), "ok");
     }
     function addWaypoint(p) {
-      if (!S.placing) return;
+      if (!S.placing || S.mode !== "idle") return;
       const list = waypoints();
       if (list.length >= WAYPOINT_MAX) { status(tr(`Enintään ${WAYPOINT_MAX} reittipistettä.`, `At most ${WAYPOINT_MAX} waypoints.`), "warn"); return; }
       list.push(dim === "2d" ? { x: +p.x.toFixed(2), y: +p.y.toFixed(2) } : { x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
@@ -1564,7 +1654,14 @@
     async function onAction(e) {
       const a = e.target.closest("[data-a]")?.dataset.a;
       if (!a) return;
-      if (a === "adv") { st._adv = !(st._adv ?? settings.advanced); save(); router(); return; }
+      // Lisäasetukset näytetään piirtämättä työkalua uudelleen: koulutus jatkuu eikä sivu hyppää alkuun
+      if (a === "adv") {
+        st._adv = !(st._adv ?? settings.advanced); save();
+        el.querySelector("#nn-hidden-field").hidden = !st._adv;
+        el.querySelector("#nn-adv").textContent = advLabel(st._adv);
+        drawFields();
+        return;
+      }
       if (a === "editModel") {
         editDialog({ title: tr("Muokkaa robottimallia (JSON)", "Edit robot model (JSON)"), help: be.modelHelp, text: JSON.stringify(modelRaw(), null, 2),
           apply: async (text) => {
@@ -1577,7 +1674,7 @@
           apply: (text) => {
             S.taskFn = RS.compileTask(text); // heittää syntaksivirheen
             st.taskKey = "custom"; st.taskCode = text; delete st.taskCodeUntrusted; delete st.goal; trustNote();
-            forgetBest();
+            forgetBest(); dropPending();
             save(); drawFields(); drawWaypointRow(); if (S.mode === "idle") preview();
             status(tr("Oma palkkiofunktio otettu käyttöön.", "Custom reward function in use."));
           } });
@@ -1585,7 +1682,7 @@
         goalDialog({ dim, goal: st.goal, apply: (code, goal) => {
           S.taskFn = RS.compileTask(code);
           st.taskKey = "custom"; st.taskCode = code; st.goal = goal; delete st.taskCodeUntrusted; trustNote();
-          forgetBest();
+          forgetBest(); dropPending();
           save(); drawFields(); drawWaypointRow(); if (S.mode === "idle") preview();
           status(tr("Oma tavoite otettu käyttöön. Paina Kouluta. Aivot säilyvät, joten robotti jatkaa nykyisestä osaamisestaan.", "Custom goal in use. Press Train. The brain is kept, so the robot builds on what it already knows."));
           achieve("goal");
@@ -1598,7 +1695,7 @@
         try { await applyModel(JSON.parse(await RS.readFile(f)), tr(`Malli ladattu tiedostosta ${f.name}.`, `Model loaded from ${f.name}.`)); }
         catch (err) { status(tr("Tiedoston lataus epäonnistui: ", "Loading the file failed: ") + err.message, "err"); }
       } else if (a === "exportBrain") {
-        const t = S.trainer, p = t.best || t.mean;
+        const t = S.trainer, p = eliteOf(t);
         RS.download(`aivot${dim === "3d" ? "3d" : ""}-${st.modelKey}-${st.taskKey}-sp${S.gen}.json`, JSON.stringify({
           format: BRAIN_FORMAT[dim], savedAt: new Date().toISOString(),
           modelKey: st.modelKey, model: modelRaw(), taskKey: st.taskKey, taskCode: taskCode(),
@@ -1650,8 +1747,7 @@
         if (S.mode === "idle") preview();
         status(tr("Reittipisteet poistettu: kohteet arvotaan taas.", "Waypoints removed: targets are random again."));
       } else if (a === "builder") {
-        RSBridge.simToBuilder(dim);
-        location.hash = "#/build" + dim;
+        if (await RSBridge.simToBuilder(dim)) location.hash = "#/build" + dim;
       } else if (a === "saveOwn") {
         saveOwn();
       } else if (a === "deploy") {
@@ -1690,6 +1786,12 @@
       let url;
       try { url = shareBase() + "#/share/" + (await encodeShare(meta, currentBest())); }
       catch (err) { status(tr("Linkin tekeminen ei onnistunut tässä selaimessa: ", "Making the link failed in this browser: ") + err.message, "err"); return; }
+      // Avaaja hylkää liian pitkän linkin (rikkinäisenä): kerrotaan jo tässä, miten sitä lyhennetään
+      if (url.length - url.indexOf("#/share/") - 8 > SHARE_MAX_CHARS) {
+        const msg = tr("Aivot ovat liian suuret jakolinkkiin. Pienennä piilokerroksia (esim. 32,32) ja kouluta uudelleen, tai jaa aivot tiedostona (Vie aivot).", "The brain is too big for a share link. Make the hidden layers smaller (e.g. 32,32) and train again, or share the brain as a file (Export brain).");
+        status(msg, "err"); toast(msg);
+        return;
+      }
       let dlg = document.getElementById("rs-share");
       if (!dlg) {
         dlg = document.createElement("dialog");
@@ -1860,16 +1962,21 @@
       be.normalize(raw);
       autoArchive();
       delete st.libId;
+      // Tiedosto voi sisältää mitä tahansa: luvut tarkistetaan ja rajataan kenttien sallitulle alueelle
+      const num = (v, def) => (typeof v === "number" && Number.isFinite(v) ? v : def);
+      const hidden = Array.isArray(d.hidden) && d.hidden.length && d.hidden.every((n) => Number.isInteger(n) && n > 0 && n <= 512) ? d.hidden : [32, 32];
       Object.assign(st, {
         modelKey: Object.hasOwn(be.MODELS, d.modelKey) ? d.modelKey : "custom", modelRaw: Object.hasOwn(be.MODELS, d.modelKey) ? undefined : raw,
-        taskKey: Object.hasOwn(be.TASKS, d.taskKey) ? d.taskKey : "custom", taskCode: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : String(d.taskCode ?? ""),
+        taskKey: Object.hasOwn(be.TASKS, d.taskKey) ? d.taskKey : "custom", taskCode: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : String(d.taskCode ?? "").slice(0, 20000),
         taskCodeUntrusted: Object.hasOwn(be.TASKS, d.taskKey) ? undefined : true, goal: undefined,
-        terrain: d.terrain in be.TERRAINS ? d.terrain : "flat", algo: d.algo === "ga" ? "ga" : "es",
-        popSize: d.opts?.popSize ?? st.popSize, sigma: d.opts?.sigma ?? st.sigma, lr: d.opts?.lr ?? st.lr,
-        duration: d.duration || st.duration, hidden: (d.hidden || [32, 32]).join(","),
+        terrain: Object.hasOwn(be.TERRAINS, d.terrain) ? d.terrain : "flat", algo: d.algo === "ga" ? "ga" : "es",
+        popSize: num(d.opts?.popSize, st.popSize), sigma: num(d.opts?.sigma, st.sigma), lr: num(d.opts?.lr, st.lr),
+        duration: num(d.duration, st.duration), hidden: hidden.join(","),
       });
+      for (const g of Object.values(fields())) clampToFields(st, g);
       save();
-      saveToolState(brainKey, { layers: d.layers, params: d.params, bestFitness: d.bestFitness, gen: d.generation || 0, history: d.history || [] }, { undo: false });
+      saveToolState(brainKey, { layers: d.layers, params: Array.isArray(d.params) && d.params.every(Number.isFinite) ? d.params : null,
+        bestFitness: num(d.bestFitness, null), gen: Number.isInteger(d.generation) && d.generation > 0 ? d.generation : 0, history: Array.isArray(d.history) ? d.history : [] }, { undo: false });
       setMode("idle");
       setupBrain(true); drawFields(); preview(); drawChart(); trustNote();
       status(tr(`Aivot ladattu tiedostosta ${name} (sukupolvi ${S.gen}).`, `Brain loaded from ${name} (generation ${S.gen}).`) + (st.taskCodeUntrusted ? tr(" Tiedoston oma palkkiofunktio on pois käytöstä, kunnes tarkistat sen (Muokkaa palkkiofunktiota).", " The file's own reward function is off until you review it (Edit reward function).") : ""), st.taskCodeUntrusted ? "warn" : "ok");
@@ -1880,6 +1987,7 @@
       if (S?.fsKey) document.removeEventListener("keydown", S.fsKey);
       S?.fsOff?.();
       S?.vizObserver?.disconnect();
+      S?.stageObserver?.disconnect();
       dead = true;
       cancelAnimationFrame(raf);
       pool?.terminate();
@@ -1948,8 +2056,8 @@
       const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
       const name = String(m.name || tr("Jaettu robotti", "Shared robot")).slice(0, 80);
       const gen = Math.max(0, Math.floor(Number(m.gen) || 0));
-      const ok = await RS.ask(tr(`Avataanko jaettu robotti "${name}" (${dim.toUpperCase()}, ${gen} sukupolvea koulutusta)?\n\nSe avataan uuteen projektiin, joten omat työsi säilyvät ennallaan.`,
-        `Open the shared robot "${name}" (${dim.toUpperCase()}, ${gen} generations of training)?\n\nIt opens in a new project, so your own work stays as it is.`), tr("Avaa", "Open"));
+      const ok = await RS.ask(tr(`Avataanko jaettu robotti "${name}" (${dim.toUpperCase()}, koulutus: ${gensText(gen)})?\n\nSe avataan uuteen projektiin, joten omat työsi säilyvät ennallaan.`,
+        `Open the shared robot "${name}" (${dim.toUpperCase()}, training: ${gensText(gen)})?\n\nIt opens in a new project, so your own work stays as it is.`), tr("Avaa", "Open"));
       if (!ok) return;
       const B = BACKENDS[dim], key = "nn" + dim;
       const st = { ...B.defaults, speed: MAX_SPEED, showAll: true, follow: true, parallel: true, hidden: layers.slice(1, -1).join(",") };
@@ -1989,12 +2097,16 @@
   /* ===== Siirrot rakentajan ja simulaation välillä =====
      Robotti kulkee projektin tilassa: rakentaja lukee build2d/build3d.importRaw-kentän ja simulaatio nn2d/nn3d-mallin. */
   window.RSBridge = Object.assign(window.RSBridge || {}, {
-    simToBuilder(dim) {
+    // Rakentajassa jo oleva toinen robotti korvataan vain luvalla (muutoksen voi kumota). Palauttaa false, jos peruttiin.
+    async simToBuilder(dim) {
       const MODELS = dim === "2d" ? RS.MODELS : null;
       const st = getToolState("nn" + dim, BACKENDS[dim].defaults);
       const raw = st.modelKey === "custom" ? st.modelRaw : (MODELS ? MODELS[st.modelKey] : { builtin3d: st.modelKey });
       const cur = getToolState("build" + dim, {});
-      saveToolState("build" + dim, { ...cur, importRaw: raw });
+      const same = cur.export && JSON.stringify(cur.export) === JSON.stringify(raw);
+      if (cur.model?.bodies?.length && !same && !(await RS.ask(tr("Rakentajassa on jo robotti. Korvataanko se tämän simulaation robotilla? Voit kumota muutoksen (Ctrl+Z).", "The builder already has a robot. Replace it with this simulation's robot? You can undo the change (Ctrl+Z)."), tr("Korvaa", "Replace")))) return false;
+      if (!same) saveToolState("build" + dim, { ...cur, importRaw: raw });
+      return true;
     },
   });
 })();

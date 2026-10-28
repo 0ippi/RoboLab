@@ -5,18 +5,19 @@ TOOL_IMPL.projects = {
   render(el, tool) {
     const draw = () => {
       const list = Object.values(projects.projects).sort((a, b) => b.updated - a.updated);
-      const toolName = (id) => TOOLS.find((t) => t.id === id)?.name || id;
+      const toolName = (id) => TOOLS.find((t) => t.id === id)?.name;
       const date = (ms) => new Date(ms).toLocaleString(tr("fi-FI", "en-GB"), { dateStyle: "short", timeStyle: "short" });
       el.innerHTML = `
         ${toolHead(tool, `
-          <label class="btn">${tr("Tuo…", "Import…")}<input type="file" id="p-import" accept="application/json,.json" hidden></label>
+          <label class="btn" tabindex="0" role="button">${tr("Tuo…", "Import…")}<input type="file" id="p-import" accept="application/json,.json" hidden></label>
           <button class="btn" id="p-example" title="${tr("Luo tai palauta valmis esimerkkiprojekti", "Create or restore a ready example project")}">${tr("Esimerkkiprojekti", "Example project")}</button>
           <button class="btn primary" id="p-new">${tr("+ Uusi projekti", "+ New project")}</button>`)}
         <div class="tool">
           <div class="col">
             <div class="proj-list">
               ${list.map((p) => {
-                const used = Object.keys(p.tools);
+                // Vain työkalut: jaetut tilat (esim. "arm" = käsivarsimalli, nn2dRuns) eivät ole työkaluja
+                const used = Object.keys(p.tools).filter((id) => TOOLS.some((t) => t.id === id));
                 return `<div class="card proj ${p.id === projects.active ? "active" : ""}" data-id="${esc(p.id)}">
                   <div class="card-icon">${icon("folder")}</div>
                   <div class="meta"><b>${esc(p.name)}</b>

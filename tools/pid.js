@@ -144,7 +144,9 @@
       { label: tr("Nousuaika (10–90 %)", "Rise time (10–90 %)"), value: sim.unstable ? "–" : fmt(m.rise, 3), unit: "s" },
       { label: tr("Ylitys", "Overshoot"), value: sim.unstable ? "–" : fmt(m.overshoot, 1), unit: "%", level: lvl(false, m.overshoot > 25) },
       { label: tr("Asettumisaika (2 %)", "Settling time (2 %)"), value: sim.unstable || m.settling === null ? "–" : fmt(m.settling, 3), unit: "s", level: lvl(sim.unstable, m.settling === null) },
-      { label: tr("Pysyvä virhe", "Steady-state error"), value: sim.unstable ? "–" : fmt(m.sse, 3), level: lvl(false, Math.abs(m.sse) > 0.02 * state.setpoint) },
+      // Pysyvä virhe on mielekäs vain, kun vaste on asettunut (muuten luku olisi hetkellinen heilahdus)
+      { label: tr("Pysyvä virhe", "Steady-state error"), value: sim.unstable || sim.growing || m.settling === null ? "–" : fmt(m.sse, 3),
+        sub: !sim.unstable && (sim.growing || m.settling === null) ? tr("ei asettunut", "not settled") : "", level: lvl(false, m.settling !== null && !sim.growing && Math.abs(m.sse) > 0.02 * state.setpoint) },
     ]);
     el.querySelector("#pid-alerts").innerHTML = alertsHtml(alerts);
 

@@ -38,10 +38,18 @@ TOOL_IMPL.units = {
     const state = getToolState("units", { cat: "torque", values: {} });
     const DEFAULT_VALUE = { temp: 293.15 };
 
+    // Lukujen esitys asetuksista: tieteellinen aina, tai automaattisesti hyvin suurille ja pienille luvuille
     const formatNum = (v) => {
       if (!Number.isFinite(v)) return "";
-      let s = Math.abs(v) >= 1e9 || (Math.abs(v) < 1e-6 && v !== 0) ? v.toExponential(5) : String(+v.toPrecision(7));
+      const sci = v !== 0 && (settings.notation === "sci" || (settings.notation !== "fixed" && (Math.abs(v) >= 1e9 || Math.abs(v) < 1e-6)));
+      let s = sci ? v.toExponential(5) : String(+v.toPrecision(7));
       return settings.decimalSep === "," ? s.replace(".", ",") : s;
+    };
+    // Kopioi tulokset: kaikki valitun suureen yksiköt
+    TOOL_IMPL.units.resultsText = () => {
+      const cat = UNIT_CATEGORIES.find((c) => c.id === state.cat) || UNIT_CATEGORIES[0];
+      const si = state.values[cat.id] ?? DEFAULT_VALUE[cat.id] ?? 1;
+      return [`${cat.name}:`, ...cat.units.map((u) => `  ${formatNum(unitFromSi(u, si))} ${u[0]}`)].join("\n");
     };
 
     const draw = () => {

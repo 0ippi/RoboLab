@@ -28,15 +28,15 @@
       info: tr("Etäisyys tästä nivelestä kuorman kohdalle, kun varsi on ojennettu. Olkanivelelle koko varren pituus, kyynärnivelelle vain kyynärvarsi. Napista saat arvon kinematiikan käsivarsimallista.", "Distance from this joint to the payload with the arm stretched out. For the shoulder it is the whole arm, for the elbow only the forearm. The button fills it from the kinematics arm model.") },
     { key: "jArmMass", label: tr("Varren massa", "Arm mass"), unit: "kg", min: 0, max: 1000, step: 0.05, when: joint,
       info: tr("Nivelen jälkeisten osien massa ilman kuormaa: linkit, seuraavat moottorit ja johdot. Lasketaan tasaisesti jakautuneena koko pituudelle.", "Mass of everything after this joint without the payload: links, further motors and cables. Treated as spread evenly along the length.") },
-    { key: "jSpeed", label: tr("Haluttu nivelnopeus", "Desired joint speed"), unit: () => `${angLabel()}/s`, factor: angF, min: 0, max: 1e5, step: 5, when: joint,
+    { key: "jSpeed", label: tr("Haluttu nivelnopeus", "Desired joint speed"), unit: () => `${angLabel()}/s`, factor: angF, min: 0, max: 1e5, get step() { return settings.angleUnit === "rad" ? 0.1 : 5; }, when: joint,
       info: tr("Kuinka nopeasti nivelen pitäisi kääntyä kuormassa. Pienillä käsivarsilla tyypillisesti 45–180 °/s. Napista saat arvon trajektorigeneraattorista.", "How fast the joint should turn under load. Typically 45–180 °/s for small arms. The button takes it from the trajectory generator.") },
-    { key: "jAccel", label: tr("Haluttu kulmakiihtyvyys", "Desired angular acceleration"), unit: () => `${angLabel()}/s²`, factor: angF, min: 0, max: 1e7, step: 10, when: joint,
+    { key: "jAccel", label: tr("Haluttu kulmakiihtyvyys", "Desired angular acceleration"), unit: () => `${angLabel()}/s²`, factor: angF, min: 0, max: 1e7, get step() { return settings.angleUnit === "rad" ? 0.2 : 10; }, when: joint,
       info: tr("Kuinka nopeasti nivel kiihtyy. Kiihdytys vaatii momenttia painovoiman lisäksi; tyypillisesti 90–720 °/s².", "How quickly the joint speeds up. Acceleration needs torque on top of gravity; typically 90–720 °/s².") },
     { key: "mass", label: tr("Robotin massa", "Robot mass"), unit: "kg", min: 0.01, max: 10000, step: 0.1, when: wheel,
       info: tr("Koko robotin massa akkuineen ja kuormineen. Pienet opetusrobotit 0,3–2 kg, isommat rover-robotit 3–10 kg.", "Total robot mass including battery and payload. Small educational robots 0.3–2 kg, larger rovers 3–10 kg.") },
     { key: "wheelD", when: wheel, label: tr("Pyörän halkaisija", "Wheel diameter"), unit: "mm", min: 1, max: 5000, step: 1,
       info: tr("Vetävän pyörän ulkohalkaisija. Isompi pyörä antaa enemmän nopeutta mutta vähemmän vetovoimaa; tyypillisesti 30–100 mm.", "Outer diameter of a driven wheel. A bigger wheel gives more speed but less pulling force; typically 30–100 mm.") },
-    { key: "motors", when: wheel, label: tr("Vetävien moottorien määrä", "Number of drive motors"), min: 1, max: 32, step: 1,
+    { key: "motors", when: wheel, label: tr("Vetävien moottorien määrä", "Number of drive motors"), min: 1, max: 32, step: 1, int: true,
       info: tr("Kuinka monta moottoria pyörittää pyöriä. Kaksipyöräinen robotti 2, nelivetoinen 4.", "How many motors drive the wheels. A two-wheel robot has 2, a four-wheel-drive one 4.") },
     { key: "rpm", label: tr("Kierrosnopeus tyhjäkäynnillä", "No-load speed"), unit: "rpm", help: tr("Datasheetin 'no-load speed'", "Datasheet 'no-load speed'"), min: 1, max: 100000, step: 1,
       info: tr("Kuinka nopeasti moottorin akseli pyörii ilman kuormaa nimellisjännitteellä. Vaihdemoottoreilla tyypillisesti 100–500 rpm.", "How fast the motor shaft spins with no load at rated voltage. Typically 100–500 rpm for gearmotors.") },
@@ -183,7 +183,8 @@
 
   function updateJoint() {
     const r = Calc.jointMotor(jointParams(state));
-    const T = (v) => fmt(v / tq(), 3), A = (w) => fmt(w / angF(), 0), aU = () => `${angLabel()}/s`;
+    // Kulmanopeus asteina kokonaislukuna, radiaaneina kahdella desimaalilla (1,57 rad/s ei pyöristy 2:ksi)
+    const T = (v) => fmt(v / tq(), 3), A = (w) => fmtAng(w, 0), aU = () => `${angLabel()}/s`;
     const pct = (x) => fmt(x * 100, 0);
     const alerts = [];
     // Ehdotus pyöristetään ylöspäin, jotta se varmasti alittaa 30 %:n rajan

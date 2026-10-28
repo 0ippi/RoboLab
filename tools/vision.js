@@ -139,15 +139,24 @@
   }
 
   /* ----- Lähde ----- */
-  function stopCam() { stream?.getTracks().forEach((t) => t.stop()); stream = null; video = null; }
+  // camGen kasvaa aina, kun kamera pysäytetään: kesken jäänyt käynnistys tunnistaa olevansa vanhentunut
+  let camGen = 0;
+  function stopCam() { camGen++; stream?.getTracks().forEach((t) => t.stop()); stream = null; video = null; }
   async function startCam() {
+    const gen = ++camGen;
+    const live = () => gen === camGen && !!el?.querySelector("#cv-src");
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      // Puhelimessa takakamera (ihanne, ei pakko: tietokoneen kamera kelpaa)
+      const s = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "environment" } });
+      // Työkalusta poistuttiin tai lähde vaihtui odotuksen aikana: kamera heti pois päältä
+      if (!live()) { s.getTracks().forEach((t) => t.stop()); return; }
+      stream = s;
       video = document.createElement("video");
       video.srcObject = stream; video.muted = true; video.playsInline = true;
       await video.play();
     } catch (err) {
-      stopCam();
+      if (!live()) return;
+      unmount();
       st.source = "balls"; save();
       toast(tr("Kameraa ei saatu käyttöön: ", "Could not use the camera: ") + (err?.message || err));
       render(el, TOOLS.find((t) => t.id === "cv"));
@@ -162,6 +171,7 @@
   const save = () => saveToolState("cv", st);
 
   function loop(now) {
+    if (!el?.querySelector("#cv-src")) return; // työkalu suljettu
     raf = requestAnimationFrame(loop);
     const t = st.animate ? (now - t0) / 1000 : 0;
     // Liikkumaton näyte käsitellään vain kerran; kamera ja animaatio joka ruudulla (n. 30 krt/s)
@@ -179,9 +189,9 @@
     const tiles = [];
     if (r.mode === "color" || r.mode === "threshold") {
       tiles.push({ label: tr("Kohde löytyi", "Object found"), value: r.found ? tr("kyllä", "yes") : tr("ei", "no"), level: r.found ? "ok" : "warn" });
-      tiles.push({ label: tr("Pinta-ala", "Area"), value: (r.area * 100).toFixed(1), unit: " %", sub: tr("kuvan pikseleistä", "of the image pixels") });
-      tiles.push({ label: tr("Keskipiste", "Centroid"), value: r.found ? `${r.cx.toFixed(0)}, ${r.cy.toFixed(0)}` : "–", unit: " px" });
-      tiles.push({ label: tr("Ohjaus", "Steering"), value: r.found ? r.steer.toFixed(2) : "–",
+      tiles.push({ label: tr("Pinta-ala", "Area"), value: fmt(r.area * 100, 1), unit: " %", sub: tr("kuvan pikseleistä", "of the image pixels") });
+      tiles.push({ label: tr("Keskipiste", "Centroid"), value: r.found ? `${Math.round(r.cx)}, ${Math.round(r.cy)}` : "–", unit: " px" });
+      tiles.push({ label: tr("Ohjaus", "Steering"), value: r.found ? fmt(r.steer, 2) : "–",
         sub: r.found ? (Math.abs(r.steer) < 0.1 ? tr("suoraan", "straight") : r.steer < 0 ? tr("käänny vasemmalle", "turn left") : tr("käänny oikealle", "turn right")) : tr("ei kohdetta: pysähdy tai etsi", "no object: stop or search") });
     } else if (r.mode === "edges") {
       tiles.push({ label: tr("Reunapikseleitä", "Edge pixels"), value: String(r.edges), sub: tr("kynnyksen yläpuolella", "above the threshold") });
@@ -285,11 +295,15 @@
       if (["mode", "source"].includes(k)) redraw();
       else el.querySelector("#cv-code").textContent = codeSample();
     });
+    // Peruttu tiedostovalinta ei jätä "Oma kuva" -lähdettä jäätyneen kuvan päälle
+    const noFile = () => { if (!img && st.source === "file") { st.source = "balls"; save(); redraw(); loop.dirty = true; } };
+    el.querySelector("#cv-file").oncancel = noFile;
     el.querySelector("#cv-file").onchange = (e) => {
       const f = e.target.files[0];
-      if (!f) return;
+      if (!f) { noFile(); return; }
       const im = new Image();
       im.onload = () => { img = im; loop.dirty = true; };
+      im.onerror = () => { toast(tr("Kuvaa ei voitu avata.", "The image could not be opened.")); noFile(); };
       im.src = URL.createObjectURL(f);
     };
     // Värin poiminta kuvasta
@@ -306,6 +320,7 @@
     if (st.source === "file" && !img) { st.source = "balls"; redraw(); }
     t0 = performance.now();
     loop.dirty = true;
+    cancelAnimationFrame(raf);
     raf = requestAnimationFrame(loop);
   }
 

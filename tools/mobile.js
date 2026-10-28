@@ -202,7 +202,10 @@
   function updatePause() { const b = el.querySelector("#mb-pause"); if (b) b.textContent = paused ? tr("▶ Jatka", "▶ Resume") : tr("❚❚ Tauko", "❚❚ Pause"); }
 
   function onKey(e) {
-    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) return;
+    // Lomakekentät ja valikot käyttävät näppäimiä itse; välilyönti painaa kohdistettua nappia eikä tauota
+    const a = document.activeElement;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(a?.tagName) || a?.closest?.('[role="menu"], [role="dialog"], .coach')) return;
+    if (e.key === " " && /^(BUTTON|A|SUMMARY)$/.test(a?.tagName)) return;
     if (e.key === " " && e.type === "keydown") { e.preventDefault(); togglePause(); return; }
     if (!e.key.startsWith("Arrow")) return;
     e.preventDefault();
@@ -241,13 +244,15 @@
     const p = st.useOdom ? sim.odom : sim.pose;
     const W = map.w, H = map.h, start = [Math.floor(p[0] / map.cell), Math.floor(p[1] / map.cell)];
     const clr = clearance(), fit = st.radius + 0.01, si = start[1] * W + start[0];
+    // Maalissa auton taka-akseli on maalisolussa ja keula akselivälin päässä: maalin ympärillä pitää olla tilaa myös keulalle
+    const goalFit = fit + (st.model === "diff" ? 0 : st.L);
     let target = goal, movedGoal = 0;
-    if (Plan.free(map.grid, goal[0], goal[1]) && clr[goal[1] * W + goal[0]] < fit) {
+    if (Plan.free(map.grid, goal[0], goal[1]) && clr[goal[1] * W + goal[0]] < goalFit) {
       const seen = new Uint8Array(W * H), queue = [goal[1] * W + goal[0]];
       seen[queue[0]] = 1;
       for (let qi = 0; qi < queue.length && qi < 4000; qi++) {
         const i = queue[qi];
-        if (clr[i] >= fit) { target = [i % W, (i / W) | 0]; movedGoal = Math.hypot(target[0] - goal[0], target[1] - goal[1]) * map.cell; break; }
+        if (clr[i] >= goalFit) { target = [i % W, (i / W) | 0]; movedGoal = Math.hypot(target[0] - goal[0], target[1] - goal[1]) * map.cell; break; }
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const x = (i % W) + dx, y = ((i / W) | 0) + dy, n = y * W + x;
           if (x >= 0 && y >= 0 && x < W && y < H && !seen[n] && Plan.free(map.grid, x, y)) { seen[n] = 1; queue.push(n); }
@@ -321,15 +326,25 @@
   /* ----- Fysiikka ----- */
 
   const wallAt = (x, y) => !Plan.free(map.grid, Math.floor(x / map.cell), Math.floor(y / map.cell));
+  // Auton (Ackermann) asento on taka-akselilla, mutta runko ulottuu etuakselin yli: taka-akselin ympyrän lisäksi
+  // rungon levyiset ympyrät keskellä ja etuakselilla (runko on 1,4 × säde leveä, kuten piirroksessa).
+  // Paikallaan kääntyvällä robotilla yksi ympyrä.
+  const bodyCircles = (p) => (st.model === "diff" ? [[0, st.radius]] : [[0, st.radius], [st.L / 2, st.radius * 0.7], [st.L, st.radius * 0.7]])
+    .map(([o, r]) => [p[0] + Math.cos(p[2]) * o, p[1] + Math.sin(p[2]) * o, r]);
   // Kuinka paljon robotti on seinän sisällä (0 = ei lainkaan): keskipiste painaa eniten, reunapisteet vähemmän
   function penetration(p) {
-    let n = wallAt(p[0], p[1]) ? 12 : 0;
-    for (let k = 0; k < 12; k++) {
-      const a = (k / 12) * Math.PI * 2;
-      if (wallAt(p[0] + Math.cos(a) * st.radius, p[1] + Math.sin(a) * st.radius)) n++;
+    let n = 0;
+    for (const [x, y, r] of bodyCircles(p)) {
+      if (wallAt(x, y)) n += 12;
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        if (wallAt(x + Math.cos(a) * r, y + Math.sin(a) * r)) n++;
+      }
     }
     return n;
   }
+  // Etuanturien paikka: auton keula (etuakseli), muuten robotin keskipiste
+  const sensorOrigin = (p) => (st.model === "diff" ? p : [p[0] + Math.cos(p[2]) * st.L, p[1] + Math.sin(p[2]) * st.L]);
   // Liike sallitaan, jos se ei vie robottia syvemmälle seinään — näin seinää koskettava robotti pääsee irti
   // ja voi liukua seinän vieressä. Keskipisteen paino (12) estää ohuen seinän läpi ajamisen.
   function collides(next) {
@@ -343,13 +358,13 @@
   }
 
   function sense() {
-    const p = sim.pose;
-    const ray = (a, max) => Plan.raycast(map.grid, p[0] / map.cell, p[1] / map.cell, a, max / map.cell).dist * map.cell;
-    sim.ranges = SENSOR_ANGLES.map((a) => ray(p[2] + a, SENSOR_RANGE));
-    sim.rear = ray(p[2] + Math.PI, SENSOR_RANGE) - st.radius; // peruutuskäännöstä varten
-    // Vapaa tila robotin ympärillä (8 suuntaa) — käytetään nopeuden rajoittamiseen ahtaissa paikoissa
+    const p = sim.pose, f = sensorOrigin(p);
+    const ray = (o, a, max) => Plan.raycast(map.grid, o[0] / map.cell, o[1] / map.cell, a, max / map.cell).dist * map.cell;
+    sim.ranges = SENSOR_ANGLES.map((a) => ray(f, p[2] + a, SENSOR_RANGE));
+    sim.rear = ray(p, p[2] + Math.PI, SENSOR_RANGE) - st.radius; // peruutuskäännöstä varten
+    // Vapaa tila robotin ympärillä (8 suuntaa, autolla myös keulasta) — nopeuden rajoittamiseen ahtaissa paikoissa
     let clear = Infinity;
-    for (let k = 0; k < 8; k++) clear = Math.min(clear, ray((k / 8) * Math.PI * 2, 1));
+    for (const o of f === p ? [p] : [p, f]) for (let k = 0; k < 8; k++) clear = Math.min(clear, ray(o, (k / 8) * Math.PI * 2, 1));
     sim.clear = clear - st.radius;
   }
 
@@ -602,8 +617,8 @@
     // Etäisyysanturit
     const ctx = g.ctx;
     SENSOR_ANGLES.forEach((a, k) => {
-      const p = sim.pose, d = sim.ranges[k];
-      const [x0, y0] = g.px(p[0] / c, p[1] / c), [x1, y1] = g.px((p[0] + Math.cos(p[2] + a) * d) / c, (p[1] + Math.sin(p[2] + a) * d) / c);
+      const p = sim.pose, o = sensorOrigin(p), d = sim.ranges[k];
+      const [x0, y0] = g.px(o[0] / c, o[1] / c), [x1, y1] = g.px((o[0] + Math.cos(p[2] + a) * d) / c, (o[1] + Math.sin(p[2] + a) * d) / c);
       ctx.strokeStyle = d - st.radius < st.stopDist + 0.05 ? cssColor("var(--err)") : cssColor("var(--ok)");
       ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
