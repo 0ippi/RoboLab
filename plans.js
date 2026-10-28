@@ -19,7 +19,7 @@ const Plans = (() => {
   const FREE_TOOLS = ["dashboard", "learn", "projects", "profile", "plans", "build2d", "motor", "power", "sim2d", "units"];
   const EDU_TOOLS = [...FREE_TOOLS, "path", "map", "pid", "cv", "rot", "fk", "ik", "nn2d"];
   const FREE_COURSES = ["start", "sensors", "power"];
-  const EDU_COURSES = [...FREE_COURSES, "nav", "pid", "vision", "frames"];
+  const EDU_COURSES = [...FREE_COURSES, "nav", "pid", "vision", "frames", "reward"];
   const ALL = "*";
   const FEATURES = {
     free: { tools: FREE_TOOLS, courses: FREE_COURSES, teach: false },

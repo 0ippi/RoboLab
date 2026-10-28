@@ -39,7 +39,7 @@ RoboLab opettaa robotiikkaa tekemällä. Kurssien robottioppaat ohjaavat käytt�
 | Taso | Hinta | Sisältö |
 |---|---|---|
 | Free | 0 € | Perustyökalut ja kurssit Aloita tästä, Anturit ja elektroniikka sekä Virta ja akut |
-| Education | 2 €/kk tai 19 €/v, ilmainen luokkakoodilla | Lisää työkaluja (reitinhaku, PID, konenäkö, kinematiikka, neuroverkko 2D…) ja 7 kurssia |
+| Education | 2 €/kk tai 19 €/v, ilmainen luokkakoodilla | Lisää työkaluja (reitinhaku, PID, konenäkö, kinematiikka, neuroverkko 2D…) ja 8 kurssia |
 | Teacher | 5 €/kk tai 45 €/v | Education + Opettajille-sivu ja luokkakoodit (5 oppilasta sisältyy, lisäpaikka 1 €/v). Koululisenssi 290 €/v. |
 | Pro | 7 €/kk tai 59 €/v | Kaikki työkalut ja kaikki 11 kurssia |
 

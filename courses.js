@@ -1746,7 +1746,9 @@ const Courses = (() => {
     const locked = window.Plans && !Plans.canCourse(course.id);
     const label = !c ? tr("Aloita kurssi", "Start course") : c.finished ? tr("Avaa uudelleen", "Open again") : tr("Jatka", "Continue");
     const next = !locked && COURSES.find((x) => !P.c[x.id]?.finished && (!window.Plans || Plans.canCourse(x.id))) === course;
-    const need = NEEDS[course.id] && !P.c[NEEDS[course.id]]?.finished && !c ? byId(NEEDS[course.id]) : null;
+    // Esikurssia suositellaan vain, jos käyttäjä voi avata sen (Education: Palkkiot ilman Pro-tason Tekoäly-kurssia)
+    const needId = NEEDS[course.id];
+    const need = needId && !P.c[needId]?.finished && !c && (!window.Plans || Plans.canCourse(needId)) ? byId(needId) : null;
     return `<article class="card course ${next ? "next" : ""}">
       <div class="course-step"><span>${i + 1}</span>${next ? `<b>${tr("Suositeltu seuraavaksi", "Recommended next")}</b>` : ""}</div>
       <div class="course-top"><div class="course-bot">${Robots.svg(GUIDE[course.id], c?.finished ? "happy" : "idle", { size: 64 })}</div>

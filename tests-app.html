@@ -1285,6 +1285,10 @@ async function test(name, fn) {
     eq(w.Plans.current().plan, "education", "taso");
     eq(w.Plans.canTool("pid"), true, "PID auki"); eq(w.Plans.canTool("nn3d"), false, "Pro-työkalu");
     eq(w.Plans.canCourse("vision"), true, "Education-kurssi"); eq(w.Plans.canCourse("ai"), false, "Pro-kurssi");
+    eq(w.Plans.canCourse("reward"), true, "Palkkiot ja tavoitteet Education-tasolla");
+    await go("#/learn");
+    const rewardCard = w.document.querySelector('.course [data-course="reward"]')?.closest(".course");
+    ok(rewardCard && !rewardCard.querySelector(".course-need"), "Palkkiot-kurssi suosittelee lukittua Tekoäly-kurssia");
     ok(!G("Accounts").current(), "tili luotiin");
     await boot();
     eq(w.Plans.current().plan, "education", "säilyy uudelleenlatauksessa");
