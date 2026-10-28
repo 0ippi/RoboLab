@@ -295,7 +295,9 @@ const Kin = (() => {
     const c = toClassic(chain);
     const total = c.joints.reduce((s, j) => s + abs(j.a), 0) + abs((c.base || {}).a || 0);
     if (isPlanar(chain) && c.joints.length === 2) {
-      return { min: abs(c.joints[0].a - c.joints[1].a), max: c.joints[0].a + c.joints[1].a };
+      // Linkin pituus on |a| (negatiivinen a vain kääntää linkin suunnan; esim. UR-tyyppinen käsivarsi)
+      const a1 = abs(c.joints[0].a), a2 = abs(c.joints[1].a);
+      return { min: abs(a1 - a2), max: a1 + a2 };
     }
     return { min: 0, max: total + c.joints.reduce((s, j) => s + abs(j.d) + (j.type === "P" ? Math.max(abs(j.min || 0), abs(j.max || 0)) : 0), 0) };
   }

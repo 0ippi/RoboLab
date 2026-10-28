@@ -272,6 +272,7 @@
       const nProj = Object.keys(projects.projects).length;
       const date = (ms) => (ms ? new Date(ms).toLocaleDateString(tr("fi-FI", "en-GB")) : "–");
       const others = Accounts.list().filter((x) => x.id !== Accounts.active());
+      const cls = window.Plans?.classInfo?.();
       el.innerHTML = `
         ${toolHead(tool, a ? `<button class="btn" id="pf-logout">${tr("Kirjaudu ulos", "Sign out")}</button>` : "")}
         <div class="tool">
@@ -299,6 +300,12 @@
               <div class="card stat"><div class="k">${tr("Suoritetut kurssit", "Courses finished")}</div><div class="v">${finished}</div></div>
               <div class="card stat"><div class="k">${tr("Omat robotit", "My robots")}</div><div class="v">${robots}</div></div>
             </div>
+            ${cls ? `<div class="card">
+              <h3 class="card-title">🏫 ${tr("Luokka", "Class")}</h3>
+              <p>${tr(`Olet luokassa <b>${esc(cls.name || cls.code)}</b> nimimerkillä <b>${esc(cls.alias || "")}</b>. Opettaja näkee kurssiesi etenemisen ja haasteiden tulokset.`,
+                `You are in the class <b>${esc(cls.name || cls.code)}</b> as <b>${esc(cls.alias || "")}</b>. Your teacher sees your course progress and challenge results.`)}</p>
+              <div class="row-actions"><button class="btn" data-plans="leave-class">${tr("Poistu luokasta", "Leave the class")}</button></div>
+            </div>` : ""}
           </div>
           <div class="col">
             ${window.Cloud?.configured ? (a?.cloud ? `<div class="card">
@@ -322,9 +329,9 @@
                 "Save all your data (projects, courses, robots, settings) into one file. Import it on another computer to carry on where you left off.")}</p>
               <div class="row-actions">
                 <button class="btn primary" id="pf-export">${icon("download")} ${tr("Vie varmuuskopio", "Export backup")}</button>
-                <label class="btn">${tr("Tuo varmuuskopio…", "Import backup…")}<input type="file" id="pf-import" accept="application/json,.json" hidden></label>
+                <label class="btn" tabindex="0" role="button">${tr("Tuo varmuuskopio…", "Import backup…")}<input type="file" id="pf-import" accept="application/json,.json" hidden></label>
               </div>
-              <p class="note small">${tr("Tekoälyn API-avain ei tallennu varmuuskopioon.", "The AI API key is not included in the backup.")}</p>
+              <p class="note small">${tr("Tekoälyn API-avain ja luokkajäsenyys eivät tallennu varmuuskopioon.", "The AI API key and class membership are not included in the backup.")}</p>
             </div>
             <div class="card">
               <h3 class="card-title">${tr("Käyttäjät tällä koneella", "Users on this computer")}</h3>

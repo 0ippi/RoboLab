@@ -694,7 +694,7 @@ const Education = (() => {
     const ov = document.createElement("div");
     ov.className = "code-overlay";
     ov.setAttribute("role", "dialog");
-    ov.innerHTML = `<div class="code-box">
+    ov.innerHTML = `<div class="code-card">
       <p>${tr("1. Avaa", "1. Open")} <b>${esc(location.origin + location.pathname)}</b></p>
       <p>${tr("2. Mene Kurssit-sivulle ja kirjoita luokkakoodi ja nimimerkki", "2. Go to the Courses page and type the class code and an alias")}</p>
       <div class="big-code">${esc(d.code.slice(0, 4))} ${esc(d.code.slice(4))}</div>

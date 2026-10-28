@@ -154,6 +154,12 @@ function makeSupabaseMock() {
         c.courses = args.p_courses.map((x) => ({ id: x.id, due: x.due || null }));
         return { data: null, error: null };
       }
+      if (name === "leave_class") {
+        const c = cls(args.p_code);
+        if (!c || !c.devices.has(args.p_device)) return err("no-member");
+        c.devices.delete(args.p_device); c.aliases?.delete(args.p_device); c.progress?.delete(args.p_device);
+        return { data: null, error: null };
+      }
       if (name === "remove_student") {
         const c = cls(args.p_code);
         if (!c || c.teacher !== uid) return err("not-owner");
@@ -222,11 +228,12 @@ const ls = () => window.__robolabStores.local;
 const projCount = () => Object.keys(JSON.parse(ls().get("robolab-projects-v1")).projects).length;
 async function go(hash, ms = 400) { w.location.hash = hash; await sleep(ms); }
 const lastToast = () => w.document.querySelector("#toasts")?.lastElementChild?.textContent || "";
+// Odottaa uutta ilmoitusta (vanha voi poistua samaan aikaan, joten lukumäärä ei riitä)
 async function importFile(obj) {
-  const before = w.document.querySelectorAll("#toasts > *").length;
+  const before = new Set(w.document.querySelectorAll("#toasts > *"));
   w.importProject(new w.File([typeof obj === "string" ? obj : JSON.stringify(obj)], "t.json"), () => {});
-  await waitFor(() => w.document.querySelectorAll("#toasts > *").length > before, 3000, "tuonnin ilmoitus");
-  return lastToast();
+  const t = await waitFor(() => [...w.document.querySelectorAll("#toasts > *")].find((x) => !before.has(x)), 6000, "tuonnin ilmoitus");
+  return t.textContent;
 }
 const projectFile = (project, extra = {}) => ({ format: "robolab-project", version: 1, exported: new Date().toISOString(), project, ...extra });
 
@@ -794,6 +801,35 @@ async function test(name, fn) {
     ok(!/Ki = 0/.test(txt), "väärä Ki-ilmoitus: " + txt);
   });
 
+  await test("Lomakekentät: virheellinen arvo näyttää sallitun alueen, kokonaislukukenttä hylkää desimaalin", async () => {
+    await go("#/motor", 500);
+    const set = (k, v) => { const el = w.document.querySelector(`#content input[type=number][data-f="${k}"]`); el.value = v; el.dispatchEvent(new w.Event("input", { bubbles: true })); return el; };
+    const motors = set("motors", "2.5");
+    ok(/Kokonaisluku 1–32|whole number 1–32/.test(motors.closest(".field").querySelector(".field-err")?.textContent || ""), "kokonaislukuvirhe puuttuu: " + motors.closest(".field").innerHTML.slice(-200));
+    eq(motors.getAttribute("aria-invalid"), "true", "aria-invalid");
+    eq(G("getToolState")("motor", {}).motors ?? 2, 2, "virheellinen arvo tallentui");
+    set("motors", "3");
+    ok(!motors.closest(".field").querySelector(".field-err"), "virhe ei poistunut");
+    eq(G("getToolState")("motor", {}).motors, 3, "kelvollinen arvo ei tallentunut");
+    set("mass", "");
+    ok(/(Sallittu alue|Allowed range) 0[,.]01–10000 kg/.test(w.document.querySelector('#content input[data-f="mass"]').closest(".field").querySelector(".field-err")?.textContent || ""), "alueviesti puuttuu");
+    G("activeProject")().tools.motor = undefined; delete G("activeProject")().tools.motor; w.saveProjects();
+  });
+
+  await test("Opastuskierros: näytetään uudelleen, jos käyttäjä siirtyy heti muualle; Ohita merkitsee nähdyksi", async () => {
+    ls().delete("robolab-tips");
+    await go("#/build2d", 1500);
+    await waitFor(() => w.document.querySelector(".coach"), 3000, "kierros ei alkanut");
+    await go("#/dashboard", 300);
+    ok(!w.document.querySelector(".coach"), "kierros jäi auki");
+    ok(!/build2d/.test(ls().get("robolab-tips") || ""), "kierros merkittiin nähdyksi ilman painallusta");
+    await go("#/build2d", 1500);
+    await waitFor(() => w.document.querySelector(".coach"), 3000, "kierros ei näkynyt uudelleen");
+    w.document.querySelector('.coach [data-c="skip"]').click();
+    ok(/build2d/.test(ls().get("robolab-tips") || ""), "Ohita ei merkinnyt kierrosta");
+    await go("#/dashboard", 200);
+  });
+
   await test("Mobiilirobotti 2D pääsee satunnaisiin maaleihin jumittumatta (myös auto) ja seinän viereinen maali siirretään", async () => {
     await go("#/sim2d", 600);
     const S = w.__sim2d, Plan = G("Plan"), map = S.map, base = { ...S.st };
@@ -1171,6 +1207,36 @@ async function test(name, fn) {
     eq(B.S.sel.bodies.length, B.S.model.bodies.length, "kaikki osat valittu");
   });
 
+  await test("Rakentaja: peilaus emon keskitasosta, jalkojen nimet, roottorien kopiot ja yhdistäminen", async () => {
+    const M = await w.eval('import("./robosim/builder/model.js")');
+    // Peilaus: runko x = 1, pyörän kopio rungon toiselle puolelle samaan emoon (ei maailman origon kautta)
+    const m = M.emptyModel("2d"), body = M.addPart(m, "box", "2d", [1, 1, 0]); m.root = body.id;
+    const [wh] = M.addWheel(m, body, "2d");
+    const [copy] = M.mirror(m, [wh.id], 0, "2d");
+    eq(+(copy.pos[0] + wh.pos[0]).toFixed(3), 2, "peilitaso rungon keskellä");
+    eq(m.joints.find((j) => j.b === copy.id)?.a, body.id, "kopion emo");
+    eq(M.validate(m, "2d").filter((x) => x.level === "warn" || x.level === "error").length, 0, "varoituksia peilauksen jälkeen");
+    // Vain reiden peilaus ei anna säärelle toista emoa
+    const m2 = M.emptyModel("2d"), b2 = M.addPart(m2, "box", "2d", [0, 1, 0]); m2.root = b2.id;
+    const [thigh, shin] = M.addLeg(m2, b2, "2d");
+    M.mirror(m2, [thigh.id], 0, "2d");
+    eq(m2.joints.filter((j) => j.b === shin.id).length, 1, "säären emoja");
+    // Jalka nimetyn reiden jälkeen: ei päällekkäisiä nimiä
+    M.renameBody(m2, thigh.id, "oma_reisi"); M.addLeg(m2, b2, "2d");
+    const ids = m2.bodies.map((b) => b.id);
+    eq(ids.length, new Set(ids).size, "päällekkäiset nimet: " + ids.join(","));
+    // Roottorin osa monistetaan: kopiolla oma työntövoima ja kiekko samalla tunnuksella
+    const m3 = M.emptyModel("3d"), b3 = M.addPart(m3, "box", "3d", [0, 1, 0]); m3.root = b3.id;
+    M.addRotor(m3, b3, "3d");
+    const [dup] = M.duplicate(m3, [b3.id], [1, 0, 0]);
+    const t = m3.thrusters.find((x) => x.body === dup.id);
+    ok(t && dup.shapes.some((s) => s.rotor === t.rid) && t.rid !== m3.thrusters[0].rid, "kopion roottori ei toimi");
+    // Yhdistäminen päärunkoon: päärunko säilyy yhdistetyssä osassa
+    const m4 = M.emptyModel("2d"), a4 = M.addPart(m4, "box", "2d", [0, 1, 0]), c4 = M.addPart(m4, "box", "2d", [0.5, 1, 0]); m4.root = c4.id;
+    M.merge(m4, a4.id, c4.id);
+    eq(m4.root, a4.id, "päärunko yhdistämisen jälkeen");
+  });
+
   await test("Roottorit: lentoavustin nostaa, leijuttaa ja pitää robotin pystyssä", async () => {
     const res = await w.eval(`(async () => {
       const P = await import('./robosim/builder/physics.js'), M = await import('./robosim/builder/model.js');
@@ -1296,6 +1362,40 @@ async function test(name, fn) {
     let e2 = null; try { await w.Plans.activateClass("ABCD2345", { alias: "Oppilas 2" }); } catch (e) { e2 = e.message; }
     ok(e2 && /paikat|seats/i.test(e2), "täysi luokka: " + e2);
     eq(w.Plans.current().plan, "free", "B:n taso");
+  });
+
+  await test("Luokkajäsenyys kuuluu käyttäjälle: saman koneen toinen käyttäjä ei ole luokassa, ja oppilas voi poistua luokasta", async () => {
+    pm.server.classes.set("EFGH6789", { code: "EFGH6789", teacher: "x", name: "8C", seats: 3, valid_until: new Date(Date.now() + 864e5).toISOString(), devices: new Set() });
+    useDevice("A"); fresh(); await boot();
+    const aino = await G("Accounts").create({ name: "Aino" });
+    await boot();
+    await w.Plans.activateClass("EFGH6789", { alias: "Aino K" });
+    eq(w.Plans.classInfo()?.code, "EFGH6789", "liittyminen");
+    ok(!("robolab-classroom" in G("Accounts").exportData().data), "luokkajäsenyys päätyi varmuuskopioon");
+    // Toinen käyttäjä samalla koneella: ei luokkaa eikä Education-tasoa, ja liittyessään hän saa oman paikan
+    await G("Accounts").create({ name: "Eero" });
+    await boot();
+    eq(w.Plans.classInfo(), null, "toinen käyttäjä on luokassa");
+    eq(w.Plans.current().plan, "free", "toisen käyttäjän taso");
+    await w.Plans.activateClass("EFGH6789", { alias: "Eero" });
+    eq(pm.server.classes.get("EFGH6789").devices.size, 2, "kaksi käyttäjää, kaksi paikkaa");
+    G("Accounts").useAccount(aino.id); await boot();
+    eq(w.Plans.classInfo()?.alias, "Aino K", "Ainon luokka katosi");
+    // Poistuminen Kurssit-sivun luokkakortista vapauttaa paikan
+    await go("#/learn", 300);
+    w.confirm = () => true;
+    w.document.querySelector('.class-courses [data-plans="leave-class"]').click();
+    await waitFor(() => !w.Plans.classInfo() && pm.server.classes.get("EFGH6789").devices.size === 1, 3000, "poistuminen");
+    await waitFor(() => w.document.querySelector(".class-card") && !w.document.querySelector(".class-courses"), 2000, "Kurssit-sivu näyttää yhä luokan");
+    // Vanha laitekohtainen jäsenyys (ennen 2.14.0) siirtyy kirjautuneelle käyttäjälle samalla paikalla
+    useDevice("B"); fresh();
+    pm.server.classes.get("EFGH6789").devices.add("dev0123456789ab");
+    ls().set("rldevice", "dev0123456789ab");
+    ls().set("rlclass", JSON.stringify({ code: "EFGH6789", name: "8C", alias: "Vanha", until: null, courses: [], checked: Date.now() }));
+    await boot();
+    eq(w.Plans.classInfo()?.alias, "Vanha", "vanha jäsenyys katosi");
+    eq(ls().get("robolab-class-member"), "dev0123456789ab", "paikka vaihtui");
+    ok(!ls().has("rlclass"), "vanha avain jäi");
   });
 
   await test("Pilvitilin tilaus: Pro avaa kaiken; vanhentunut tilaus palaa Free-tasolle", async () => {

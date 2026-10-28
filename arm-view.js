@@ -61,7 +61,7 @@ function drawArm(v, chain, q, { allFrames = false, extent = 1, grid = true, base
   const add = (p, d, s) => p.map((x, i) => x + d[i] * s);
   const { F, segs, basePts, toolSeg, joints } = armPolyline(chain, q, base);
   if (grid && settings.showGrid) {
-    const step = extent > 1.5 ? 0.5 : 0.1;
+    const step = View3.gridStep(extent);
     v.grid(Math.ceil(extent / step) * step, step, cssColor("var(--border)"));
   }
   if (settings.showAxes && !base) v.frame(Kin.identity(4), extent * 0.18, { width: 1.5, alpha: 0.6, labels: settings.frameLabels });

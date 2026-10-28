@@ -173,7 +173,7 @@ const SECTIONS = [
   { id: "sim", title: tr("Simulaatio", "Simulation"), desc: tr("Fysiikkamoottorin oletusasetukset uusille simulaatioille.", "Physics defaults for new simulations."), fields: [
     { key: "timestep", label: tr("Aika-askel", "Time step"), desc: tr("Fysiikan integrointiaskel millisekunteina.", "Physics integration step in milliseconds."), type: "number", min: 0.1, max: 100, step: 0.1, default: 5, suffix: "ms" },
     { key: "integrator", label: tr("Integraattori", "Integrator"), type: "select", default: "semi", options: [["euler", tr("Euler (eksplisiittinen)", "Euler (explicit)")], ["semi", tr("Semi-implisiittinen Euler", "Semi-implicit Euler")], ["rk4", "Runge–Kutta 4"]] },
-    { key: "realtime", label: tr("Reaaliaikakerroin", "Real-time factor"), desc: tr("1× = reaaliaika.", "1× = real time."), type: "range", min: 0.1, max: 4, step: 0.1, default: 1, fmt: (v) => v.toFixed(1) + "×" },
+    { key: "realtime", label: tr("Reaaliaikakerroin", "Real-time factor"), desc: tr("1× = reaaliaika.", "1× = real time."), type: "range", min: 0.1, max: 4, step: 0.1, default: 1, fmt: (v) => fmt(v, 1) + "×" },
     { key: "gravity", label: tr("Painovoima", "Gravity"), type: "number", min: 0, max: 30, step: 0.01, default: 9.81, suffix: "m/s²" },
     { key: "noise", label: tr("Anturikohina", "Sensor noise"), desc: tr("Simuloitujen antureiden kohinan taso.", "Noise level of simulated sensors."), type: "range", min: 0, max: 1, step: 0.05, default: 0.1, fmt: (v) => Math.round(v * 100) + " %" },
     { key: "seed", label: tr("Satunnaissiemen", "Random seed"), desc: tr("0 = satunnainen joka kerta.", "0 = random every time."), type: "number", min: 0, max: 999999, step: 1, default: 0 },
@@ -478,9 +478,24 @@ function parseInput(s) {
   return t === "" || !Number.isFinite(v) ? null : v;
 }
 
-// Lomakekentät: { key, label, unit, type, min, max, step, adv, help, options, factor }
+// Tuodun, jaetun tai vanhan tilan luvut kenttien sallitulle alueelle: valtava arvo (esim. 1e9 iteraatiota)
+// voisi muuten jäädyttää työkalun avattaessa. Muuttaa tilaa paikallaan.
+function clampToFields(state, fields) {
+  for (const f of fields) {
+    if (f.type === "select" || f.type === "toggle" || typeof state[f.key] !== "number") continue;
+    if (!Number.isFinite(f.min) || !Number.isFinite(f.max)) continue;
+    const factor = typeof f.factor === "function" ? f.factor() : f.factor || 1;
+    let v = Math.min(f.max * factor, Math.max(f.min * factor, state[f.key]));
+    if (f.int) v = Math.round(v);
+    state[f.key] = v;
+  }
+  return state;
+}
+
+// Lomakekentät: { key, label, unit, type, min, max, step, adv, help, options, factor, int }
 // factor: näytettävä arvo = tallennettu / factor (esim. momentti valitussa yksikössä)
 function fieldsHtml(fields, state, showAdv) {
+  clampToFields(state, fields);
   return fields.filter((f) => (showAdv || !f.adv) && (!f.when || f.when(state))).map((f) => {
     const factor = typeof f.factor === "function" ? f.factor() : f.factor || 1;
     const unit = typeof f.unit === "function" ? f.unit() : f.unit || "";
@@ -493,7 +508,9 @@ function fieldsHtml(fields, state, showAdv) {
     } else {
       const shown = +(v / factor).toPrecision(6);
       const slider = f.type === "slider" ? `<input type="range" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">` : "";
-      ctl = `${slider}<span class="num"><input type="number" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" min="${f.min}" max="${f.max}" step="${f.step}" value="${shown}">${unit ? `<i>${unit}</i>` : ""}</span>`;
+      // Ei min-attribuuttia: nuolinäppäinten ja spinnerin askeleet lasketaan silloin nykyisestä arvosta
+      // (esim. 1,5 → 1,6 eikä 1,51, kun min = 0,01). Sallittu alue tarkistetaan bindFieldsissa.
+      ctl = `${slider}<span class="num"><input type="number" data-f="${f.key}" aria-label="${esc(String(f.label ?? f.key))}" max="${f.max}" step="${f.step}" value="${shown}">${unit ? `<i>${unit}</i>` : ""}</span>`;
     }
     // info: pidempi selitys "?"-napin takana (mitä arvo tarkoittaa, tyypilliset arvot)
     const info = f.info ? `<button type="button" class="info-btn" data-info aria-expanded="false" aria-label="${tr("Selitys", "Explanation")}: ${esc(stripTags(f.label))}">?</button>` : "";
@@ -505,7 +522,8 @@ function fieldsHtml(fields, state, showAdv) {
   }).join("");
 }
 
-// Sitoo kentät tilaan. Virheellinen syöte merkitään eikä sitä tallenneta.
+// Sitoo kentät tilaan. Virheellinen syöte merkitään (myös näkyvä selitys kentän alle) eikä sitä tallenneta.
+// f.int: vain kokonaisluvut (esim. moottorien määrä)
 function bindFields(root, fields, state, onChange) {
   root.addEventListener("input", (e) => {
     const el = e.target, key = el.dataset.f;
@@ -517,11 +535,20 @@ function bindFields(root, fields, state, onChange) {
     else {
       const factor = typeof f.factor === "function" ? f.factor() : f.factor || 1;
       const n = parseFloat(el.value);
-      const bad = el.value === "" || Number.isNaN(n) || n < f.min || n > f.max;
+      const bad = el.value === "" || Number.isNaN(n) || n < f.min || n > f.max || (f.int && !Number.isInteger(n));
+      const unit = typeof f.unit === "function" ? f.unit() : f.unit || "";
+      const range = `${fmtInput(f.min)}–${fmtInput(f.max)}${unit ? " " + unit : ""}`;
+      const msg = !Number.isFinite(f.min) || !Number.isFinite(f.max) ? tr("Kirjoita luku", "Type a number")
+        : f.int ? tr(`Kokonaisluku ${range}`, `A whole number ${range}`) : tr(`Sallittu alue ${range}`, `Allowed range ${range}`);
       root.querySelectorAll(`[data-f="${key}"]`).forEach((x) => {
         if (x.type === "number") {
           x.classList.toggle("invalid", bad);
-          x.title = bad ? tr(`Sallittu alue ${f.min}–${f.max}`, `Allowed range ${f.min}–${f.max}`) : "";
+          x.title = bad ? msg : "";
+          if (bad) x.setAttribute("aria-invalid", "true"); else x.removeAttribute("aria-invalid");
+          const box = x.closest(".field");
+          let err = box?.querySelector(".field-err");
+          if (bad && box && !err) { err = document.createElement("small"); err.className = "field-err"; box.append(err); }
+          if (err) { if (bad) err.textContent = msg; else err.remove(); }
         }
         if (!bad && x !== el) x.value = n;
       });
@@ -586,7 +613,8 @@ function toolHead(t, extra = "") {
 }
 
 /* ----- Pika-asetukset: kunkin työkalun kannalta olennaiset yleiset asetukset ⚙-napin takana ----- */
-const KIN_SET = ["lengthUnit", "angleUnit", "rotationRep", "eulerOrder", "eulerFrame", "quatOrder", "dhConvention", "frameLabels", "showAxes", "showGrid"];
+// DH-konventio vaihdetaan DH-taulukon omasta valinnasta (yleinen asetus on vain uusien mallien oletus)
+const KIN_SET = ["lengthUnit", "angleUnit", "rotationRep", "eulerOrder", "eulerFrame", "quatOrder", "frameLabels", "showAxes", "showGrid"];
 const TOOL_SETTINGS = {
   fk: KIN_SET, ik: KIN_SET, dh: KIN_SET,
   traj: ["angleUnit", "lengthUnit", "realtime", "decimals", "plotPalette", "showGrid"],
@@ -594,11 +622,12 @@ const TOOL_SETTINGS = {
   motor: ["torqueUnit", "angleUnit", "decimals", "notation", "decimalSep"],
   power: ["decimals", "notation", "decimalSep"],
   serial: ["plotPalette", "decimals", "decimalSep"],
-  path: ["lengthUnit", "seed", "showGrid"],
-  map: ["lengthUnit", "noise", "seed", "realtime", "pauseOnBlur"],
-  sim2d: ["timestep", "integrator", "realtime", "noise", "seed", "pauseOnBlur", "lengthUnit", "angleUnit"],
+  // Kohina ja reittisuunnittelun siemen ovat työkalujen omissa lisäasetuksissa (yleinen asetus on vain uuden tilan oletus)
+  path: ["lengthUnit", "showGrid"],
+  map: ["lengthUnit", "seed", "realtime", "pauseOnBlur"],
+  sim2d: ["timestep", "integrator", "realtime", "seed", "pauseOnBlur", "lengthUnit", "angleUnit"],
   sim3d: ["upAxis", "lengthUnit", "angleUnit", "quatOrder", "frameLabels", "showGrid", "antialias"],
-  rot: ["angleUnit", "eulerOrder", "eulerFrame", "quatOrder", "upAxis", "decimalSep"],
+  rot: ["angleUnit", "quatOrder", "upAxis", "decimalSep"], // Euler-järjestys ja -tyyppi ovat työkalun omissa valinnoissa
   units: ["decimalSep", "notation"],
   nn2d: ["graphics", "plotPalette", "decimals", "decimalSep"],
   nn3d: ["graphics", "showGrid", "antialias", "plotPalette", "decimals"],
@@ -673,13 +702,19 @@ function rememberRecent(id) {
 function resultsText() {
   const t = TOOLS.find((x) => x.id === currentRoute());
   const lines = [`RoboLab — ${t?.name || ""}`, `${tr("Projekti", "Project")}: ${activeProject().name}`, new Date().toLocaleString(tr("fi-FI", "en-GB")), ""];
+  // Työkalun oma yhteenveto (esim. yksikkömuunnin), jos sen tiedot eivät ole tavallisissa kentissä
+  const own = t && TOOL_IMPL[t.id]?.resultsText?.();
+  if (own) lines.push(own, "");
   // Syötteet: kenttien nimet ja arvot
   const inputs = [...document.querySelectorAll("#content .field")].map((f) => {
     const label = f.querySelector("label")?.childNodes[0]?.textContent?.trim();
     const ctl = f.querySelector("select, input[type=number], input[type=text], input[type=checkbox]");
     if (!label || !ctl) return null;
     const unit = f.querySelector(".num i")?.textContent || "";
-    const val = ctl.tagName === "SELECT" ? ctl.selectedOptions[0]?.textContent : ctl.type === "checkbox" ? (ctl.checked ? tr("kyllä", "yes") : tr("ei", "no")) : ctl.value;
+    // Kaksi lukukenttää samassa rivissä (esim. trajektorin alku → loppu): molemmat mukaan
+    const pair = [...f.querySelectorAll("input[type=number], input[type=text]")];
+    const val = ctl.tagName === "SELECT" ? ctl.selectedOptions[0]?.textContent : ctl.type === "checkbox" ? (ctl.checked ? tr("kyllä", "yes") : tr("ei", "no"))
+      : pair.length === 2 ? `${pair[0].value} → ${pair[1].value}` : ctl.value;
     return `  ${label}: ${val}${unit ? " " + unit : ""}`;
   }).filter(Boolean);
   if (inputs.length) lines.push(tr("Syötteet:", "Inputs:"), ...inputs, "");
@@ -688,6 +723,15 @@ function resultsText() {
     return `  ${k}: ${v}${s ? ` (${s})` : ""}`;
   });
   if (res.length) lines.push(tr("Tulokset:", "Results:"), ...res, "");
+  // Taulukot (DH-parametrit, TF-kehykset, kuormat, vertailu): solun kenttä tai teksti, poistonapit pois
+  const cellText = (c) => {
+    const x = c.querySelector("input:not([type=checkbox]):not([type=hidden]), select");
+    if (x) return (x.tagName === "SELECT" ? x.selectedOptions[0]?.textContent : x.value) || "";
+    return c.querySelector("button") && !c.textContent.replace(/[✕×]/g, "").trim() ? null : c.textContent.trim();
+  };
+  const tables = [...document.querySelectorAll("#content table")].map((tb) => [...tb.rows]
+    .map((r) => [...r.cells].map(cellText).filter((s) => s !== null).join("\t")).filter((l) => l.trim()).map((l) => "  " + l).join("\n")).filter(Boolean);
+  if (tables.length) lines.push(tr("Taulukot:", "Tables:"), ...tables, "");
   const al = [...document.querySelectorAll("#content .alert span")].map((a) => "  • " + a.textContent.trim());
   if (al.length) lines.push(tr("Huomiot:", "Notes:"), ...al);
   return lines.join("\n");
@@ -810,7 +854,10 @@ const NEXT_STEPS = {
   }]],
   pid: [["traj", tr("Suunnittele liike, jota säädin seuraa", "Plan the motion the controller follows")], ["sim2d", tr("Kokeile PID-suuntasäätöä mobiilirobotissa", "Try PID heading control on a mobile robot")]],
   traj: [["fk", tr("Tarkastele käsivarren asentoa", "Inspect the arm pose")], ["pid", tr("Viritä säädin seuraamaan liikettä", "Tune a controller to track the motion")]],
-  motor: [["power", tr("Mitoita akku ja säädin näille moottoreille", "Size the battery and regulator for these motors"), "importMotors"], ["sim2d", tr("Aja robottia simulaatiossa", "Drive the robot in simulation")]],
+  // Käsivarren nivelen mitoituksen jälkeen jatketaan käsivarren työkaluihin, pyörärobotin jälkeen mobiilirobottiin
+  motor: () => (getToolState("motor", {}).kind === "joint"
+    ? [["power", tr("Mitoita akku ja säädin näille moottoreille", "Size the battery and regulator for these motors"), "importMotors"], ["traj", tr("Suunnittele nivelen liike ja vertaa nopeuksia", "Plan the joint's motion and compare speeds")], ["ik", tr("Kokeile käsivarren asentoja", "Try out arm poses")]]
+    : [["power", tr("Mitoita akku ja säädin näille moottoreille", "Size the battery and regulator for these motors"), "importMotors"], ["sim2d", tr("Aja robottia simulaatiossa", "Drive the robot in simulation")]]),
   power: [["motor", tr("Tarkista moottorien virrankulutus", "Check the motors' current draw")], ["serial", tr("Mittaa todelliset virrat sarjaportilla", "Measure real currents over the serial port")]],
   serial: [["pid", tr("Viritä säädin mitatun datan perusteella", "Tune a controller from measured data")], ["power", tr("Vertaa mittauksia sähkölaskelmaan", "Compare measurements to the power budget")]],
   path: [["sim2d", tr("Aja robotti tällä kartalla", "Drive a robot on this map")], ["map", tr("Kartoita sama ympäristö lidarilla", "Map the same world with lidar")]],
@@ -826,8 +873,11 @@ const NEXT_STEPS = {
   nn3d: [["build3d", tr("Muokkaa robottia hiirellä rakentajassa", "Edit the robot with the mouse in the builder"), () => RSBridge.simToBuilder("3d")], ["pid", tr("Vertaa perinteiseen säätöön (PID)", "Compare with classic control (PID)")]],
 };
 
+// Työkalun seuraavat askeleet (voi riippua työkalun tilasta, esim. moottorilaskurin nivel- tai pyörätila)
+const nextSteps = (route) => (typeof NEXT_STEPS[route] === "function" ? NEXT_STEPS[route]() : NEXT_STEPS[route]);
+
 function nextStepsHtml(route) {
-  const steps = NEXT_STEPS[route];
+  const steps = nextSteps(route);
   if (!steps) return "";
   return `<section class="next-steps" aria-label="${tr("Seuraava askel", "Next step")}">
     <h2 class="section-title">${tr("Seuraava askel", "Next step")}</h2>
@@ -848,11 +898,24 @@ const footerObserver = new MutationObserver(() => {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-next]");
   if (!b) return;
-  const [to, , prep] = NEXT_STEPS[currentRoute()][+b.dataset.next];
-  if (typeof prep === "function") prep();
+  const [to, , prep] = nextSteps(currentRoute())[+b.dataset.next];
+  // Valmistelu voi estää siirtymisen (esim. rakentajan robotissa on virheitä tai käyttäjä perui korvauksen)
+  if (typeof prep === "function") {
+    const r = prep();
+    if (r === false) return;
+    if (r && typeof r.then === "function") { r.then((ok) => { if (ok !== false) location.hash = "#/" + to; }); return; }
+  }
   location.hash = "#/" + to;
   // Kohdetyökalu voi tarjota saapumistoiminnon (esim. moottorien tuonti sähkölaskelmaan)
   if (typeof prep === "string") setTimeout(() => TOOL_IMPL[to]?.[prep]?.(), 50);
+});
+
+// Tiedostonvalinnan napit (label + piilotettu tiedostokenttä): näppäimistöllä Enter tai välilyönti avaa valinnan
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.('label.btn[role="button"]')) {
+    e.preventDefault();
+    e.target.querySelector('input[type="file"]')?.click();
+  }
 });
 
 /* ===== Navigaatio ===== */
@@ -882,6 +945,7 @@ function renderNav() {
 }
 
 let currentImpl = null;
+let renderSeq = 0; // kasvaa joka sivunvaihdossa: myöhästynyt asynkroninen virhe ei koske uutta sivua
 
 // Työkalun tallennetut tilat (useampi työkalu voi jakaa saman, esim. käsivarsi ja kartta)
 const STATE_KEYS = { fk: ["arm"], ik: ["ik", "arm"], dh: ["arm"], traj: ["traj", "arm"], map: ["occ", "map"], path: ["path", "map"], sim2d: ["sim2d", "map"],
@@ -936,6 +1000,7 @@ function router() {
   const content = $("#content");
   currentImpl?.unmount?.();
   currentImpl = null;
+  const seq = ++renderSeq;
   const proj = `<a href="#/projects" class="crumb-proj" title="${tr("Vaihda projektia", "Switch project")}">${esc(activeProject().name)}</a><span>/</span>`;
   const settingsName = tr("Asetukset", "Settings");
   if (route === "settings") {
@@ -952,14 +1017,20 @@ function router() {
   } else if (TOOL_IMPL[route]) {
     $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     currentImpl = TOOL_IMPL[route];
-    try {
-      currentImpl.render(content, tool);
-    } catch (err) {
-      // Rikkinäinen tallennettu tila (esim. käsin muokattu tuonti) ei saa lukita työkalua pysyvästi
+    // Rikkinäinen tallennettu tila (esim. käsin muokattu tuonti) ei saa lukita työkalua pysyvästi.
+    // Asynkronisen renderin (3D-kirjastojen lataus) virhe näytetään samoin, jos sama sivu on yhä auki.
+    const impl = currentImpl;
+    const fail = (err) => {
       console.error(err);
-      try { currentImpl.unmount?.(); } catch {}
-      currentImpl = null;
+      try { impl.unmount?.(); } catch {}
+      if (currentImpl === impl) currentImpl = null;
       showToolError(content, tool, route, err);
+    };
+    try {
+      const r = impl.render(content, tool);
+      if (r && typeof r.then === "function") r.catch((err) => { if (seq === renderSeq) fail(err); });
+    } catch (err) {
+      fail(err);
     }
   }
   content.scrollTop = 0;
@@ -1180,7 +1251,7 @@ function dataRows() {
     <div class="set-row"><div class="txt"><b>${tr("Vie asetukset", "Export settings")}</b><span>${tr("Lataa asetukset JSON-tiedostona.", "Download settings as a JSON file.")}</span></div>
       <div class="ctl"><button class="btn" id="export">${icon("download")} ${tr("Vie", "Export")}</button></div></div>
     <div class="set-row"><div class="txt"><b>${tr("Tuo asetukset", "Import settings")}</b><span>${tr("Lataa aiemmin viety JSON-tiedosto.", "Load a previously exported JSON file.")}</span></div>
-      <div class="ctl"><label class="btn">${tr("Tuo…", "Import…")}<input type="file" id="import" accept="application/json" hidden></label></div></div>
+      <div class="ctl"><label class="btn" tabindex="0" role="button">${tr("Tuo…", "Import…")}<input type="file" id="import" accept="application/json" hidden></label></div></div>
     <div class="set-row"><div class="txt"><b>${tr("Palauta oletukset", "Reset to defaults")}</b><span>${tr("Nollaa kaikki asetukset alkuperäisiksi.", "Reset all settings to their defaults.")}</span></div>
       <div class="ctl"><button class="btn danger" id="reset">${tr("Palauta", "Reset")}</button></div></div>`;
 }
@@ -1188,7 +1259,7 @@ function dataRows() {
 function updateRows() {
   const cur = ROBOLAB_RELEASES[0];
   return `
-    <div class="set-row"><div class="txt"><b>RoboLab ${esc(VERSION)}</b><span>${tr("Julkaistu", "Released")} ${esc(cur.date || "")}. ${esc(releaseNotes(cur)[0] || "")}</span></div>
+    <div class="set-row"><div class="txt"><b>RoboLab ${esc(VERSION)}</b><span>${tr("Julkaistu", "Released")} ${esc(cur.date ? new Date(cur.date + "T12:00").toLocaleDateString(tr("fi-FI", "en-GB")) : "")}. ${esc(releaseNotes(cur)[0] || "")}</span></div>
       <div class="ctl"><button class="btn primary" id="upd-check">${tr("Tarkista päivitykset", "Check for updates")}</button></div></div>
     <div class="set-row"><div class="txt"><b>${tr("Mitä uutta", "What's new")}</b><span>${tr("Kaikki versiot ja niiden muutokset.", "All versions and their changes.")}</span></div>
       <div class="ctl"><button class="btn" id="upd-history">${tr("Näytä historia", "Show history")}</button></div></div>`;
@@ -1513,19 +1584,21 @@ function coachTour(id, steps, { force = false } = {}) {
   box.setAttribute("aria-label", tr("Opastus", "Guide"));
   document.body.append(box);
   const place = () => {
-    if (!target?.isConnected) { end(); return; }
+    if (!target?.isConnected) { end(false); return; }
     const r = target.getBoundingClientRect(), bw = box.offsetWidth, bh = box.offsetHeight;
     let top = r.bottom + 10;
     if (top + bh > innerHeight - 8) top = Math.max(8, r.top - bh - 10);
     box.style.top = top + "px";
     box.style.left = Math.min(Math.max(8, r.left), innerWidth - bw - 8) + "px";
   };
-  function end() {
-    box.remove(); unmark(); markTips(id);
+  // Kierros merkitään nähdyksi vain, kun käyttäjä painaa Ohita/Valmis/Esc. Jos hän siirtyy muualle heti, se näytetään seuraavalla kerralla.
+  function end(seen = true) {
+    box.remove(); unmark(); if (seen) markTips(id);
     window.removeEventListener("resize", place);
     document.removeEventListener("scroll", place, true);
-    window.removeEventListener("hashchange", end);
+    window.removeEventListener("hashchange", leave);
   }
+  const leave = () => end(false);
   function show() {
     target = document.querySelector(steps[i].sel);
     if (!target) { if (++i < steps.length) show(); else end(); return; }
@@ -1546,16 +1619,17 @@ function coachTour(id, steps, { force = false } = {}) {
   box.onkeydown = (e) => { if (e.key === "Escape") end(); };
   window.addEventListener("resize", place);
   document.addEventListener("scroll", place, true);
-  window.addEventListener("hashchange", end);
+  window.addEventListener("hashchange", leave);
   show();
 }
 
+// Ilmoitus näkyy sitä pidempään, mitä pidempi teksti on (lyhyt 2,2 s, pitkä enintään 8 s)
 function toast(msg) {
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = msg;
   $("#toasts").append(el);
-  setTimeout(() => el.remove(), 2200);
+  setTimeout(() => el.remove(), Math.min(8000, 2200 + String(msg).length * 35));
 }
 
 $("#sidebar-toggle").onclick = toggleSidebar;
@@ -1679,7 +1753,7 @@ function showReleases(list, title) {
     document.body.append(dlg);
   }
   dlg.innerHTML = `<h2>${esc(title)}</h2>
-    <div class="wn-list">${list.map((r) => `<section><h3>RoboLab ${esc(r.version)} <small>${esc(r.date || "")}</small></h3>
+    <div class="wn-list">${list.map((r) => `<section><h3>RoboLab ${esc(r.version)} <small>${esc(r.date ? new Date(r.date + "T12:00").toLocaleDateString(tr("fi-FI", "en-GB")) : "")}</small></h3>
       <ul>${releaseNotes(r).map((n) => `<li>${esc(n)}</li>`).join("")}</ul></section>`).join("")}</div>
     <div class="row-actions rs-dlg-foot"><button class="btn primary" data-close>${tr("Selvä", "Got it")}</button></div>`;
   dlg.querySelector("[data-close]").onclick = () => dlg.close();

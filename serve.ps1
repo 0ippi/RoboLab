@@ -1,9 +1,10 @@
-# Pieni staattinen palvelin: palvelee tämän kansion tiedostot osoitteessa http://localhost:8080/
+# Pieni staattinen palvelin: palvelee tämän kansion tiedostot osoitteessa http://localhost:8080/ (toinen portti: -Port 8091)
+param([int]$Port = 8080)
 $root = $PSScriptRoot
 $listener = New-Object System.Net.HttpListener
-$listener.Prefixes.Add("http://localhost:8080/")
+$listener.Prefixes.Add("http://localhost:$Port/")
 $listener.Start()
-Write-Host "Serving $root at http://localhost:8080/"
+Write-Host "Serving $root at http://localhost:$Port/"
 $types = @{ ".html" = "text/html; charset=utf-8"; ".css" = "text/css"; ".js" = "text/javascript"; ".png" = "image/png"; ".svg" = "image/svg+xml";
   ".webmanifest" = "application/manifest+json"; ".json" = "application/json" }
 while ($listener.IsListening) {

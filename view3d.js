@@ -16,8 +16,22 @@ class View3 {
 
     let mode = null, lx = 0, ly = 0;
     const pos = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    // Kosketus: kahden sormen nipistys zoomaa ja yhteinen liike siirtää kiertokeskistä
+    const touches = new Map();
+    let pinch = null;
+    const pinchState = () => { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1])), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; };
     // Vasen = kierrä (tai raahaa kohdetta), oikea / keski / Shift+vasen = siirrä kiertokeskistä (panorointi)
     canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") {
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        if (touches.size >= 2) {
+          if (mode === "drag") opts.onEnd?.(); // toinen sormi: kohteen raahaus loppuu, alkaa nipistys
+          mode = null;
+          pinch = { ...pinchState(), zoom: this.zoom };
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
       const [x, y] = pos(e);
       const pan = e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
       mode = pan ? "pan" : opts.onDown && opts.onDown(x, y, e) ? "drag" : "orbit";
@@ -28,6 +42,17 @@ class View3 {
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     canvas.addEventListener("pointermove", (e) => {
+      if (pinch && touches.has(e.pointerId)) {
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        if (touches.size < 2) return;
+        const p = pinchState(), { right, up } = this.cam;
+        this.zoom = Math.max(0.2, Math.min(8, pinch.zoom * (p.d / pinch.d)));
+        const dx = p.m[0] - pinch.m[0], dy = p.m[1] - pinch.m[1];
+        this.center = this.center.map((c, i) => c - (right[i] * dx - up[i] * dy) / this.s);
+        pinch.m = p.m;
+        this.draw();
+        return;
+      }
       if (!mode) {
         if (opts.hoverable) { const [x, y] = pos(e); canvas.style.cursor = opts.hoverable(x, y) ? "grab" : ""; }
         return;
@@ -44,7 +69,11 @@ class View3 {
       }
       this.draw();
     });
-    const end = () => { const was = mode; mode = null; canvas.style.cursor = ""; if (was === "drag" || was === "orbit") opts.onEnd?.(); };
+    const end = (e) => {
+      touches.delete(e.pointerId);
+      if (pinch) { if (touches.size < 2) pinch = null; mode = null; return; } // nipistyksen jälkeen ei jatketa kiertoa
+      const was = mode; mode = null; canvas.style.cursor = ""; if (was === "drag" || was === "orbit") opts.onEnd?.();
+    };
     canvas.addEventListener("pointerup", end);
     canvas.addEventListener("pointercancel", end);
     canvas.addEventListener("wheel", (e) => {
@@ -169,6 +198,11 @@ class View3 {
       pts.push([0, 1, 2].map((k) => center[k] + radius * (Math.cos(t) * this.H1[k] + Math.sin(t) * this.H2[k])));
     }
     this.poly(pts, color, width, dash);
+  }
+  // Ruudukon väli näkymän koon mukaan: enintään noin 24 viivaa suuntaansa (iso käsivarsi ei jäädytä piirtoa)
+  static gridStep(extent) {
+    for (const s of [0.1, 0.5, 1, 5, 10, 50, 100, 500]) if ((extent * 2) / s <= 24) return s;
+    return 1000;
   }
   grid(size, step, color) {
     for (let v = -size; v <= size + 1e-9; v += step) {

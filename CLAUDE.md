@@ -3,7 +3,7 @@
 Selainpohjainen robotiikan työkalupakki (vanilla JS, ei build-vaihetta). Käyttäjä puhuu suomea; käyttöliittymä on kaksikielinen `tr("suomi", "english")`.
 
 ## Ajaminen
-- `serve.ps1` palvelee kansion osoitteessa http://localhost:8080/ (myös `.claude/launch.json` → "testisivu").
+- `serve.ps1` palvelee kansion osoitteessa http://localhost:8080/ (myös `.claude/launch.json` → "testisivu"). `-Port 8091` antaa erillisen osoitteen omalla tyhjällä tallennuksella käsin testaamiseen (launch.json "pelitesti"; työkalut auki konsolista `window.__robolabPlanOverride = "pro,teacher"; Plans._changed()`).
 - Käyttäjällä on RoboLab asennettuna: työpöydän ja Käynnistä-valikon pikakuvake ajaa `RoboLab.ps1`:n (käynnistää palvelimen taustalle ja avaa Edgen `--app`-ikkunan). Älä siirrä tai nimeä kansiota uudelleen päivittämättä pikakuvakkeita.
 - Testit: `tests.html` (laskenta) ja `tests-app.html` (koko sovellus kehyksessä `?memstore`-tilassa: tallennus muistiin, ei koske selaimen oikeisiin tietoihin). Kaikkien pitää mennä läpi. Sovelluksen `const`/`let`-globaalit luetaan testeissä `w.eval("nimi")`-kutsulla.
 - Piilossa olevassa esikatseluselaimessa requestAnimationFrame ei etene, joten simulaatioiden ajotesti ohitetaan siellä.
@@ -17,10 +17,18 @@ Kun muutat sovellusta:
 2. Tee tämä viimeisenä, kun kaikki tiedostot on kirjoitettu (avoin sovellus tarkistaa version.js:n viiden minuutin välein).
 3. Uusi tiedosto, joka pitää ladata sovellukseen, lisätään myös `sw.js`:n `APP_FILES`-listaan (offline-käyttö). Uusi CDN-kirjasto lisätään `LIB_FILES`-listaan.
 
+## Yhteiset lomakkeet ja reititys (app.js)
+- `fieldsHtml` rajaa tilan luvut kenttien alueelle (`clampToFields`: tuotu valtava arvo voisi jäädyttää työkalun) ja jättää number-kentiltä min-attribuutin pois (askeleet nykyisestä arvosta). `bindFields` näyttää virheen kentän alla (`.field-err`, `aria-invalid`); `int: true` = vain kokonaisluvut.
+- Router näyttää myös asynkronisen renderin virheen palautusnäkymässä (`renderSeq` estää myöhästyneet). `NEXT_STEPS[id]` voi olla funktio; valmistelu voi palauttaa false tai lupauksen (siirtyminen vasta, jos ei peruttu).
+- `coachTour` merkitsee kierroksen nähdyksi vain Ohita/Valmis/Esc-painalluksella. `toast` näkyy tekstin pituuden mukaan (enintään 8 s). Työkalu voi antaa `TOOL_IMPL[id].resultsText()` Kopioi tulokset -toimintoon; taulukot kopioituvat automaattisesti.
+
 ## Robotinrakentaja
 - `robosim/builder/` (ui.js käyttöliittymä, model.js mallin operaatiot, viewport.js Three.js-näkymä, physics.js fysiikkatesti). Testitilassa (`?memstore`) `window.__builder` antaa testeille pääsyn tilaan.
 - Siirrettäessä osan lapset (`M.descendants`, nivel a → b) tulevat mukana; Alt + veto siirtää vain valinnan. Usean osan kahva on apupisteessä `view.pivot` (siirto, kierto, tasainen skaalaus).
 - Fysiikkatestin lentoavustin (`PhysicsTest.autopilot`, vain käsin testaukseen): PI-nousunopeus ja PD-asento, voimat pienimmän normin ratkaisulla. Simulaatiossa neuroverkko ohjaa roottoreita suoraan.
+- `change()` pysäyttää fysiikkatestin ennen muutosta (testin aikana muokattava malli on piilossa); testin aikana näppäimistä toimivat vain T, Esc, F ja H. Nuolet, R, G ja Sijainti-kenttä siirtävät myös lapset (`withKids`).
+- Peilaus (`M.mirror`) peilaa valinnan emo-osan (muuten päärungon) keskitason yli ja kopioi vain nivelet, joiden lapsi kopioidaan. Monistus, peilaus ja liittäminen kopioivat roottorit uudella tunnuksella (`copyThrusters`); yhdistäminen siirtää roottorit ja säilyttää päärungon. Valmisosat kiinnittyvät päärunkoon, jos mitään ei ole valittu (`attachTarget`).
+- Tarkistus: nivelen pitää olla kummankin osan lähellä, osalla vähintään yksi muoto; kahdesta nivelestä saman osaparin välillä tai osan kahdesta emosta varoitetaan. Moottorinivelen nopeus 0 korvataan oletuksella (havainto olisi 0/0).
 
 ## Neuroverkkosimulaatiot (tools/nn.js)
 - Nopea koulutus (`st.parallel`, oletus päällä): `TrainPool` jakaa sukupolven Web Workereille (`robosim/core/worker2d.js` perinteinen, `robosim/3d/worker3d.js` moduuli; sama siemen kaikille). Pääsäie ajaa vain parhaan robotin näytöksen. Jos työläiset eivät käynnisty, `S.noParallel` ja paluu tavalliseen koulutukseen. Simulaatiomoduulien pitää toimia ilman DOMia (robot3d.js tuo three:n täydellä URL:lla, koska työläisellä ei ole import mapia).
@@ -32,7 +40,9 @@ Kun muutat sovellusta:
 - Reittipisteet `st.waypoints` (2D {x,y}, 3D {x,z}) → episodin `cfg.targets` (myös työläisille). Maassa kulkevalle 2D-robotille y lasketaan maastosta.
 - Aivonäkymä `drawBrainViz()` (sisääntulojen nimet `RS.deployInfo`), anturit näkyviin `st.sensors`. Aivot tallennetaan enintään 1,5 s välein (`saveBrain`/`flushBrain`).
 - Testitilassa `window.__nn["2d"|"3d"]` antaa testeille pääsyn tilaan (S, st, finishGeneration, startRace, replaySeek, addWaypoint, runChallenge…).
-- Maaston tai episodin pituuden vaihto ja reittipisteiden muutos kutsuvat `forgetBest()`: eri ehtojen pisteet eivät ole vertailukelpoisia.
+- Maaston tai episodin pituuden vaihto ja reittipisteiden muutos kutsuvat `forgetBest()`: eri ehtojen pisteet eivät ole vertailukelpoisia. Paras aivo haetaan aina `eliteOf(trainer)` (ennätys, ES:n keskiarvo tai GA:n eliitti), ei `best || mean`.
+- Rinnakkaiskoulutus aloittaa seuraavan sukupolven heti edellisen valmistuttua (taustavälilehdellä ajastimet harvenevat); vahtikoira pysäyttää jumiin jääneen sukupolven, ja tehtävän vaihto hylkää kesken olevan (`dropPending`). Näkymä piirretään vain näkyvissä (`S.stageVisible`).
+- Koulutusajon `sig` ei sisällä mallin nimeä eikä kuvausta (kieli ja uudelleennimeäminen eivät riko vertailua); vanhat ajot tunnistetaan `legacySig`-tiivisteellä. Uudet piilokerrokset enintään `RS.HIDDEN_MAX` (vanhat tallennukset latautuvat yhä).
 - Jakolinkki `#/share/<data>` (app.js router → `RSShare.open`): JSON + Int16-painot (QR-versiossa Int8 kerroksittain) deflate-raw + base64url. Avautuu kysymällä uuteen projektiin; koodi → `taskCodeUntrusted`, Oma tavoite tehdään koodiksi `goalCode`:lla. Localhostissa linkki osoittaa julkiseen sivuun (`PUBLIC_URL`). QR: `qrcode-generator@1.4.4` (LIB_FILES).
 - Koko näyttö: `.nn-stage.fs` (CSS, toimii myös iOS:ssä), alapalkin napit klikkaavat oikeita nappeja. Opastus: `coachTour(id, steps)` app.js:ssä, nähdyt `robolab-tips`.
 - Vie omalle robotille → Kytkentäohje: `RS.wiringGuide` (deploy.js) jakaa Picon nastat (I2C GP4/GP5, ulostulot GP6–22, sisääntulot GP26–28 ja GP0–3). Ei testattu oikealla laitteella.
@@ -78,7 +88,8 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 
 ## Tilaustasot
 - `plans.js` (`Plans`): hinnat (`PRICES`) ja tasojen sisältö (`FEATURES`: työkalu- ja kurssilistat). Uusi työkalu tai kurssi on oletuksena Pro-tasoa, ellei sitä lisätä FREE- tai EDU-listaan.
-- Taso tulee pilvitilin `subscriptions`-rivistä (`my_plan`) tai laitteen luokkakoodista (`activate_class_code`). Laiteavaimet: `rlplan`, `rlclass`, `rldevice`. SQL: `docs/supabase-plans.sql`, ohje: `docs/maksut-ohje.md`, maksujen webhook: `supabase/functions/stripe-webhook`.
+- Taso tulee pilvitilin `subscriptions`-rivistä (`my_plan`) tai käyttäjän luokkajäsenyydestä (`join_class`). Laiteavaimet: `rlplan`, `rldevice` (vain vanhan `rlclass`-jäsenyyden siirtoon).
+- Luokkajäsenyys on käyttäjäkohtainen (2.14.0): `robolab-classroom` + `robolab-class-member` (käyttäjän oma satunnainen paikka luokassa, SQL:n `p_device`). Molemmat ovat accounts.js:n `NO_EXPORT`-listalla: eivät kulje varmuuskopiossa eivätkä pilvisynkronoinnissa. Oppilas poistuu luokasta `[data-plans="leave-class"]`-napilla (Kurssit, Profiili, Tasot) → `leave_class`. SQL: `docs/supabase-plans.sql`, ohje: `docs/maksut-ohje.md`, maksujen webhook: `supabase/functions/stripe-webhook`.
 - Lukitus on sovelluksessa (`Plans.canTool` routerissa, `canCourse` kursseissa). Aktiivinen kurssi avaa sen omat työkalut. Testeissä `__robolabPlanOverride` (oletus "pro").
 - Opettajille (`teach`) kuuluu vain Teacher-tasoon (ei Prohon; `create_class` vaatii teacher-tason). Testien oletustaso on `"pro,teacher"`. Se näkyy valikossa, kojelaudalla ja haussa vain, kun `Plans.canTeach()` (`toolListed` app.js:ssä); opettajalla on kojelaudalla `.teach-banner`.
 - Kehittäjätila: `docs/supabase-dev.sql` (taulu `developers` UID:llä, RPC:t `am_developer`, `dev_set_plan`, `dev_grant_plan` (lisenssi muulle sähköpostilla, "free" = poisto), `dev_list_plans`). Tasot-sivulla `.dev-card`. Kehittäjä lisätään SQL Editorissa UID:llä, ei koskaan sähköpostilla sovelluksesta.
@@ -86,7 +97,7 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 
 ## Opettajille ja tietoturva
 - `education.js`: Opettajille-sivu (`TOOL_IMPL.teach`), oppitunnit A–D (`LESSONS`; D on kurssiton: `course: null`, `tool`, `challenges`, oppilaslinkki avaa työkalun), tulostus (`#print-area`), oppilaan edistymistiedosto (`robolab-class-progress`, vain eteneminen) ja opettajan tuonti (vain muistissa). Oppilaslinkki `#/course/<kurssi>`.
-- Luokkahuone (2.7.0): opettaja luo luokan (`create_class`), antaa kurssit ja määräpäivät (`set_class_courses`) ja seuraa oppilaita (`class_overview`, päivittyy 20 s välein, CSV). Oppilas liittyy koodilla + nimimerkillä ilman tiliä (`Plans.activateClass` → `join_class`); eteneminen lähtee `Plans.queueSync` → `report_progress` (vain luvut, ei koodia). SQL: `docs/supabase-classroom.sql`.
+- Luokkahuone (2.7.0): opettaja luo luokan (`create_class`), antaa kurssit ja määräpäivät (`set_class_courses`) ja seuraa oppilaita (`class_overview`, päivittyy 20 s välein, CSV). Oppilas liittyy koodilla + nimimerkillä ilman tiliä (`Plans.activateClass` → `join_class`) ja poistuu itse (`Plans.leaveClass` → `leave_class`); eteneminen lähtee `Plans.queueSync` → `report_progress` (vain luvut, ei koodia). SQL: `docs/supabase-classroom.sql` (voi ajaa uudelleen).
 - Kurssien loppukokeet: `EXAMS` courses.js:ssä, oikea vastaus aina indeksissä 0 (järjestys sekoitetaan oppilaskohtaisesti).
 - Tuotu koodi (nn2d/nn3d `taskCode`) merkitään `taskCodeUntrusted`: sitä ei ajeta ennen kuin käyttäjä hyväksyy sen editorissa. Kaikki tuodut tai tallennetut arvot `esc()`:llä HTML:ään; `getToolState` pakottaa numero-oletusten kentät luvuiksi.
 - Käyttäjän vaihto siirtää avaimet yksi kerrallaan ja peruu kaiken, jos tallennustila loppuu (`accounts.js` `switchTo`).

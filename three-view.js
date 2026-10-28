@@ -15,6 +15,12 @@ const ThreeView = (() => {
 
   // Rivimuotoinen 4×4 (Kin/TF) → THREE.Matrix4
   const toM4 = (T) => new THREE.Matrix4().set(...T[0], ...T[1], ...T[2], ...T[3]);
+  // Koordinaattiakselit asetusten väreillä (myös värisokeusystävällinen paletti), kuten rautalankanäkymässä
+  function axesHelper() {
+    const a = new THREE.AxesHelper(1);
+    if (typeof axisColor === "function" && a.setColors) a.setColors(new THREE.Color(axisColor(0)), new THREE.Color(axisColor(1)), new THREE.Color(axisColor(2)));
+    return a;
+  }
 
   class Scene {
     // opts: { up, az, el, onDown(sx, sy) → true jos kohde napattiin, onDrag(sx, sy), onEnd(), hoverable(sx, sy) }
@@ -72,8 +78,31 @@ const ThreeView = (() => {
       const cv = this.canvas, o = this.opts;
       let drag = null, lx = 0, ly = 0;
       const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+      // Kosketus: kahden sormen nipistys zoomaa ja yhteinen liike siirtää (panorointi)
+      const touches = new Map();
+      let pinch = null;
+      const pinchState = () => { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a[0] - b[0], a[1] - b[1])), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; };
+      const panBy = (dx, dy) => {
+        // Siirto kameran tasossa: pikselin koko maailmassa kiertokeskipisteen etäisyydellä
+        this._camera();
+        const dist = this.camera.position.distanceTo(this.target);
+        const k = (2 * dist * Math.tan((this.camera.fov * Math.PI) / 360)) / Math.max(1, cv.clientHeight);
+        const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+        const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+        this.pan.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+      };
       // Vasen = kierrä (tai raahaa kohdetta), oikea / keski / Shift+vasen = siirrä kiertokeskistä (panorointi)
       cv.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "touch") {
+          touches.set(e.pointerId, [e.clientX, e.clientY]);
+          if (touches.size >= 2) {
+            if (drag === "target") o.onEnd?.(); // toinen sormi: kohteen raahaus loppuu, alkaa nipistys
+            drag = null;
+            pinch = { ...pinchState(), zoom: this.zoom };
+            cv.setPointerCapture(e.pointerId);
+            return;
+          }
+        }
         const [x, y] = pos(e);
         const pan = e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
         drag = pan ? "pan" : o.onDown && o.onDown(x, y, e) ? "target" : "orbit";
@@ -84,25 +113,33 @@ const ThreeView = (() => {
       });
       cv.addEventListener("contextmenu", (e) => e.preventDefault());
       cv.addEventListener("pointermove", (e) => {
+        if (pinch && touches.has(e.pointerId)) {
+          touches.set(e.pointerId, [e.clientX, e.clientY]);
+          if (touches.size < 2) return;
+          const p = pinchState();
+          this.zoom = Math.max(0.2, Math.min(8, pinch.zoom * (p.d / pinch.d)));
+          panBy(p.m[0] - pinch.m[0], p.m[1] - pinch.m[1]);
+          pinch.m = p.m;
+          this.render();
+          return;
+        }
         if (!drag) { if (o.hoverable) { const [x, y] = pos(e); cv.style.cursor = o.hoverable(x, y) ? "grab" : ""; } return; }
         if (drag === "target") { const [x, y] = pos(e); o.onDrag(x, y, e); return; }
         const dx = e.clientX - lx, dy = e.clientY - ly;
         lx = e.clientX; ly = e.clientY;
         if (drag === "pan") {
-          // Siirto kameran tasossa: pikselin koko maailmassa kiertokeskipisteen etäisyydellä
-          this._camera();
-          const dist = this.camera.position.distanceTo(this.target);
-          const k = (2 * dist * Math.tan((this.camera.fov * Math.PI) / 360)) / Math.max(1, cv.clientHeight);
-          const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
-          const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
-          this.pan.addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
+          panBy(dx, dy);
         } else {
           this.az -= dx * 0.4;
           this.el = Math.max(-89, Math.min(89, this.el + dy * 0.4));
         }
         this.render();
       });
-      const end = () => { if (drag === "target") o.onEnd?.(); drag = null; cv.style.cursor = ""; };
+      const end = (e) => {
+        touches.delete(e.pointerId);
+        if (pinch) { if (touches.size < 2) pinch = null; drag = null; return; } // nipistyksen jälkeen ei jatketa kiertoa
+        if (drag === "target") o.onEnd?.(); drag = null; cv.style.cursor = "";
+      };
       cv.addEventListener("pointerup", end);
       cv.addEventListener("pointercancel", end);
       cv.addEventListener("wheel", (e) => { e.preventDefault(); this.zoom = Math.max(0.2, Math.min(8, this.zoom * Math.exp(-e.deltaY * 0.0015))); this.render(); }, { passive: false });
@@ -143,7 +180,7 @@ const ThreeView = (() => {
     _take(kind) {
       let m = this.pool[kind][this.used[kind]];
       if (!m) {
-        m = kind === "axes" ? new THREE.AxesHelper(1)
+        m = kind === "axes" ? axesHelper()
           : kind === "line" ? new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial())
           : new THREE.Mesh(this.geo[kind], this._mat("#888888"));
         m.matrixAutoUpdate = false;
@@ -261,7 +298,7 @@ const ThreeView = (() => {
           this.root.add(mesh);
           this.meshes.push({ obj: mesh, link: link.name, vis });
         }
-        const axes = new THREE.AxesHelper(1);
+        const axes = axesHelper();
         axes.matrixAutoUpdate = false;
         this.root.add(axes);
         this.frames.push({ obj: axes, link: link.name });
@@ -311,11 +348,12 @@ const ThreeView = (() => {
     }
 
     _grid() {
-      const size = Math.ceil(this.extent * 2 / 0.1) * 0.1;
+      const step = typeof View3 !== "undefined" ? View3.gridStep(this.extent) : 0.1;
+      const size = Math.ceil(this.extent * 2 / step) * step;
       if (this.grid && this.gridSize === size) return;
       if (this.grid) { this.scene.remove(this.grid); this.grid.geometry.dispose(); }
       const c = new THREE.Color(cssColor("var(--border-strong)"));
-      this.grid = new THREE.GridHelper(size, Math.round(size / 0.1), c, c);
+      this.grid = new THREE.GridHelper(size, Math.round(size / step), c, c);
       this.grid.material.transparent = true; this.grid.material.opacity = 0.6;
       this.grid.visible = settings.showGrid !== false;
       this.gridSize = size;

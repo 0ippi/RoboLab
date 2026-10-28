@@ -1721,6 +1721,7 @@ const Courses = (() => {
           ${c?.finished ? "" : `<button class="btn ${c ? "" : "primary"} small" data-course="${a.id}">${c ? tr("Jatka", "Continue") : tr("Aloita", "Start")} →</button>`}</li>`;
       }).join("")}</ol>` : ""}
       ${classChallengesHtml(cls, today, fmtDate)}
+      <p class="cc-leave"><button class="link-btn" data-plans="leave-class">${tr("Poistu luokasta", "Leave the class")}</button></p>
     </section>`;
   }
 

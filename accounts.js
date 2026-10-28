@@ -9,8 +9,9 @@ const Accounts = (() => {
   const ACC = "robolab-accounts", ACTIVE = "robolab-active", REMEMBER = "robolab-remember", SESSION = "robolab-session";
   const NS = "robolab-u:";
   const SYSTEM = new Set([ACC, ACTIVE, REMEMBER]);
-  // Salaisuudet eivät kuulu varmuuskopioon
-  const NO_EXPORT = new Set(["robolab-ai-key"]);
+  // Salaisuudet ja luokkajäsenyys (käyttäjän paikka luokassa tällä laitteella, plans.js) eivät kuulu varmuuskopioon
+  // eivätkä pilvisynkronointiin; tuonti ei myöskään poista niitä
+  const NO_EXPORT = new Set(["robolab-ai-key", "robolab-classroom", "robolab-class-member"]);
   const GUEST = "guest";
   const ls = localStorage;
 

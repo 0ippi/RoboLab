@@ -30,22 +30,44 @@ const Plans = (() => {
   const NAMES = { free: "Free", education: "Education", teacher: "Teacher", pro: "Pro" };
   const RANK = { free: 0, education: 1, teacher: 2, pro: 3 };
 
-  const CLASS_KEY = "rlclass", PLAN_KEY = "rlplan", DEVICE_KEY = "rldevice"; // laitekohtaisia (eivät kuulu käyttäjän tietoihin)
+  const PLAN_KEY = "rlplan", DEVICE_KEY = "rldevice"; // laitekohtaisia (eivät kuulu käyttäjän tietoihin)
+  // Luokkajäsenyys kuuluu käyttäjälle, joka liittyi (robolab-*-avaimet vaihtuvat tilin mukana). Se ei kulje varmuuskopiossa eikä
+  // pilvitilin mukana muille laitteille (accounts.js NO_EXPORT). MEMBER_KEY = käyttäjän oma paikka luokassa tällä laitteella:
+  // saman koneen eri käyttäjillä on eri paikat, ja sama käyttäjä saa uudelleen liittyessään saman paikan.
+  const CLASS_KEY = "robolab-classroom", MEMBER_KEY = "robolab-class-member", OLD_CLASS_KEY = "rlclass";
   const RECHECK = 15 * 60 * 1000;           // luokan tiedot (annetut kurssit, jäsenyys) haetaan 15 minuutin välein
   const OFFLINE_GRACE = 30 * 24 * 3600 * 1000; // ilman nettiä tallennettu taso pysyy voimassa 30 päivää
 
   const read = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
   const write = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const valid = (x) => !!x && (!x.until || Date.parse(x.until) > Date.now()) && (!x.checked || Date.now() - x.checked < OFFLINE_GRACE);
-  function deviceId() {
-    let d = null;
-    try { d = localStorage.getItem(DEVICE_KEY); } catch {}
-    if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join(""); try { localStorage.setItem(DEVICE_KEY, d); } catch {} }
-    return d;
+  function memberId() {
+    let m = null;
+    try { m = localStorage.getItem(MEMBER_KEY); } catch {}
+    if (!m) { m = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join(""); try { localStorage.setItem(MEMBER_KEY, m); } catch {} }
+    return m;
   }
+  // 2.14.0: ennen jäsenyys oli koko laitteen (rlclass, paikkana laitetunnus rldevice). Se siirtyy käyttäjälle, joka on kirjautuneena
+  // ensimmäisellä käynnistyksellä. Paikka säilyy, joten opettajan luokkahuone ei muutu.
+  try {
+    const old = localStorage.getItem(OLD_CLASS_KEY);
+    if (old != null) {
+      if (!localStorage.getItem(CLASS_KEY)) {
+        localStorage.setItem(CLASS_KEY, old);
+        const dev = localStorage.getItem(DEVICE_KEY);
+        if (dev && !localStorage.getItem(MEMBER_KEY)) localStorage.setItem(MEMBER_KEY, dev);
+      }
+      localStorage.removeItem(OLD_CLASS_KEY);
+    }
+  } catch {}
+
+  // Luokkajäsenyys (vain kelvollinen tietue, jossa on koodi)
+  const readClass = () => { const c = read(CLASS_KEY); return c && typeof c.code === "string" && c.code ? c : null; };
+  // Päivitys kesken olleen pyynnön jälkeen vain, jos sama jäsenyys on yhä voimassa (käyttäjä on voinut vaihtua tai poistua)
+  const updateClass = (code, patch) => { const c = readClass(); if (c?.code === code) write(CLASS_KEY, patch === null ? null : { ...c, ...patch }); };
 
   /* ===== Nykyinen taso ===== */
-  // Lähteet: pilvitilin tilaus ja laitteen luokkakoodi. Ominaisuudet yhdistetään.
+  // Lähteet: pilvitilin tilaus ja käyttäjän luokkajäsenyys. Ominaisuudet yhdistetään.
   function sources() {
     const out = [];
     const override = window.__robolabPlanOverride; // automaattitestit
@@ -55,7 +77,7 @@ const Plans = (() => {
       const p = read(PLAN_KEY)?.[acc.cloudUid];
       if (valid(p) && p.plan !== "free") out.push({ plan: p.plan, from: "account", until: p.until, seats: p.seats || 0 });
     }
-    const c = read(CLASS_KEY);
+    const c = readClass();
     if (valid(c)) out.push({ plan: "education", from: "class", until: c.until, name: c.name, code: c.code });
     return out;
   }
@@ -118,29 +140,29 @@ const Plans = (() => {
         } catch {}
       }
     }
-    const c = read(CLASS_KEY);
+    const c = readClass();
     if (c && (force || Date.now() - (c.checked || 0) > RECHECK)) {
       try { await activateClass(c.code, { silent: true }); }
-      catch (e) { if (/no-code|expired|no-member/.test(e.code || "")) write(CLASS_KEY, null); }
+      catch (e) { if (/no-code|expired|no-member/.test(e.code || "")) updateClass(c.code, null); }
     }
-    if (c && read(CLASS_KEY)?.pending) syncProgress();
+    if (c && readClass()?.pending) syncProgress();
     changed();
     return current();
   }
 
   /* ===== Luokkahuone (oppilaan laite) ===== */
-  // Oppilas liittyy opettajan luokkaan koodilla ja nimimerkillä: Education tälle laitteelle, tiliä ei tarvita.
+  // Oppilas liittyy opettajan luokkaan koodilla ja nimimerkillä: Education tälle käyttäjälle tällä laitteella, tiliä ei tarvita.
   // silent = taustatarkistus: haetaan luokan tiedot (annetut kurssit) kuluttamatta paikkaa.
   async function activateClass(code, { silent = false, alias } = {}) {
     code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (code.length !== 8) { const e = new Error(tr("Luokkakoodissa on 8 merkkiä.", "A class code has 8 characters.")); e.code = "format"; throw e; }
-    const old = read(CLASS_KEY);
+    const old = readClass();
     alias = String(alias ?? (old?.code === code ? old.alias : "") ?? "").trim().slice(0, 30);
     if (!silent && !alias) { const e = new Error(tr("Kirjoita nimimerkki, jonka opettaja tunnistaa (ei koko nimeä).", "Type an alias your teacher will recognise (not your full name).")); e.code = "alias"; throw e; }
     let r;
     try {
-      r = silent && old?.code === code ? await Cloud.rpc("class_info", { p_code: code, p_device: deviceId() })
-        : await Cloud.rpc("join_class", { p_code: code, p_device: deviceId(), p_alias: alias || tr("oppilas", "student") });
+      r = silent && old?.code === code ? await Cloud.rpc("class_info", { p_code: code, p_device: memberId() })
+        : await Cloud.rpc("join_class", { p_code: code, p_device: memberId(), p_alias: alias || tr("oppilas", "student") });
     } catch (err) {
       const m = String(err.raw || err.message || "");
       const known = ["no-code", "expired", "full", "no-member", "no-alias"].find((k) => m.includes(k));
@@ -153,6 +175,8 @@ const Plans = (() => {
       e.code = known || "network";
       throw e;
     }
+    // Taustatarkistus ei luo jäsenyyttä, jos käyttäjä ehti vaihtua tai poistua luokasta pyynnön aikana
+    if (silent && readClass()?.code !== code) return current();
     write(CLASS_KEY, { code, name: r?.name || "", alias: r?.alias || alias, until: r?.valid_until || null, courses: Array.isArray(r?.courses) ? r.courses : [],
       checked: Date.now(), sent: old?.code === code ? old.sent : null, pending: old?.code === code ? old.pending : true });
     changed();
@@ -160,14 +184,23 @@ const Plans = (() => {
     return current();
   }
   function removeClass() { write(CLASS_KEY, null); changed(); }
-  const classInfo = () => { const c = read(CLASS_KEY); return valid(c) ? c : null; };
+  // Oppilas poistuu luokasta itse: jäsenyys poistuu tältä käyttäjältä ja paikka vapautuu palvelimella (leave_class).
+  // false = palvelimeen ei saatu yhteyttä tai leave_class puuttuu (supabase-classroom.sql ajettu ennen 2.14.0:aa).
+  async function leaveClass() {
+    const c = readClass();
+    removeClass();
+    if (!c?.code || !window.Cloud?.configured) return true;
+    try { await Cloud.rpc("leave_class", { p_code: c.code, p_device: memberId() }); return true; }
+    catch (e) { return /no-member|no-code/.test(String(e.raw || "")); }
+  }
+  const classInfo = () => { const c = readClass(); return valid(c) ? c : null; };
 
   // Kurssien eteneminen opettajalle: vain luvut (vaiheet, suoritus, vihjeet, loppukokeen pisteet), ei vastauksia.
   // Lähetetään viiveellä muutosten jälkeen; jos yhteys puuttuu, yritetään uudelleen seuraavalla tarkistuksella.
   let syncTimer = 0;
-  function queueSync() { if (!read(CLASS_KEY)) return; clearTimeout(syncTimer); syncTimer = setTimeout(syncProgress, 2500); }
+  function queueSync() { if (!readClass()) return; clearTimeout(syncTimer); syncTimer = setTimeout(syncProgress, 2500); }
   async function syncProgress() {
-    const c = read(CLASS_KEY);
+    const c = readClass();
     if (!c || !window.Cloud?.configured || !window.Courses?.summary) return;
     const assigned = new Set((c.courses || []).map((x) => x.id));
     const items = Courses.summary().filter((p) => p.finished || p.done > 0 || assigned.has(p.id))
@@ -176,12 +209,13 @@ const Plans = (() => {
     items.push(...(window.Achievements?.challengeItems() || []));
     const sig = JSON.stringify(items);
     if (sig === c.sent && !c.pending) return;
+    // Vastauksen tullessa käyttäjä on voinut vaihtua tai poistua luokasta: tietue päivitetään vain, jos se on yhä sama
     try {
-      await Cloud.rpc("report_progress", { p_code: c.code, p_device: deviceId(), p_items: items });
-      write(CLASS_KEY, { ...read(CLASS_KEY), sent: sig, pending: false });
+      await Cloud.rpc("report_progress", { p_code: c.code, p_device: memberId(), p_items: items });
+      updateClass(c.code, { sent: sig, pending: false });
     } catch (e) {
-      if (/no-member|no-code|expired/.test(String(e.raw || ""))) { write(CLASS_KEY, null); changed(); return; }
-      write(CLASS_KEY, { ...read(CLASS_KEY), pending: true });
+      if (/no-member|no-code|expired/.test(String(e.raw || ""))) { updateClass(c.code, null); changed(); return; }
+      updateClass(c.code, { pending: true });
     }
   }
 
@@ -295,12 +329,12 @@ const Plans = (() => {
   function classBoxHtml() {
     const c = sources().find((s) => s.from === "class"), info = classInfo();
     if (c) return `<div class="class-active">✓ ${tr("Olet luokassa", "You are in the class")} <b>${esc(c.name || c.code)}</b> (${esc(c.code)})${info?.alias ? ` ${tr("nimimerkillä", "as")} <b>${esc(info.alias)}</b>` : ""}${c.until ? ` · ${tr("voimassa", "valid until")} ${new Date(c.until).toLocaleDateString(tr("fi-FI", "en-GB"))}` : ""}
-      <button class="link-btn" data-plans="remove-class">${tr("Poistu luokasta tällä laitteella", "Leave the class on this device")}</button></div>`;
+      <button class="link-btn" data-plans="leave-class">${tr("Poistu luokasta", "Leave the class")}</button></div>`;
     return `<form class="class-form" data-plans-form="class">
       <label>${tr("Luokkakoodi opettajalta", "Class code from your teacher")}<input id="pl-class" maxlength="12" autocomplete="off" placeholder="ABCD2345" spellcheck="false"></label>
       <label>${tr("Nimimerkki", "Alias")}<input id="pl-alias" class="alias" maxlength="30" autocomplete="off" placeholder="${tr("esim. Aino K tai oppilas 12", "e.g. Amy K or student 12")}"></label>
       <button class="btn primary">${tr("Liity luokkaan", "Join the class")}</button></form>
-      <p class="note small">${tr("Koodi avaa Education-tason tälle laitteelle, ja opettaja näkee kurssiesi etenemisen nimimerkilläsi. Tiliä, sähköpostia tai koko nimeä ei tarvita.", "The code unlocks the Education plan on this device, and your teacher sees your course progress under your alias. No account, email or full name needed.")}</p>`;
+      <p class="note small">${tr("Koodi avaa Education-tason sinulle tällä laitteella, ja opettaja näkee kurssiesi etenemisen nimimerkilläsi. Saman koneen muut käyttäjät eivät tule luokkaan. Tiliä, sähköpostia tai koko nimeä ei tarvita.", "The code unlocks the Education plan for you on this device, and your teacher sees your course progress under your alias. Other users of the same computer don't join the class. No account, email or full name needed.")}</p>`;
   }
 
   function render(el, tool) {
@@ -381,7 +415,6 @@ const Plans = (() => {
       }
       if (b.dataset.buy) { buy(b.dataset.buy); return; }
       if (b.dataset.plans === "refresh") { b.disabled = true; await refresh({ force: true }); toast(tr(`Tasosi: ${current().name}`, `Your plan: ${current().name}`)); router(); return; }
-      if (b.dataset.plans === "remove-class") { if (confirm(tr("Poistetaanko luokkakoodi tältä laitteelta? Education-taso poistuu käytöstä.", "Remove the class code from this device? The Education plan will be turned off."))) { removeClass(); router(); } }
     };
     bindClassForm(el);
     if (isDeveloper()) bindGrants(el);
@@ -413,7 +446,22 @@ const Plans = (() => {
   document.addEventListener("click", (e) => {
     if (e.target.closest("#upgrade-btn")) location.hash = "#/plans";
     if (e.target.closest("[data-focus-class]")) { try { sessionStorage.setItem("rl-focus-class", "1"); } catch {} }
+    const leave = e.target.closest('[data-plans="leave-class"]');
+    if (leave) confirmLeave(leave);
   });
+  // Luokasta poistuminen toimii kaikilla sivuilla, joilla luokka näkyy (Kurssit, Profiili, Tasot)
+  async function confirmLeave(btn) {
+    const c = classInfo() || readClass();
+    if (!c) { router(); return; }
+    const name = c.name || c.code;
+    if (!confirm(tr(`Poistutaanko luokasta ${name}? Opettaja ei enää näe edistymistäsi, ja luokkakoodin Education-taso poistuu tältä käyttäjältä. Kurssisi ja projektisi säilyvät, ja voit liittyä uudelleen samalla koodilla.`,
+      `Leave the class ${name}? Your teacher will no longer see your progress, and the class code's Education plan is turned off for this user. Your courses and projects are kept, and you can join again with the same code.`))) return;
+    btn.disabled = true;
+    const freed = await leaveClass();
+    toast(freed ? tr(`Poistuit luokasta ${name}.`, `You left the class ${name}.`)
+      : tr("Poistuit luokasta. Palvelimeen ei saatu yhteyttä, joten nimimerkkisi voi vielä näkyä opettajan listalla: opettaja voi poistaa sen.", "You left the class. The server couldn't be reached, so your alias may still show on your teacher's list: your teacher can remove it."));
+    router();
+  }
 
   function init() {
     last = JSON.stringify(current());
@@ -426,7 +474,7 @@ const Plans = (() => {
 
   TOOL_IMPL.plans = { render };
 
-  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, classInfo, queueSync, syncProgress, isDeveloper, devSetPlan,
-    lockedHtml, classBoxHtml, bindClassForm, badge, buy, deviceId, onChange: (f) => listeners.add(f), _changed: changed };
+  return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, leaveClass, classInfo, queueSync, syncProgress, isDeveloper, devSetPlan,
+    lockedHtml, classBoxHtml, bindClassForm, badge, buy, memberId, onChange: (f) => listeners.add(f), _changed: changed };
 })();
 window.Plans = Plans;
