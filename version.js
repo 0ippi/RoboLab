@@ -3,6 +3,25 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.14.0", date: "2026-10-28",
+    fi: ["Luokkahuone: oppilas voi poistua luokasta Kurssit- tai Profiili-sivulla, ja paikka vapautuu opettajan luokasta. Luokkajäsenyys kuuluu nyt käyttäjälle, joka liittyi: saman koneen muut käyttäjät ja pilvitilit eivät ole luokassa.",
+      "Neuroverkkosimulaatiot: populaation tai algoritmin vaihto kesken koulutuksen ei enää pysäytä koulutusta virheeseen, GA:n paras robotti säilyy maaston vaihtuessa, nopea koulutus jatkuu taustavälilehdellä täydellä nopeudella ja jumiin jäänyt palkkiofunktio pysäytetään ilmoituksen kanssa. Lisäasetukset avautuvat keskeyttämättä koulutusta, uusinnan säätimet toimivat koko näytön tilassa ja koulutusajojen vertailu toimii kielen vaihdon jälkeenkin.",
+      "Robottirakentajat: peilaus kiinnittää kopion samaan osaan rungon keskeltä, roottorit kopioituvat toimivina, nuolinäppäimet sekä R ja G siirtävät myös kiinnitetyt osat, ja valmisosat kiinnittyvät päärunkoon, jos mitään ei ole valittu. Fysiikkatestin aikana malli ei enää muutu huomaamatta, ja Tarkistus varoittaa kahdesta nivelestä samojen osien välillä.",
+      "Lomakkeet näyttävät virheellisen arvon sallitun alueen kentän alla, ja lukumäärät (esim. moottorien määrä) hyväksyvät vain kokonaisluvut.",
+      "Konenäkö: kamera sammuu aina, kun työkalusta poistutaan. Sarjaportti: CSV toimii suomalaisen Excelin kanssa (puolipiste ja desimaalipilkku), eikä väärän baudinopeuden lukuvirhe katkaise yhteyttä.",
+      "Käsivarret ja TF-puu: 3D-näkymiä voi zoomata nipistämällä kosketusnäytöllä, käänteiskinematiikan ratkaisu siirtyy suoraan trajektorigeneraattoriin, eikä TF-puun vanhemmaksi voi valita silmukkaa aiheuttavaa kehystä.",
+      "Mobiilirobotti 2D: auton koko runko törmää seiniin ja etuanturit mittaavat keulasta. Varauskartta: nuolinäppäimet ohjaavat robottia myös kartan klikkaamisen jälkeen.",
+      "Lisäksi monta pientä parannusta: pitkät ilmoitukset näkyvät pidempään, opastus näytetään uudelleen, jos siirryit heti muualle, ja trajektorien kuvaajissa näkyvät yksiköt."],
+    en: ["Classroom: a student can leave the class on the Courses or Profile page, and the seat is freed in the teacher's class. Class membership now belongs to the user who joined: other users and cloud accounts on the same computer are not in the class.",
+      "Neural network simulations: changing the population or algorithm during training no longer stops training with an error, GA's best robot is kept when the terrain changes, fast training keeps full speed in a background tab and a stuck reward function is stopped with a message. Advanced settings open without interrupting training, the replay controls work in full screen and training-run comparison works after switching language.",
+      "Robot builders: mirroring attaches the copy to the same part across the body's centre, rotors are copied in working order, the arrow keys, R and G also move attached parts, and ready-made pieces attach to the main body if nothing is selected. The model no longer changes unnoticed during the physics test, and Check warns about two joints between the same parts.",
+      "Forms show the allowed range under a field with an invalid value, and counts (e.g. number of motors) accept only whole numbers.",
+      "Computer vision: the camera always turns off when you leave the tool. Serial port: CSV works with Excel in Finnish format (semicolon and decimal comma), and a read error from a wrong baud rate no longer drops the connection.",
+      "Arms and TF tree: 3D views can be zoomed with a pinch on touch screens, the inverse kinematics solution goes straight to the trajectory generator, and a frame that would make a loop can't be chosen as a TF parent.",
+      "Mobile robot 2D: the whole car body collides with walls and the front sensors measure from the nose. Occupancy grid: the arrow keys steer the robot even after clicking the map.",
+      "Plus many small improvements: long notices stay visible longer, the guide shows again if you moved on right away, and trajectory charts show units."],
+  },
+  {
     version: "2.13.1", date: "2026-10-28",
     fi: ["Palkkiot ja tavoitteet -kurssi kuuluu nyt myös Education-tasoon: oppilaat voivat tehdä sen opettajan luokkakoodilla, ja opettaja voi antaa sen luokalle.",
       "Kurssikortti ei enää suosittele aloittamaan kurssista, jota omalla tasolla ei voi avata."],
