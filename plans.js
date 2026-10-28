@@ -16,7 +16,7 @@ const Plans = (() => {
   };
 
   /* ===== Tasojen sisältö ===== */
-  const FREE_TOOLS = ["dashboard", "learn", "projects", "profile", "plans", "build2d", "motor", "power", "sim2d", "units"];
+  const FREE_TOOLS = ["dashboard", "learn", "projects", "profile", "plans", "help", "privacy", "build2d", "motor", "power", "sim2d", "units"];
   const EDU_TOOLS = [...FREE_TOOLS, "path", "map", "pid", "cv", "rot", "fk", "ik", "nn2d"];
   const FREE_COURSES = ["start", "sensors", "power"];
   const EDU_COURSES = [...FREE_COURSES, "nav", "pid", "vision", "frames", "reward"];
@@ -353,33 +353,39 @@ const Plans = (() => {
       ${isDeveloper() ? devHtml(cur) : ""}
       <div class="plan-grid">
         <article class="card plan-card">
-          <h2>Free</h2><div class="price"><b>0 €</b></div><div class="price-alt">${tr("aina ilmainen, ei tiliä", "always free, no account")}</div>
-          <ul><li>${tr("Perustyökalut", "Basic tools")}: ${esc(toolNames(FREE_TOOLS.filter((t) => !["dashboard", "learn", "projects", "profile", "plans"].includes(t))).join(", "))}</li>
+          <h2>Free <small>${tr("kaikille", "for everyone")}</small></h2><div class="price"><b>0 €</b></div><div class="price-alt">${tr("aina ilmainen, ei tiliä", "always free, no account")}</div>
+          <p class="plan-for">${tr("Valitse tämä, jos haluat kokeilla robotiikkaa ilman tiliä ja maksua.", "Choose this if you want to try robotics with no account and no payment.")}</p>
+          <ul><li>${tr("Perustyökalut", "Basic tools")}: ${esc(toolNames(FREE_TOOLS.filter((t) => TOOLS.find((x) => x.id === t)?.group !== G.general)).join(", "))}</li>
             <li>${tr("Kurssit", "Courses")}: ${esc(courseNames(FREE_COURSES).join(", "))}</li><li>${tr("Volt-opas, projektit, offline-käyttö", "Volt guide, projects, offline use")}</li></ul>
           ${btn("free", `<div class="plan-current">${tr("Sisältyy kaikkiin tasoihin", "Included in every plan")}</div>`)}
         </article>
         <article class="card plan-card tier-education">
-          <h2>Education ${tr("<small>opiskelijoille</small>", "<small>for students</small>")}</h2>${per(P.education.month, P.education.year)}
+          <h2>Education <small>${tr("oppilaalle", "for students")}</small></h2>${per(P.education.month, P.education.year)}
+          <p class="plan-for">${tr("Valitse tämä, jos olet oppilas tai opiskelija. Opettajan luokkakoodilla saat sen maksutta.", "Choose this if you are a student. With your teacher's class code you get it for free.")}</p>
           <ul><li>${tr("Kaikki Free-tason sisältö", "Everything in Free")}</li>
             <li>${tr("Lisää työkaluja", "More tools")}: ${esc(eduExtra.join(", "))}</li>
             <li>${tr("Lisää kursseja", "More courses")}: ${esc(courseNames(EDU_COURSES.filter((c) => !FREE_COURSES.includes(c))).join(", "))}</li>
             <li><b>${tr("Ilmainen opettajan luokkakoodilla", "Free with your teacher's class code")}</b></li></ul>
           ${btn("education", `<div class="row-actions"><button class="btn primary" data-buy="education_month">${tr("Tilaa kuukausi", "Monthly")}</button><button class="btn" data-buy="education_year">${tr("Tilaa vuosi", "Yearly")}</button></div>`)}
         </article>
+        <article class="card plan-card tier-pro">
+          <h2>Pro <small>${tr("itseopiskelijalle", "for self-learners")}</small></h2>${per(P.pro.month, P.pro.year)}
+          <p class="plan-for">${tr("Valitse tämä, jos opiskelet omin päin tai harrastat ja haluat kaikki työkalut ja kurssit. Luokkahuone ei sisälly.", "Choose this if you learn on your own or as a hobby and want every tool and course. No classroom included.")}</p>
+          <ul><li>${tr("Kaikki työkalut ja kaikki kurssit", "All tools and all courses")}</li><li>${tr("Lisäksi", "Also")}: ${esc(proExtra.join(", "))}</li>
+            <li>${tr("Kurssit", "Courses")}: ${esc(courseNames(Courses._courses.map((c) => c.id).filter((c) => !EDU_COURSES.includes(c))).join(", "))}</li></ul>
+          ${btn("pro", `<div class="row-actions"><button class="btn primary" data-buy="pro_month">${tr("Tilaa kuukausi", "Monthly")}</button><button class="btn" data-buy="pro_year">${tr("Tilaa vuosi", "Yearly")}</button></div>`)}
+        </article>
         <article class="card plan-card tier-teacher">
-          <h2>Teacher</h2>${per(P.teacher.month, P.teacher.year)}
+          <h2>Teacher <small>${tr("opettajalle", "for teachers")}</small></h2>${per(P.teacher.month, P.teacher.year)}
+          <p class="plan-for">${tr(`Valitse tämä, jos opetat ryhmää: luokkahuoneet, oppilaiden seuranta ja valmiit oppitunnit. Työkaluina Education-taso, ei Pro-tason lisätyökaluja (esim. ${esc(proExtra.slice(0, 2).join(" ja "))}).`,
+            `Choose this if you teach a group: classrooms, student progress and ready lessons. Tools as in Education, without the extra Pro tools (e.g. ${esc(proExtra.slice(0, 2).join(" and "))}).`)}</p>
           <ul><li>${tr("Kaikki Education-tason sisältö", "Everything in Education")}</li><li>${tr("Opettajille-sivu: valmiit oppitunnit, monisteet, ratkaisut ja luokan edistyminen", "For teachers page: ready lessons, worksheets, solutions and class progress")}</li>
             <li>${tr(`Luokkakoodit oppilaille: ${P.teacher.included} oppilasta sisältyy, lisäpaikat ${euro(P.teacher.seat)} / oppilas / lukuvuosi`, `Class codes for students: ${P.teacher.included} students included, extra seats ${euro(P.teacher.seat)} / student / school year`)}</li>
             <li>${tr(`Koululisenssi: ${euro(P.school.year)} / vuosi, kaikki opettajat ja enintään ${P.school.seats} oppilasta, laskulla`, `School licence: ${euro(P.school.year)} / year, all teachers and up to ${P.school.seats} students, invoiced`)}</li></ul>
           ${btn("teacher", `<div class="row-actions"><button class="btn primary" data-buy="teacher_month">${tr("Tilaa kuukausi", "Monthly")}</button><button class="btn" data-buy="teacher_year">${tr("Tilaa vuosi", "Yearly")}</button><button class="btn" data-buy="seats">${tr("Osta oppilaspaikkoja", "Buy student seats")}</button></div>`)}
         </article>
-        <article class="card plan-card tier-pro">
-          <h2>Pro</h2>${per(P.pro.month, P.pro.year)}
-          <ul><li>${tr("Kaikki työkalut ja kaikki kurssit", "All tools and all courses")}</li><li>${tr("Lisäksi", "Also")}: ${esc(proExtra.join(", "))}</li>
-            <li>${tr("Kurssit", "Courses")}: ${esc(courseNames(Courses._courses.map((c) => c.id).filter((c) => !EDU_COURSES.includes(c))).join(", "))}</li></ul>
-          ${btn("pro", `<div class="row-actions"><button class="btn primary" data-buy="pro_month">${tr("Tilaa kuukausi", "Monthly")}</button><button class="btn" data-buy="pro_year">${tr("Tilaa vuosi", "Yearly")}</button></div>`)}
-        </article>
       </div>
+      ${proofHtml()}
       <div class="tool"><div class="col">
         <div class="card"><h3 class="card-title">${tr("Onko sinulla luokkakoodi?", "Do you have a class code?")}</h3>${classBoxHtml()}</div>
       </div><div class="col">
@@ -388,7 +394,7 @@ const Plans = (() => {
             <li>${tr("Hinnat sisältävät arvonlisäveron. Tilauksen voi perua milloin tahansa; taso on voimassa maksetun jakson loppuun.", "Prices include VAT. You can cancel at any time; the plan stays on until the end of the paid period.")}</li>
             <li>${tr("Maksullinen taso liitetään pilvitiliin, joten se toimii kaikilla laitteillasi.", "A paid plan is linked to your cloud account, so it works on all your devices.")}</li>
             <li>${tr("Projektisi säilyvät aina, vaikka taso vaihtuisi. Lukittuja työkaluja ei vain voi avata.", "Your projects are always kept, even if your plan changes. Locked tools just can't be opened.")}</li>
-            <li>${tr("Koulut ja kunnat: laskutus, pilotit ja koululisenssit sovitaan suoraan.", "Schools and municipalities: invoicing, pilots and school licences are arranged directly.")} <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ota yhteyttä", "Get in touch")}</a></li>
+            <li>${tr("Koulut ja kunnat: laskutus, pilotit ja koululisenssit sovitaan suoraan.", "Schools and municipalities: invoicing, pilots and school licences are arranged directly.")} <a href="#/help" data-help-topic="school">${tr("Ota yhteyttä", "Get in touch")}</a></li>
           </ul></div>
       </div></div>`;
     el.onclick = async (e) => {
@@ -433,12 +439,27 @@ const Plans = (() => {
     };
   }
 
+  /* ===== Käyttäjien kokemuksia (etusivu ja Tasot-sivu) ===== */
+  // Vain aitoja lainauksia luvan kanssa: keksitty kokemus vahingoittaa luottamusta enemmän kuin puuttuva.
+  // Tyhjä lista = osio ei näy. Esim. { text: "…", who: "Opettaja Maija M.", where: "Esimerkkikoulu, 7. lk", lang: "fi" }
+  const PROOF = [];
+  function proofHtml() {
+    const list = PROOF.filter((q) => q && q.text && q.who && (!q.lang || q.lang === LANG)).slice(0, 3);
+    if (!list.length) return "";
+    return `<section class="proof" aria-label="${tr("Käyttäjien kokemuksia", "What users say")}">${list.map((q) => `
+      <figure class="card proof-quote"><blockquote>”${esc(q.text)}”</blockquote><figcaption>${esc(q.who)}${q.where ? `, ${esc(q.where)}` : ""}</figcaption></figure>`).join("")}</section>`;
+  }
+
   /* ===== Päivitä-nappi ja tasomerkit ===== */
   function renderUpgrade() {
     const b = document.getElementById("upgrade-btn");
     if (!b) return;
     const cur = current();
-    b.hidden = cur.plan === "pro" && !isDeveloper(); // kehittäjä pääsee aina vaihtamaan tasoa
+    // Ilmaiselle tasolle nappi näkyy vain lukitulla sivulla, jossa se on ajankohtainen (aina näkyvä tuntui painostavalta);
+    // muuten Tasot ja hinnat löytyy sivupalkin alaosasta. Kehittäjä pääsee aina vaihtamaan tasoa.
+    const route = location.hash.replace(/^#\//, "");
+    const lockedHere = TOOLS.some((t) => t.id === route) && !canTool(route);
+    b.hidden = !isDeveloper() && (cur.plan === "pro" || (cur.plan === "free" && !lockedHere));
     b.innerHTML = cur.plan === "free" ? `⭐ <span>${tr("Päivitä", "Upgrade")}</span>` : `⭐ <span>${esc(cur.name)}</span>`;
     b.title = cur.plan === "free" ? tr("Avaa lisää kursseja ja työkaluja", "Unlock more courses and tools") : tr("Tasosi ja muut tasot", "Your plan and other plans");
   }
@@ -475,6 +496,6 @@ const Plans = (() => {
   TOOL_IMPL.plans = { render };
 
   return { PRICES, FEATURES, NAMES, current, canTool, canCourse, canTeach, tierForTool, tierForCourse, refresh, activateClass, removeClass, leaveClass, classInfo, queueSync, syncProgress, isDeveloper, devSetPlan,
-    lockedHtml, classBoxHtml, bindClassForm, badge, buy, memberId, onChange: (f) => listeners.add(f), _changed: changed };
+    lockedHtml, classBoxHtml, bindClassForm, badge, buy, memberId, renderUpgrade, PROOF, proofHtml, onChange: (f) => listeners.add(f), _changed: changed };
 })();
 window.Plans = Plans;

@@ -507,7 +507,7 @@ const Education = (() => {
       </div>
       <p class="note" style="margin-top:var(--pad)">${tr("Haluatko pilotoida RoboLabia luokassasi tai kertoa, mitä tarvitsisit? ", "Want to pilot RoboLab in your class or tell us what you need? ")}
         <a href="https://github.com/0ippi/RoboLab/blob/main/docs/koulut-ja-tuotteistus.md" target="_blank" rel="noopener">${tr("Pilottiohjelma ja kysely", "Pilot programme and survey")}</a> ·
-        <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ota yhteyttä / anna palautetta", "Contact / give feedback")}</a></p>`;
+        <a href="#/help" data-help-topic="school">${tr("Ota yhteyttä / anna palautetta", "Contact / give feedback")}</a></p>`;
     el.onclick = onClick;
     el.onchange = onChange;
     el.querySelector("#edu-import").onchange = (e) => importFiles([...e.target.files], el);

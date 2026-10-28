@@ -1332,19 +1332,35 @@ const Courses = (() => {
   }
 
   /* ===== Oppituntipaneeli ===== */
-  let panel, timer = 0, justDone = false, collapsed = false;
+  let panel, timer = 0, justDone = false, collapsed = false, shown = null;
   const md = (s) => (window.Assistant?._md ? Assistant._md(s) : esc(s));
+
+  // Paneeli näkyy vain avoimilla työkalusivuilla. Yleissivuilla (Etusivu, Kurssit, Tasot, Asetukset, Ohjeet…) ja lukitun
+  // työkalun esittelyssä se peittäisi sisällön, puhelimessa jopa puolet ruudusta. Kurssi pysyy aktiivisena, ja paneeli
+  // palaa, kun työkalu avataan.
+  const isPage = (route) => route === "settings" || TOOLS.find((t) => t.id === route)?.group === G.general || (!!window.Plans && !Plans.canTool(route));
+  function placePanel() {
+    if (!panel) return;
+    const course = byId(P.active), route = currentRoute();
+    const show = !!course && (!isPage(route) || course.steps[cp(course.id).step]?.tool === route);
+    if (show === shown) return;
+    shown = show;
+    panel.hidden = !show;
+    document.body.classList.toggle("lesson-open", show);
+    document.body.classList.toggle("lesson-collapsed", show && collapsed);
+    window.setLessonLayout?.(show);
+  }
 
   function openPanel() {
     panel = $("#lesson");
-    panel.hidden = false;
-    document.body.classList.add("lesson-open");
-    window.setLessonLayout?.(true);
+    shown = null;
+    placePanel();
     clearInterval(timer);
     timer = setInterval(tick, 700);
   }
   function closePanel() {
     clearInterval(timer);
+    shown = null;
     if (panel) { panel.hidden = true; panel.innerHTML = ""; }
     document.body.classList.remove("lesson-open", "lesson-collapsed");
     window.setLessonLayout?.(false);
@@ -1376,7 +1392,7 @@ const Courses = (() => {
     panel.classList.toggle("collapsed", collapsed);
     panel.dataset.size = textSize;
     document.body.dataset.lessonSize = textSize;
-    document.body.classList.toggle("lesson-collapsed", collapsed);
+    document.body.classList.toggle("lesson-collapsed", collapsed && !panel.hidden);
     if (c.examOpen && c.exam && !c.exam.done) { drawExam(course); return; }
     if (c.finished) { drawFinished(course); return; }
 
@@ -1770,7 +1786,7 @@ const Courses = (() => {
   function init() {
     $("#lesson").addEventListener("click", onPanelClick);
     $("#lesson").addEventListener("input", onPanelInput);
-    window.addEventListener("hashchange", () => setTimeout(() => { if (P.active) drawPanel(); }, 30));
+    window.addEventListener("hashchange", () => setTimeout(() => { placePanel(); if (P.active) drawPanel(); }, 30));
     if (P.active && byId(P.active)) { openPanel(); drawPanel(); }
   }
 

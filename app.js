@@ -41,6 +41,8 @@ const ICONS = {
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3l-5.5 2.9 1-6.2L3 9.6l6.2-.9z"/>',
   cap: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/>',
   chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 10h6v4H9zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/>',
+  shield: '<path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
 };
 const icon = (name) => `<svg class="ico" viewBox="0 0 24 24">${ICONS[name] || ""}</svg>`;
 
@@ -59,12 +61,17 @@ const TOOLS = [
     desc: tr("Valmiit oppitunnit, tulostettavat monisteet ja ratkaisut sekä luokan edistyminen ilman oppilastilejä.", "Ready-made lessons, printable worksheets and solutions, and class progress without student accounts.") },
   // Tasot ja hinnat avataan Päivitä-napista (plans.js), ei näy työkalulistoissa
   { id: "plans", group: G.general, name: tr("Tasot ja hinnat", "Plans & pricing"), icon: "star", status: "ready", nav: false,
-    desc: tr("Free, Education, Teacher ja Pro: mitä kukin sisältää ja mitä se maksaa. Luokkakoodin aktivointi.", "Free, Education, Teacher and Pro: what each includes and costs. Class code activation.") },
+    desc: tr("Free, Education, Pro ja Teacher: kenelle kukin on tarkoitettu, mitä se sisältää ja mitä se maksaa. Luokkakoodin aktivointi.", "Free, Education, Pro and Teacher: who each is for, what it includes and what it costs. Class code activation.") },
   { id: "projects", group: G.general, name: tr("Projektit", "Projects"), icon: "folder", status: "ready",
     desc: tr("Jokainen projekti tallentaa työkalujen syötteet erikseen. Vie ja tuo JSON-tiedostona.", "Each project stores tool inputs separately. Export and import as JSON.") },
   // Profiili avataan sivupalkin alaosan käyttäjästä, ei näy työkalulistoissa (account-ui.js)
   { id: "profile", group: G.general, name: tr("Profiili", "Profile"), icon: "user", status: "ready", nav: false,
     desc: tr("Käyttäjätili, hahmo, tilastot ja varmuuskopio toiselle koneelle.", "Your account, character, stats and a backup for another computer.") },
+  // Ohjeet ja tietosuoja avataan sivupalkin alaosasta ja etusivun linkeistä (help.js)
+  { id: "help", group: G.general, name: tr("Ohjeet ja tuki", "Help & support"), icon: "help", status: "ready", nav: false,
+    desc: tr("Usein kysytyt kysymykset, vinkit ongelmatilanteisiin ja viesti kehittäjälle.", "Frequently asked questions, tips for problems and a message to the developer.") },
+  { id: "privacy", group: G.general, name: tr("Tietosuojaseloste", "Privacy policy"), icon: "shield", status: "ready", nav: false,
+    desc: tr("Mitä tietoja RoboLab tallentaa, missä ne ovat ja miten ne poistetaan.", "What data RoboLab stores, where it is and how it is deleted.") },
 
   { id: "build2d", group: G.design, name: tr("Robottirakentaja 2D", "Robot builder 2D"), icon: "wrench", status: "ready",
     desc: tr("Rakenna oma 2D-robotti hiirellä, testaa fysiikka ja lähetä se koulutukseen.", "Build your own 2D robot with the mouse, test its physics and send it to training.") },
@@ -191,7 +198,8 @@ const SECTIONS = [
       type: "select", default: "auto", options: [["auto", tr("Automaattinen", "Automatic")], ["low", tr("Matala (kevyt)", "Low (light)")], ["normal", tr("Normaali", "Normal")], ["high", tr("Korkea", "High")]] },
     { key: "antialias", label: tr("Reunanpehmennys", "Anti-aliasing"), type: "toggle", default: true },
     { key: "fpsCap", label: tr("Ruudunpäivitysraja", "Frame rate limit"), type: "select", default: "60", options: [["30", "30 FPS"], ["60", "60 FPS"], ["120", "120 FPS"], ["0", tr("Rajaton", "Unlimited")]] },
-    { key: "showFps", label: tr("Näytä FPS", "Show FPS"), desc: tr("Näkyy tilarivillä.", "Shown in the status bar."), type: "toggle", default: true },
+    // 2.15.0: oli showFps (oletus päällä). Uusi avain, jotta laskuri piiloutuu myös vanhoilta käyttäjiltä.
+    { key: "fpsCounter", label: tr("Näytä FPS-laskuri", "Show FPS counter"), desc: tr("Kehittäjille: ruudunpäivitysnopeus tilarivillä. Myös osoitteen perään lisätty ?debug näyttää sen.", "For developers: frame rate in the status bar. Adding ?debug to the address shows it too."), type: "toggle", default: false },
     { key: "plotPalette", label: tr("Kuvaajien väripaletti", "Plot palette"), type: "select", default: "default", options: [["default", tr("Oletus", "Default")], ["okabe", tr("Okabe–Ito (värisokeille)", "Okabe–Ito (colour-blind)")], ["mono", tr("Yksivärinen", "Monochrome")]] },
   ]},
   { id: "ai", title: tr("Tekoälyavustaja Volt", "AI assistant Volt"), desc: tr("Volt on ilmainen: tekoälymalli ladataan kerran ja se toimii omalla koneellasi ilman nettiä ja ilman tiliä. Oma Claude API -avain antaa halutessasi parhaat vastaukset.", "Volt is free: the AI model downloads once and runs on your own computer, offline and without an account. Your own Claude API key gives the best answers if you want them."), custom: "ai", fields: [
@@ -207,8 +215,8 @@ const SECTIONS = [
   ]},
   { id: "shortcuts", title: tr("Pikanäppäimet", "Keyboard shortcuts"), desc: tr("Näppäinoikotiet koko sovelluksessa. Paina ? missä tahansa nähdäksesi listan.", "Shortcuts across the app. Press ? anywhere to see this list."), custom: "shortcuts" },
   { id: "data", title: tr("Tallennus ja tiedot", "Saving & data"),
-    desc: tr("Kaikki tietosi (projektit, kurssien eteneminen, omat robotit, asetukset, käyttäjätilit ja mahdollinen API-avain) tallentuvat vain tähän selaimeen tällä laitteella. RoboLab ei käytä analytiikkaa, mainoksia tai seurantaa. Poikkeukset: jos kirjaudut vapaaehtoisella pilvitilillä, tilisi tiedot (ei API-avainta) tallennetaan myös RoboLabin pilveen (Supabase, EU) ja ne voi poistaa profiilista. Jos lisäät Claude API -avaimen, Voltille kirjoittamasi viestit (ja halutessasi avoimen työkalun arvot) lähetetään Anthropicille vastausta varten. Tallennus ei ole salattu: kuka tahansa tämän laitteen käyttäjä voi lukea sen selaimen kehitystyökaluilla. Jos tyhjennät selaimen tiedot tai käytät yksityistä ikkunaa, tiedot katoavat — tee siis varmuuskopio profiilista tai vie tärkeät projektit tiedostoiksi.",
-      "All your data (projects, course progress, your robots, settings, user accounts and any API key) is stored only in this browser on this device. RoboLab uses no analytics, ads or tracking. Exceptions: if you sign in with an optional cloud account, your account's data (not the API key) is also stored in RoboLab's cloud (Supabase, EU) and can be deleted from your profile. If you add a Claude API key, the messages you write to Volt (and, if you allow it, the open tool's values) are sent to Anthropic to get an answer. The storage is not encrypted: anyone using this device can read it with the browser's developer tools. If you clear the browser's data or use a private window, the data is lost — so make a backup from your profile or export important projects as files."), custom: "data", fields: [
+    desc: tr("Kaikki tietosi (projektit, kurssien eteneminen, omat robotit, asetukset, käyttäjätilit ja mahdollinen API-avain) tallentuvat vain tähän selaimeen tällä laitteella. RoboLab ei käytä analytiikkaa, mainoksia tai seurantaa. Poikkeukset: jos kirjaudut vapaaehtoisella pilvitilillä, tilisi tiedot (ei API-avainta) tallennetaan myös RoboLabin pilveen (Supabase, EU) ja ne voi poistaa profiilista. Ohjeet ja tuki -sivulta lähettämäsi viesti tallennetaan samaan pilveen kehittäjän luettavaksi. Jos lisäät Claude API -avaimen, Voltille kirjoittamasi viestit (ja halutessasi avoimen työkalun arvot) lähetetään Anthropicille vastausta varten. Tallennus ei ole salattu: kuka tahansa tämän laitteen käyttäjä voi lukea sen selaimen kehitystyökaluilla. Jos tyhjennät selaimen tiedot tai käytät yksityistä ikkunaa, tiedot katoavat — tee siis varmuuskopio profiilista tai vie tärkeät projektit tiedostoiksi.",
+      "All your data (projects, course progress, your robots, settings, user accounts and any API key) is stored only in this browser on this device. RoboLab uses no analytics, ads or tracking. Exceptions: if you sign in with an optional cloud account, your account's data (not the API key) is also stored in RoboLab's cloud (Supabase, EU) and can be deleted from your profile. A message you send from the Help & support page is stored in the same cloud for the developer to read. If you add a Claude API key, the messages you write to Volt (and, if you allow it, the open tool's values) are sent to Anthropic to get an answer. The storage is not encrypted: anyone using this device can read it with the browser's developer tools. If you clear the browser's data or use a private window, the data is lost — so make a backup from your profile or export important projects as files."), custom: "data", fields: [
     { key: "autosave", label: tr("Tallenna automaattisesti", "Save automatically"), desc: tr("Muutokset tallentuvat heti.", "Changes are saved immediately."), type: "toggle", default: true },
     { key: "startPage", label: tr("Aloitussivu", "Start page"), type: "select", default: "dashboard", options: [["last", tr("Viimeksi avattu", "Last opened")], ...TOOLS.map((t) => [t.id, t.name])] },
   ]},
@@ -223,7 +231,7 @@ const ADVANCED = new Set([
   "torqueUnit", "notation", "decimalSep",
   "handedness", "eulerOrder", "eulerFrame", "quatOrder", "dhConvention",
   "integrator", "noise", "seed", "autoStart", "pauseOnBlur",
-  "axisColors", "frameLabels", "trail", "antialias", "fpsCap", "showFps", "plotPalette",
+  "axisColors", "frameLabels", "trail", "antialias", "fpsCap", "fpsCounter", "plotPalette",
   "confirmReset", "autosave", "startPage",
 ]);
 const ADVANCED_SECTIONS = new Set(["shortcuts"]);
@@ -596,7 +604,8 @@ function toolHead(t, extra = "") {
       <button class="icon-btn" data-menu aria-haspopup="dialog" aria-expanded="false" aria-label="${tr("Työkalun asetukset", "Tool settings")}" title="${tr("Tähän työkaluun liittyvät asetukset", "Settings related to this tool")}">${icon("gear")}</button>
       <div class="menu right settings-pop" data-quick hidden>${quickSettingsHtml(t.id)}</div>
     </div>` : "";
-  const tools = t.id === "projects" ? "" : `${quick}
+  const plain = ["projects", "help", "privacy"].includes(t.id); // ei suosikkia, avustajaa eikä tulosten kopiointia
+  const tools = plain ? "" : `${quick}
     <button class="btn" data-act="ask" title="${tr("Kysy avustajalta tästä työkalusta (Ctrl+I)", "Ask the assistant about this tool (Ctrl+I)")}">${icon("spark")} ${tr("Kysy", "Ask")}</button>
     <div class="menu-wrap">
       <button class="icon-btn" data-menu aria-haspopup="menu" aria-expanded="false" aria-label="${tr("Lisää toimintoja", "More actions")}" title="${tr("Lisää toimintoja", "More actions")}">⋯</button>
@@ -607,7 +616,7 @@ function toolHead(t, extra = "") {
       </div>
     </div>`;
   return `<div class="page-head">
-    <div><h1>${t.name}${t.id === "projects" ? "" : ` <button class="fav ${fav ? "on" : ""}" data-act="fav" aria-pressed="${fav}" title="${fav ? tr("Poista suosikeista", "Remove from favourites") : tr("Lisää suosikkeihin", "Add to favourites")}">★</button>`}</h1><p>${t.desc}</p></div>
+    <div><h1>${t.name}${plain ? "" : ` <button class="fav ${fav ? "on" : ""}" data-act="fav" aria-pressed="${fav}" title="${fav ? tr("Poista suosikeista", "Remove from favourites") : tr("Lisää suosikkeihin", "Add to favourites")}">★</button>`}</h1><p>${t.desc}</p></div>
     <div class="actions">${examples}${extra}${tools}</div>
   </div>`;
 }
@@ -922,26 +931,30 @@ document.addEventListener("keydown", (e) => {
 // Opettajille-sivu näkyy listoissa vain opettajille (Teacher-taso); suora linkki näyttää tasoesittelyn
 const toolListed = (t) => t.nav !== false && (t.id !== "teach" || !window.Plans || Plans.canTeach());
 
-// Valikossa näkyvät vain avoimet työkalut; lukitut kootaan yhteen riviin (ne näkyvät etusivun hakemistossa ja Tasot-sivulla)
-const navShown = (t) => toolListed(t) && (!window.Plans || Plans.canTool(t.id));
+// Valikossa ovat kaikki työkalut samoissa ryhmissä kuin etusivun hakemistossa. Lukitut näkyvät himmeinä lukolla:
+// ne avaavat työkalun esittelyn ja tason, jolla sen saa käyttöön.
+const navLocked = (t) => !!window.Plans && !Plans.canTool(t.id);
+
+function navItem(t) {
+  const lock = navLocked(t);
+  const tip = esc(t.name) + (lock ? ` (${Plans.NAMES[Plans.tierForTool(t.id)]})` : "");
+  return `
+    <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${t.id === "teach" ? "nav-teach" : ""} ${lock ? "locked" : ""}" data-route="${t.id}" data-tip="${tip}">
+      ${icon(t.icon)}<span class="label">${t.name}</span>${lock ? `<span class="nav-lock" title="${tip}" aria-label="${tr("Lukittu", "Locked")}">🔒</span>` : ""}
+    </a>`;
+}
 
 function renderNav() {
   const groups = {};
-  const f = favs();
-  if (f.length) groups[tr("Suosikit", "Favourites")] = f.map((id) => TOOLS.find((t) => t.id === id)).filter((t) => t && navShown(t));
-  if (!groups[tr("Suosikit", "Favourites")]?.length) delete groups[tr("Suosikit", "Favourites")];
-  TOOLS.filter(navShown).forEach((t) => (groups[t.group] ||= []).push(t));
-  const locked = TOOLS.filter((t) => toolListed(t) && !navShown(t)).length;
+  const fav = favs().map((id) => TOOLS.find((t) => t.id === id)).filter((t) => t && toolListed(t));
+  if (fav.length) groups[tr("Suosikit", "Favourites")] = fav;
+  TOOLS.filter(toolListed).forEach((t) => (groups[t.group] ||= []).push(t));
   $("#nav").innerHTML = Object.entries(groups).map(([g, items]) => `
-    <div class="nav-group-title">${g}</div>
-    ${items.map((t) => `
-      <a href="#/${t.id}" class="nav-item ${isReady(t) ? "" : "planned"} ${t.id === "teach" ? "nav-teach" : ""}" data-route="${t.id}" data-tip="${esc(t.name)}">
-        ${icon(t.icon)}<span class="label">${t.name}</span>
-      </a>`).join("")}
-  `).join("") + (locked ? `
-    <a href="#/plans" class="nav-item nav-more" data-route="plans" data-tip="${tr("Lukitut työkalut", "Locked tools")}">
-      ${icon("star")}<span class="label">${tr(`Lukitut työkalut (${locked})`, `Locked tools (${locked})`)}</span><span class="nav-lock" aria-hidden="true">🔒</span>
-    </a>` : "");
+    <div class="nav-group-title">${g}</div>${items.map(navItem).join("")}`).join("");
+  // Alaosa: ohjeet sekä tasot ja hinnat asetusten yläpuolella (Päivitä-nappi näkyy vain lukituilla sivuilla)
+  $("#nav-extra").innerHTML = ["help", "plans"].map((id) => TOOLS.find((t) => t.id === id)).map((t) => `
+    <a href="#/${t.id}" class="nav-item" data-route="${t.id}" data-tip="${esc(t.name)}">${icon(t.icon)}<span class="label">${t.name}</span></a>`).join("");
+  document.querySelectorAll(".nav-item").forEach((a) => a.classList.toggle("active", a.dataset.route === currentRoute()));
 }
 
 let currentImpl = null;
@@ -1001,21 +1014,20 @@ function router() {
   currentImpl?.unmount?.();
   currentImpl = null;
   const seq = ++renderSeq;
-  const proj = `<a href="#/projects" class="crumb-proj" title="${tr("Vaihda projektia", "Switch project")}">${esc(activeProject().name)}</a><span>/</span>`;
   const settingsName = tr("Asetukset", "Settings");
+  // Murupolku: yleissivuilla "RoboLab / sivu". Työkaluissa projekti kertoo, mihin työ tallentuu (vaihto Projektit-sivulla).
+  $("#crumbs").innerHTML = (route === "settings" || tool.group === G.general ? `<span>RoboLab</span><span>/</span>`
+    : `<a href="#/projects" class="crumb-proj" title="${tr("Työsi tallentuu automaattisesti tähän projektiin. Napsauta, jos haluat vaihtaa projektia.", "Your work is saved automatically in this project. Click to switch project.")}">${esc(activeProject().name)}</a><span>/</span>`)
+    + `<b>${route === "settings" ? settingsName : tool.name}</b>`;
   if (route === "settings") {
-    $("#crumbs").innerHTML = `<span>RoboLab</span><span>/</span><b>${settingsName}</b>`;
     content.innerHTML = settingsPage();
     bindSettings();
   } else if (route === "dashboard") {
-    $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     content.innerHTML = dashboardPage();
   } else if (window.Plans && !Plans.canTool(route)) {
     // Lukittu työkalu: esittely ja päivitys (tilaustaso, plans.js)
-    $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     content.innerHTML = Plans.lockedHtml(tool);
   } else if (TOOL_IMPL[route]) {
-    $("#crumbs").innerHTML = `${proj}<b>${tool.name}</b>`;
     currentImpl = TOOL_IMPL[route];
     // Rikkinäinen tallennettu tila (esim. käsin muokattu tuonti) ei saa lukita työkalua pysyvästi.
     // Asynkronisen renderin (3D-kirjastojen lataus) virhe näytetään samoin, jos sama sivu on yhä auki.
@@ -1036,6 +1048,7 @@ function router() {
   content.scrollTop = 0;
   $("#app").classList.remove("mobile-open");
   document.title = (route === "settings" ? settingsName : tool.name) + " · RoboLab";
+  window.Plans?.renderUpgrade(); // Päivitä-nappi näkyy ilmaiselle tasolle vain lukitulla sivulla
 }
 
 /* ===== Sivut ===== */
@@ -1108,7 +1121,7 @@ function dashboardPage() {
     <div class="page-head">
       <div>
         <h1>${acc?.name ? tr(`Hei, ${esc(acc.name)}!`, `Hi, ${esc(acc.name)}!`) : tr("Tervetuloa RoboLabiin!", "Welcome to RoboLab!")}</h1>
-        <p>${tr("Opi robotiikkaa kursseilla tai kokeile työkaluja vapaasti.", "Learn robotics on the courses or try the tools freely.")}</p>
+        <p>${tr("Opi robotiikkaa kursseilla tai kokeile työkaluja vapaasti. Työsi tallentuu automaattisesti projektiisi.", "Learn robotics on the courses or try the tools freely. Your work is saved automatically in your project.")}</p>
       </div>
     </div>
     ${teachHtml}
@@ -1116,10 +1129,11 @@ function dashboardPage() {
     ${classHtml}
     ${quickHtml}
     ${dirHtml}
+    ${window.Plans?.proofHtml() || ""}
     ${upgradeHtml}
-    <p class="note dash-links"><a href="https://github.com/0ippi/RoboLab#readme" target="_blank" rel="noopener">${tr("Ohjeet", "Docs")}</a>
-      · <a href="https://github.com/0ippi/RoboLab/issues" target="_blank" rel="noopener">${tr("Ilmoita ongelmasta", "Report a problem")}</a>
-      · <a href="tietosuoja.html" target="_blank" rel="noopener">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>
+    <p class="note dash-links"><a href="#/help">${tr("Ohjeet ja tuki", "Help & support")}</a>
+      · <a href="#/help" data-help-topic="bug">${tr("Ilmoita ongelmasta", "Report a problem")}</a>
+      · <a href="#/privacy">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>
   `;
 }
 
@@ -1371,6 +1385,7 @@ function importSettings(e) {
 
 /* ===== Tilarivi ===== */
 let fps = 0;
+const DEBUG = new URLSearchParams(location.search).has("debug"); // ?debug: FPS-laskuri näkyviin asetuksesta riippumatta
 function renderStatusbar() {
   const bar = $("#statusbar");
   const rep = { euler: "Euler " + settings.eulerOrder, quat: tr("Kvaternio", "Quaternion"), axisangle: tr("Akseli–kulma", "Axis–angle"), matrix: tr("Matriisi", "Matrix") }[settings.rotationRep];
@@ -1385,27 +1400,32 @@ function renderStatusbar() {
     <button class="sb-btn" id="sb-undo" title="${tr("Kumoa (Ctrl+Z)", "Undo (Ctrl+Z)")}" aria-label="${tr("Kumoa", "Undo")}">${icon("undo")}</button>
     <button class="sb-btn" id="sb-redo" title="${tr("Tee uudelleen (Ctrl+Y)", "Redo (Ctrl+Y)")}" aria-label="${tr("Tee uudelleen", "Redo")}">${icon("redo")}</button>
     <button class="sb-btn hide-sm" id="sb-keys" title="${tr("Pikanäppäimet (?)", "Shortcuts (?)")}" aria-label="${tr("Pikanäppäimet", "Shortcuts")}">${icon("keyboard")}</button>
-    ${settings.showFps ? `<span id="fps">${fps} FPS</span>` : ""}
+    ${settings.fpsCounter || DEBUG ? `<span id="fps">${fps} FPS</span>` : ""}
     <span>v${VERSION}</span>`;
   $("#sb-undo").onclick = () => undoRedo("undo");
   $("#sb-redo").onclick = () => undoRedo("redo");
   $("#sb-keys").onclick = openShortcuts;
+  if ($("#fps")) fpsLoop();
 }
 
-(function fpsLoop() {
+// Mittaa ruudunpäivitystä vain, kun laskuri näkyy (jatkuva piirtosilmukka kuluttaisi turhaan akkua)
+let fpsRaf = 0;
+function fpsLoop() {
+  if (fpsRaf) return;
   let frames = 0, last = performance.now();
-  function tick(now) {
+  const tick = (now) => {
+    const el = $("#fps");
+    if (!el) { fpsRaf = 0; return; }
     frames++;
     if (now - last >= 1000) {
       fps = Math.round((frames * 1000) / (now - last));
       frames = 0; last = now;
-      const el = $("#fps");
-      if (el) el.textContent = fps + " FPS";
+      el.textContent = fps + " FPS";
     }
-    requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-})();
+    fpsRaf = requestAnimationFrame(tick);
+  };
+  fpsRaf = requestAnimationFrame(tick);
+}
 
 /* ===== Pikanäppäinikkuna ===== */
 function openShortcuts() {
@@ -1442,6 +1462,8 @@ function commands() {
   const app = tr("Sovellus", "App");
   return [
     ...TOOLS.filter((t) => t.id !== "teach" || toolListed(t)).map((t) => ({ label: t.name, group: t.group, icon: t.icon, keywords: t.desc + " " + (TOOL_KEYWORDS[t.id] || ""), run: () => (location.hash = "#/" + t.id) })),
+    // Kurssit: valinta jatkaa kurssia siitä, mihin jäit (lukittu kurssi ohjaa Tasot-sivulle)
+    ...(window.Courses?.list() || []).map((c) => ({ label: c.title, group: tr("Kurssit", "Courses"), icon: "book", keywords: tr("kurssi oppitunti", "course lesson"), run: () => Courses.start(c.id) })),
     { label: tr("Asetukset", "Settings"), group: app, icon: "gear", run: () => (location.hash = "#/settings") },
     ...SECTIONS.map((s) => ({ label: tr("Asetukset: ", "Settings: ") + s.title, group: app, icon: "gear", keywords: s.desc + " " + (s.fields || []).map((f) => f.label || "").join(" "), run: () => openSettingsSection(s.id) })),
     { label: tr("Tekoälyavustaja", "AI assistant"), group: app, icon: "spark", run: () => window.Assistant?.open() },
@@ -1678,9 +1700,11 @@ document.addEventListener("click", (e) => { if (e.target.closest("#dash-ai")) wi
 document.addEventListener("DOMContentLoaded", () => {
   // index.html:n kiinteät tekstit valitulla kielellä
   $(".brand-text span").textContent = tr("Robotiikan työkalut", "Robotics toolkit");
-  $(".sidebar-footer .label").textContent = tr("Asetukset", "Settings");
-  $(".sidebar-footer .nav-item").dataset.tip = tr("Asetukset", "Settings");
-  $("#palette-open span").textContent = tr("Hae työkaluja…", "Search tools…");
+  $('.sidebar-footer [data-route="settings"] .label').textContent = tr("Asetukset", "Settings");
+  $('.sidebar-footer [data-route="settings"]').dataset.tip = tr("Asetukset", "Settings");
+  $("#palette-open span").textContent = tr("Hae työkaluja ja kursseja…", "Search tools and courses…");
+  $("#palette-open").title = tr("Hae työkaluja ja kursseja (Ctrl+K)", "Search tools and courses (Ctrl+K)");
+  $("#palette-open").setAttribute("aria-label", tr("Hae työkaluja ja kursseja", "Search tools and courses"));
   $("#palette-input").placeholder = tr("Kirjoita työkalun, asetuksen tai komennon nimi…", "Type a tool, setting or command…");
   $("#sidebar-toggle").title = tr("Sivupalkki (Ctrl+B)", "Sidebar (Ctrl+B)");
   $("#sidebar-toggle").setAttribute("aria-label", tr("Näytä tai piilota sivupalkki", "Show or hide sidebar"));

@@ -65,8 +65,19 @@ Kun muutat sovellusta:
 - `tests-app.html` käy jokaisen kurssin jokaisen vaiheen läpi: tehtävät ovat alussa tekemättä ja `did()`-valitsimet löytyvät työkalusta.
 
 ## Etusivu ja valikko
-- Etusivu (`dashboardPage` app.js:ssä): pääpolku (jatka kurssia / ensimmäinen kurssi), omat työkalut (suosikit ja viimeksi käytetyt) ja kaikki työkalut ryhmittäin nimilistana. Ei isoja mainoksia: ilmaiselle tasolle yksi `.upgrade-banner`-rivi.
-- Sivupalkissa vain avoimet työkalut (`navShown`); lukitut ovat yhdellä `.nav-more`-rivillä (→ Tasot). Kurssipaneelin ollessa auki sivupalkki kapenee (`setLessonLayout`), käyttäjän asetus ei muutu.
+- Etusivu (`dashboardPage` app.js:ssä): pääpolku (jatka kurssia / ensimmäinen kurssi), omat työkalut (suosikit ja viimeksi käytetyt) ja kaikki työkalut ryhmittäin nimilistana. Ei isoja mainoksia: ilmaiselle tasolle yksi `.upgrade-banner`-rivi. Alalaidan linkit pysyvät sovelluksessa (`#/help`, `#/privacy`), ei GitHubia.
+- Sivupalkissa kaikki työkalut samoissa ryhmissä kuin etusivulla (`navItem`); lukitut himmeinä 🔒-merkillä (`.nav-item.locked`), ne avaavat esittelyn. Alaosassa `#nav-extra`: Ohjeet ja tuki, Tasot ja hinnat. Kurssipaneelin ollessa auki sivupalkki kapenee (`setLessonLayout`), käyttäjän asetus ei muutu.
+- Kurssipaneeli (`placePanel` courses.js:ssä) näkyy vain avoimilla työkalusivuilla: yleissivuilla (`G.general`, asetukset) ja lukitun työkalun esittelyssä se piilotetaan (puhelimessa se peittäisi puolet ruudusta), kurssi pysyy aktiivisena.
+- Murupolku: yleissivuilla "RoboLab / sivu", työkaluissa projekti (selitys title-vihjeessä) / työkalu.
+- Päivitä-nappi (`Plans.renderUpgrade`, kutsutaan routerista): ilmaiselle tasolle vain lukitulla sivulla, maksullisella näyttää tason, kehittäjälle aina.
+- FPS-laskuri: asetus `fpsCounter` (oletus pois; vanha `showFps` hylätään tarkoituksella) tai osoitteen `?debug`. Mittaussilmukka pyörii vain laskurin näkyessä.
+- Haku (Ctrl+K, `commands()`) löytää myös kurssit (valinta = `Courses.start`).
+
+## Ohjeet, tuki ja tietosuoja (help.js)
+- `#/help`: usein kysytyt kysymykset (`<details>`) ja viesti kehittäjälle → `send_feedback` (docs/supabase-feedback.sql: taulu `feedback`, ei suoraa pääsyä, roskajarru 30/h ja 300/vrk, yli vuoden vanhat poistuvat). Mukaan liitetään versio, sivu, jolta tultiin (hashchange), kieli ja selaimen tunniste. Linkki `data-help-topic="bug|school|…"` valitsee aiheen valmiiksi.
+- Kehittäjä näkee saapuneet viestit samalla sivulla (`dev_list_feedback`, `dev_mark_feedback`, `dev_delete_feedback`).
+- `#/privacy` lukee tietosuoja.html:n (DOMParser): sivuston `nav`/`h1` pois, englanniksi tiivistelmä ensin, `index.html#/…`-linkit sovelluksen sisäisiksi. Erillinen tietosuoja.html säilyy (ulkoiset linkit).
+- Käyttäjien kokemukset: `Plans.PROOF` (tyhjä = ei näy). Vain aitoja lainauksia luvan kanssa, ei keksittyjä lukuja.
 
 ## Mallit ja valitsimet
 - Valmiit robotit: `robosim/core/models.js` (2D) ja `robosim/3d/models3d.js` (3D). Hahmot (`CHARACTER_KEYS` library.js:ssä) näkyvät valitsimissa omana osionaan.
@@ -87,7 +98,8 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 - Testit käyttävät Supabasen testiversiota (`makeSupabaseMock` tests-app.html:ssä); oikeaa Supabasea ei testata automaattisesti. Älä koskaan lisää service_role-avainta.
 
 ## Tilaustasot
-- `plans.js` (`Plans`): hinnat (`PRICES`) ja tasojen sisältö (`FEATURES`: työkalu- ja kurssilistat). Uusi työkalu tai kurssi on oletuksena Pro-tasoa, ellei sitä lisätä FREE- tai EDU-listaan.
+- `plans.js` (`Plans`): hinnat (`PRICES`) ja tasojen sisältö (`FEATURES`: työkalu- ja kurssilistat). Uusi työkalu tai kurssi on oletuksena Pro-tasoa, ellei sitä lisätä FREE- tai EDU-listaan (yleissivut kuten `help` ja `privacy` kuuluvat FREE_TOOLSiin).
+- Tasot-sivun kortit järjestyksessä Free, Education, Pro, Teacher; jokaisella kohderyhmä (`h2 small`) ja "Valitse tämä, jos…" (`.plan-for`). Teacher ei sisällä Pro-tason lisätyökaluja, ja tämä sanotaan kortissa.
 - Taso tulee pilvitilin `subscriptions`-rivistä (`my_plan`) tai käyttäjän luokkajäsenyydestä (`join_class`). Laiteavaimet: `rlplan`, `rldevice` (vain vanhan `rlclass`-jäsenyyden siirtoon).
 - Luokkajäsenyys on käyttäjäkohtainen (2.14.0): `robolab-classroom` + `robolab-class-member` (käyttäjän oma satunnainen paikka luokassa, SQL:n `p_device`). Molemmat ovat accounts.js:n `NO_EXPORT`-listalla: eivät kulje varmuuskopiossa eivätkä pilvisynkronoinnissa. Oppilas poistuu luokasta `[data-plans="leave-class"]`-napilla (Kurssit, Profiili, Tasot) → `leave_class`. SQL: `docs/supabase-plans.sql`, ohje: `docs/maksut-ohje.md`, maksujen webhook: `supabase/functions/stripe-webhook`.
 - Lukitus on sovelluksessa (`Plans.canTool` routerissa, `canCourse` kursseissa). Aktiivinen kurssi avaa sen omat työkalut. Testeissä `__robolabPlanOverride` (oletus "pro").

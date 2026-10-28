@@ -183,6 +183,28 @@ function makeSupabaseMock() {
         if (!server.devs.has(uid)) return err("not-developer");
         return { data: [...server.subs.values()].filter((x) => x.plan !== "free" && x.email).map((x) => ({ email: x.email, plan: x.plan, seats: x.seats, valid_until: x.valid_until, source: "manual" })), error: null };
       }
+      // Viestit kehittäjälle (Ohjeet ja tuki): kuka tahansa lähettää, vain kehittäjä lukee
+      if (name === "send_feedback") {
+        if (server.feedbackFull) return err("rate");
+        const m = String(args.p_message || "").trim();
+        if (m.length < 3) return err("too-short");
+        server.feedback ||= [];
+        server.feedback.push({ id: server.feedback.length + 1, created_at: new Date().toISOString(), topic: args.p_topic, message: m, contact: args.p_contact || "",
+          page: args.p_page || "", version: args.p_version || "", lang: args.p_lang || "", agent: args.p_agent || "", handled: false });
+        return { data: null, error: null };
+      }
+      if (name === "dev_list_feedback") return server.devs.has(uid) ? { data: clone(server.feedback || []), error: null } : err("not-developer");
+      if (name === "dev_mark_feedback") {
+        if (!server.devs.has(uid)) return err("not-developer");
+        const f = (server.feedback || []).find((x) => x.id === args.p_id);
+        if (f) f.handled = !!args.p_handled;
+        return { data: null, error: null };
+      }
+      if (name === "dev_delete_feedback") {
+        if (!server.devs.has(uid)) return err("not-developer");
+        server.feedback = (server.feedback || []).filter((x) => x.id !== args.p_id);
+        return { data: null, error: null };
+      }
       if (name === "my_classes") return { data: [...server.classes.values()].filter((c) => c.teacher === uid).map((c) => ({ code: c.code, name: c.name, seats: c.seats, valid_until: c.valid_until, used: c.devices.size })), error: null };
       if (name === "delete_class") { const c = server.classes.get(args.p_code); if (c?.teacher === uid) server.classes.delete(args.p_code); return { data: null, error: null }; }
       if (name !== "delete_my_account" || !s) return { error: { message: "not allowed" } };
@@ -1292,14 +1314,16 @@ async function test(name, fn) {
   });
 
   /* ===== Tilaustasot ===== */
-  await test("Free-taso: perustyökalut auki, muut lukittu, Päivitä-nappi ja mainos näkyvät", async () => {
+  await test("Free-taso: perustyökalut auki, muut lukittu lukkomerkillä, Päivitä-nappi vain lukitulla sivulla", async () => {
     window.__robolabPlanOverride = null; window.__robolabSupabaseMock = null; useDevice("A"); fresh(); await boot();
     eq(w.Plans.current().plan, "free", "taso");
-    ok(!w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi piilossa");
+    ok(w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi näkyy etusivulla");
     ok(w.document.querySelector(".upgrade-banner"), "etusivun tasomaininta puuttuu");
-    // Valikossa vain avoimet työkalut; lukitut yhdellä rivillä ja etusivun hakemistossa tasomerkillä
-    ok(!w.document.querySelector('.nav-item[data-route="pid"]'), "lukittu työkalu näkyy valikossa");
-    ok(/\(\d+\)/.test(w.document.querySelector(".nav-more")?.textContent || ""), "Lukitut työkalut -rivi puuttuu");
+    // Valikossa kaikki työkalut samoissa ryhmissä kuin etusivulla: lukitut lukolla, Ohjeet ja Tasot alaosassa
+    for (const id of ["fk", "pid"]) ok(w.document.querySelector(`#nav .nav-item.locked[data-route="${id}"] .nav-lock`), id + " puuttuu valikosta lukolla");
+    ok(w.document.querySelector('#nav .nav-item:not(.locked)[data-route="motor"]'), "avoin työkalu merkitty lukituksi");
+    ok(!w.document.querySelector(".nav-more"), "vanha Lukitut työkalut -rivi näkyy");
+    ok(w.document.querySelector('#nav-extra [data-route="help"]') && w.document.querySelector('#nav-extra [data-route="plans"]'), "Ohjeet tai Tasot puuttuu sivupalkista");
     ok(w.document.querySelector('.home-group a.locked[href="#/pid"] .plan-badge'), "lukittu työkalu puuttuu etusivun hakemistosta");
     ok(w.document.querySelector('.home-lead[data-resume="start"]'), "ensimmäisen kurssin aloitus puuttuu etusivulta");
     ok(!w.document.querySelector(".welcome, .stats, .goal-list"), "vanhat etusivun osat näkyvät yhä");
@@ -1308,6 +1332,7 @@ async function test(name, fn) {
     await go("#/pid");
     ok(w.document.querySelector(".locked-card"), "PID ei ole lukittu");
     ok(!w.document.querySelector("#pid-results"), "lukittu työkalu avautui");
+    ok(!w.document.querySelector("#upgrade-btn").hidden, "Päivitä-nappi puuttuu lukitulta sivulta");
     for (const id of ["motor", "power", "build2d", "sim2d", "units", "learn", "projects"]) {
       await go("#/" + id, id === "build2d" ? 1500 : 400);
       ok(!w.document.querySelector(".locked-card"), id + " lukittu Free-tasolla");
@@ -1333,10 +1358,40 @@ async function test(name, fn) {
     eq(w.Plans.canTool("nn2d"), false, "kurssin jälkeen");
   });
 
-  await test("Tasot-sivu: hinnat, nykyinen taso ja ostonappi ilman maksulinkkiä", async () => {
+  await test("Kurssipaneeli ei peitä yleissivuja: piiloutuu Etusivulla, Tasot-sivulla ja lukitussa työkalussa ja palaa työkalussa", async () => {
+    w.Courses.start("start");
+    await waitFor(() => w.location.hash === "#/build2d", 3000, "kurssin työkalu");
+    const shown = () => !w.document.querySelector("#lesson").hidden && w.document.body.classList.contains("lesson-open");
+    await waitFor(shown, 2000, "paneeli työkalussa");
+    for (const r of ["#/plans", "#/dashboard", "#/learn", "#/help", "#/settings", "#/pid"]) {
+      await go(r, 300);
+      ok(!shown(), "paneeli näkyy sivulla " + r);
+      ok(!w.document.querySelector("#app").classList.contains("collapsed"), "sivupalkki jäi kapeaksi sivulla " + r);
+    }
+    await go("#/build2d", 800);
+    ok(shown(), "paneeli ei palannut työkaluun");
+    eq(w.Courses.active()?.id, "start", "kurssi keskeytyi");
+    w.Courses.stop();
+  });
+
+  await test("Tasot-sivu: hinnat, kohderyhmät, nykyinen taso ja ostonappi ilman maksulinkkiä", async () => {
     await go("#/plans");
     const t = w.document.querySelector("#content").textContent;
     for (const p of ["Free", "Education", "Teacher", "Pro", "19 €", "45 €", "59 €"]) ok(t.includes(p), "puuttuu: " + p);
+    // Jokaisella tasolla kohderyhmä ja "Valitse tämä, jos…"; Teacher kertoo, ettei Pro-työkaluja sisälly
+    eq([...w.document.querySelectorAll(".plan-card h2")].map((h) => h.firstChild.textContent.trim()), ["Free", "Education", "Pro", "Teacher"], "tasojen järjestys");
+    eq(w.document.querySelectorAll(".plan-card h2 small").length, 4, "kohderyhmät");
+    eq(w.document.querySelectorAll(".plan-card .plan-for").length, 4, "Valitse tämä, jos -lauseet");
+    ok(/Pro/.test(w.document.querySelector(".tier-teacher .plan-for").textContent), "Teacher ei kerro Pro-työkaluista");
+    ok(!w.document.querySelector('#content a[href*="github.com"]'), "GitHub-linkki Tasot-sivulla");
+    // Käyttäjien kokemuksia vain aidoilla lainauksilla: tyhjä lista ei näytä mitään
+    ok(!w.document.querySelector(".proof"), "tyhjä kokemusosio näkyy");
+    w.Plans.PROOF.push({ text: "<b>Testi</b>lainaus", who: "Testiopettaja", where: "Testikoulu" });
+    await go("#/dashboard", 200);
+    ok(w.document.querySelector(".proof-quote") && !w.document.querySelector(".proof-quote blockquote b"), "lainaus puuttuu etusivulta tai HTML tulkittiin");
+    await go("#/plans", 300);
+    ok(w.document.querySelector(".proof-quote"), "lainaus puuttuu Tasot-sivulta");
+    w.Plans.PROOF.length = 0;
     w.document.querySelector('[data-buy="pro_month"]').click();
     ok(/pian|soon/i.test(lastToast()), "ilmoitus: " + lastToast());
   });
@@ -1529,14 +1584,93 @@ async function test(name, fn) {
     w.confirm = () => true;
     d.querySelector('[data-dev-revoke="ope@example.com"]').click();
     await waitFor(() => pm.server.subs.get("u-ope")?.plan === "free", 2000, "lisenssin poisto");
+    // Viestit kehittäjälle näkyvät kehittäjälle Ohjeet ja tuki -sivulla: merkintä käsitellyksi ja poisto
+    pm.server.feedback = [{ id: 7, created_at: new Date().toISOString(), topic: "bug", message: "<b>Rikki</b> nappi", contact: "oppilas@example.com", page: "pid", version: "2.15.0", lang: "fi", agent: "Testiselain", handled: false }];
+    await go("#/help", 300);
+    await waitFor(() => d.querySelector(".help-inbox .fb"), 2000, "saapuneet viestit");
+    ok(!d.querySelector(".help-inbox .fb-msg b") && /Rikki/.test(d.querySelector(".help-inbox .fb-msg").textContent), "viestin HTML tulkittiin");
+    ok(d.querySelector('.help-inbox a[href="mailto:oppilas@example.com"]'), "vastauslinkki puuttuu");
+    d.querySelector('[data-fb-mark="7"]').click();
+    await waitFor(() => pm.server.feedback[0]?.handled === true, 2000, "käsitellyksi merkintä");
+    await waitFor(() => d.querySelector('.help-inbox .fb.done [data-fb-del="7"]'), 2000, "lista päivittyi");
+    d.querySelector('[data-fb-del="7"]').click();
+    await waitFor(() => pm.server.feedback.length === 0, 2000, "poisto");
     window.__robolabSupabaseMock = null; window.__robolabPlanOverride = "pro,teacher"; useDevice("A");
+  });
+
+  await test("Ohjeet ja tuki: kysymykset ja viesti kehittäjälle ilman tiliä; palvelimen hylkäys säilyttää viestin", async () => {
+    const fm = (window.__robolabSupabaseMock = makeSupabaseMock());
+    useDevice("A"); fresh(); await boot();
+    // Etusivun linkit pysyvät sovelluksessa (ei GitHubia)
+    eq([...w.document.querySelectorAll(".dash-links a")].map((a) => a.getAttribute("href")), ["#/help", "#/help", "#/privacy"], "etusivun linkit");
+    w.document.querySelector('.dash-links a[data-help-topic="bug"]').click();
+    await waitFor(() => w.document.querySelector("#help-form"), 3000, "lomake");
+    ok(w.document.querySelectorAll(".help-faq details").length >= 5, "kysymykset puuttuvat");
+    eq(w.document.querySelector("#hf-topic").value, "bug", "aihe valmiiksi");
+    ok(!w.document.querySelector(".help-inbox"), "tavallinen käyttäjä näkee saapuneet viestit");
+    w.document.querySelector("#hf-msg").value = "Nappi ei toimi";
+    w.document.querySelector("#hf-contact").value = "testi@example.com";
+    w.document.querySelector("#help-form").requestSubmit();
+    await waitFor(() => fm.server.feedback?.length === 1, 3000, "viestin lähetys");
+    const f = fm.server.feedback[0];
+    eq([f.topic, f.message, f.contact, f.page, f.version], ["bug", "Nappi ei toimi", "testi@example.com", "dashboard", G("VERSION")], "viestin tiedot");
+    ok(!w.document.querySelector("#hf-sent").hidden && w.document.querySelector("#hf-msg").value === "", "kiitos tai tyhjennys puuttuu");
+    fm.server.feedbackFull = true;
+    w.document.querySelector("#hf-msg").value = "Toinen viesti";
+    w.document.querySelector("#help-form").requestSubmit();
+    await waitFor(() => /hetken|while/i.test(lastToast()), 3000, "ilmoitus rajoituksesta");
+    eq(w.document.querySelector("#hf-msg").value, "Toinen viesti", "viesti katosi");
+    // Palvelimen funktio puuttuu (SQL:ää ei ole ajettu): selkeä ilmoitus, ei väitettä nettiyhteydestä
+    fm.server.feedbackFull = false;
+    const rpc = fm.rpc;
+    fm.rpc = async (name, args) => (name === "send_feedback" ? { data: null, error: { message: "Could not find the function public.send_feedback(p_agent) in the schema cache" } } : rpc(name, args));
+    w.document.querySelector("#help-form").requestSubmit();
+    await waitFor(() => /vielä käytössä|available yet/i.test(lastToast()), 3000, "ilmoitus puuttuvasta palvelimen funktiosta");
+    fm.rpc = rpc;
+    // Tasot-sivun ja Opettajille-sivun yhteydenotto avaa saman lomakkeen
+    await go("#/plans", 300);
+    ok(w.document.querySelector('#content a[href="#/help"][data-help-topic="school"]'), "Tasot-sivun yhteydenotto");
+    window.__robolabSupabaseMock = null;
+  });
+
+  await test("Tietosuojaseloste avautuu sovelluksen sisällä, ja sen linkit pysyvät sovelluksessa", async () => {
+    await boot("#/privacy");
+    await waitFor(() => w.document.querySelector(".privacy-doc h2"), 3000, "seloste");
+    const doc = w.document.querySelector(".privacy-doc");
+    ok(/Supabase/.test(doc.textContent) && /Viesti kehittäjälle|message to the developer/i.test(doc.textContent), "sisältö");
+    ok(doc.querySelector('a[href="#/help"]'), "yhteydenotto ei vie Ohjeet ja tuki -sivulle");
+    ok(!doc.querySelector("script, nav, h1"), "erillisen sivun osat mukana");
+    ok([...doc.querySelectorAll('a[href^="http"]')].every((a) => a.target === "_blank"), "ulkoinen linkki avautuu sovelluksen tilalle");
+  });
+
+  await test("Murupolku, haku ja FPS-laskuri: yleissivuilla RoboLab, kurssit löytyvät haulla, laskuri vain pyydettäessä", async () => {
+    fresh(); await boot();
+    ok(/^RoboLab/.test(w.document.querySelector("#crumbs").textContent.trim()) && !w.document.querySelector("#crumbs .crumb-proj"), "etusivun murupolku");
+    await go("#/motor");
+    ok(w.document.querySelector("#crumbs .crumb-proj")?.title, "työkalun murupolusta puuttuu projekti selityksineen");
+    w.document.querySelector("#palette-open").click();
+    ok(!w.document.querySelector("#palette").hidden, "haku ei auennut");
+    const course = w.Courses._courses.find((c) => c.id === "sensors");
+    const input = w.document.querySelector("#palette-input");
+    input.value = course.title.split(/[\s:]/)[0];
+    input.dispatchEvent(new w.Event("input"));
+    ok([...w.document.querySelectorAll("#palette-list li")].some((li) => li.textContent.includes(course.title)), "kurssi ei löydy haulla");
+    w.closePalette();
+    // FPS-laskuri on oletuksena piilossa, myös vanhalla asetuksella showFps: true
+    ok(!w.document.querySelector("#fps"), "FPS näkyy oletuksena");
+    ls().set("robolab-settings-v1", JSON.stringify({ ...JSON.parse(ls().get("robolab-settings-v1") || "{}"), showFps: true }));
+    await boot();
+    ok(!w.document.querySelector("#fps"), "vanha showFps-asetus näyttää laskurin");
+    w.set("fpsCounter", true);
+    ok(w.document.querySelector("#fps"), "asetus ei näytä laskuria");
+    w.set("fpsCounter", false);
   });
 
   /* ===== Puhelin ja offline ===== */
   await test("Puhelinleveys (375 px): ei vaakavieritystä ja valikko aukeaa", async () => {
     await boot("#/dashboard", { width: 375 });
     const bad = [];
-    for (const r of ["#/dashboard", "#/learn", "#/teach", "#/pid", "#/motor", "#/projects", "#/settings"]) {
+    for (const r of ["#/dashboard", "#/learn", "#/teach", "#/pid", "#/motor", "#/projects", "#/settings", "#/plans", "#/help", "#/privacy"]) {
       await go(r, 500);
       const d = w.document.documentElement;
       const c = w.document.querySelector("#content");
