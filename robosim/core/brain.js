@@ -52,3 +52,6 @@ RS.parseHidden = function (text) {
   if (h.some((v) => !(v > 0 && v <= 512))) throw new Error(tr('Piilokerrokset: anna esim. 32,32', 'Hidden layers: enter e.g. 32,32'));
   return h;
 };
+// Uusien aivojen koko (vanhat tallennukset latautuvat yhä parseHiddenillä): isommat eivät mahdu selaimen
+// tallennukseen koulutusajoineen eivätkä jakolinkkiin
+RS.HIDDEN_MAX = { layers: 4, neurons: 256, params: 60000 };

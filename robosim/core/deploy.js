@@ -45,8 +45,9 @@ RS.deployInfo = function (dim, m) {
       limited ? tr(`Kulma radiaaneina (potentiometri/servo/enkooderi). Muunnetaan välille −1…1: ${lo}° → −1, ${hi}° → 1.`, `Angle in radians (potentiometer/servo/encoder). Mapped to −1…1: ${lo}° → −1, ${hi}° → 1.`)
         : tr('Kulma radiaaneina (enkooderi), syötetään sin(kulma).', 'Angle in radians (encoder), fed as sin(angle).'),
       limited ? { k: 'norm', lo: rad(lo), hi: rad(hi) } : { k: 'sin' });
+    const sp = j.speed > 0 ? j.speed : 6; // sama kuin simulaatiossa (robot.js)
     add(`M${i}_SPEED`, tr(`Nivelen ${jname(j)} nopeus`, `Joint ${jname(j)} speed`),
-      tr(`rad/s jaettuna maksiminopeudella ${j.speed ?? 6} rad/s, rajattu −1…1.`, `rad/s divided by the top speed ${j.speed ?? 6} rad/s, clamped to −1…1.`), { k: 'clamp', s: 1 / (j.speed ?? 6) });
+      tr(`rad/s jaettuna maksiminopeudella ${sp} rad/s, rajattu −1…1.`, `rad/s divided by the top speed ${sp} rad/s, clamped to −1…1.`), { k: 'clamp', s: 1 / sp });
   });
   feet.forEach((b, i) => add(`FOOT${i}`, tr(`Osa ${RS.commentSafe(b.id)} koskettaa maata`, `Part ${RS.commentSafe(b.id)} touches the ground`),
     tr('Kosketuskytkin tai voima-anturi: 1 = koskettaa maata, 0 = ilmassa.', 'Touch switch or force sensor: 1 = touching the ground, 0 = in the air.'), { k: 'raw' }));
@@ -79,7 +80,7 @@ RS.deployInfo = function (dim, m) {
   const outputs = joints.map((j, i) => {
     const limited = j.lower != null && j.upper != null && j.upper > j.lower;
     const position = is3d && limited && (j.control || 'position') === 'position';
-    const speed = j.speed ?? 6;
+    const speed = j.speed > 0 ? j.speed : 6;
     return position
       ? { id: `M${i}`, name: jname(j), mode: 'position', lo: rad(j.lower), hi: rad(j.upper), speed,
         how: tr(`Servo: tavoitekulma ${j.lower}°…${j.upper}° (−1 → ${j.lower}°, 1 → ${j.upper}°). Simulaatiossa kulma muuttuu enintään ${speed} rad/s.`, `Servo: target angle ${j.lower}°…${j.upper}° (−1 → ${j.lower}°, 1 → ${j.upper}°). In the simulation the angle changes at most ${speed} rad/s.`) }

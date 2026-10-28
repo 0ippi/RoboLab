@@ -6,6 +6,8 @@ RS.normalizeModel = function (input) {
   if (!Array.isArray(m.bodies) || m.bodies.length === 0) throw new Error(tr('Mallissa ei ole osia (bodies).', 'The model has no parts (bodies).'));
   m.joints = m.joints || [];
   m.sensors = Object.assign({ lidar: 0 }, m.sensors);
+  // Säteitä enintään 32: kirjoitusvirhe (esim. 500) tekisi jokaisesta askeleesta satoja säteenheittoja robottia kohden
+  m.sensors.lidar = Math.max(0, Math.min(32, m.sensors.lidar | 0));
   m.fall = m.fall || {};
   const ids = new Set();
   for (const b of m.bodies) {
@@ -134,7 +136,8 @@ RS.Robot = class {
         lowerAngle: limited ? RS.deg(j.lower) : 0,
         upperAngle: limited ? RS.deg(j.upper) : 0
       }, this.byId[j.a], this.byId[j.b], RS.V(j.x + offX, j.y + lift)));
-      const entry = { joint, spec: j, limited, lo: RS.deg(j.lower ?? 0), hi: RS.deg(j.upper ?? 0), speed: j.speed ?? 6 };
+      // Nopeus 0 tai virheellinen antaisi havainnoksi 0/0 = NaN ja aivot lakkaisivat toimimasta
+      const entry = { joint, spec: j, limited, lo: RS.deg(j.lower ?? 0), hi: RS.deg(j.upper ?? 0), speed: j.speed > 0 ? j.speed : 6 };
       if (j.motor !== false) this.motors.push(entry);
       else if (j.spring > 0) {
         // Jousen vääntö lasketaan joka askeleella itse. Liian jäykkä jousi kevyelle osalle värähtelisi hallitsemattomasti,
