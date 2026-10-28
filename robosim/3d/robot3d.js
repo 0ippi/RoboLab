@@ -15,6 +15,8 @@ export function normalizeModel3D(input) {
   if (!Array.isArray(m.bodies) || m.bodies.length === 0) throw new Error(tr('Mallissa ei ole osia (bodies).', 'The model has no parts (bodies).'));
   m.joints = m.joints || [];
   m.sensors = Object.assign({ scan: 0 }, m.sensors);
+  // Mittauspisteitä enintään 32 (kirjoitusvirhe tekisi jokaisesta askeleesta raskaan)
+  m.sensors.scan = Math.max(0, Math.min(32, m.sensors.scan | 0));
   m.fall = m.fall || {};
   const ids = new Set();
   for (const b of m.bodies) {
@@ -157,7 +159,7 @@ export class Robot3D {
       const control = j.control || (limited ? 'position' : 'velocity');
       const entry = {
         joint, a: A.body, b: B.body, axis: new THREE.Vector3(...j.axis), limited, control,
-        lo: RS.deg(j.lower ?? 0), hi: RS.deg(j.upper ?? 0), speed: j.speed ?? 6,
+        lo: RS.deg(j.lower ?? 0), hi: RS.deg(j.upper ?? 0), speed: j.speed > 0 ? j.speed : 6, // 0 → havainto 0/0 = NaN
         strength: j.strength ?? 10, stiffness: j.stiffness ?? 200, damping: j.damping ?? 8
       };
       // Kulmaohjaus voimapohjaisena: Rapierin oletusmalli (kiihtyvyyspohjainen)
