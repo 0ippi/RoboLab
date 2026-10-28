@@ -5,7 +5,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { quat } from './model.js';
 import * as Look from '../3d/look.js';
 
-const JOINT_COLORS = { servo: '#ffb86b', wheel: '#5ad1e6', free: '#8a96a8' };
+const JOINT_COLORS = { servo: '#ffb86b', wheel: '#5ad1e6', free: '#8a96a8', spring: '#b48cff' };
 
 export class Viewport {
   constructor(canvas, callbacks) {
@@ -85,6 +85,8 @@ export class Viewport {
     this.grid3d.visible = dim === '3d' && settings.showGrid !== false;
     this.grid2d.visible = this.groundLine.visible = dim === '2d';
     this.orbit.enableRotate = dim === '3d';
+    // 2D-kosketus: yhden sormen veto siirtää näkymää (kääntöä ei ole), kahdella nipistys zoomaa
+    this.orbit.touches.ONE = dim === '3d' ? THREE.TOUCH.ROTATE : THREE.TOUCH.PAN;
     this.resetCamera();
   }
 
@@ -166,7 +168,7 @@ export class Viewport {
     }
 
     model.joints.forEach((j, i) => {
-      const type = j.motor === false ? 'free' : j.lower != null && j.upper != null ? 'servo' : 'wheel';
+      const type = j.motor === false ? (j.spring > 0 ? 'spring' : 'free') : j.lower != null && j.upper != null ? 'servo' : 'wheel';
       const color = JOINT_COLORS[type];
       const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
       const g = new THREE.Group();
@@ -303,7 +305,8 @@ export class Viewport {
     const rectOf = (a, b) => ({ l: Math.min(a.x, b.x), t: Math.min(a.y, b.y), r: Math.max(a.x, b.x), b: Math.max(a.y, b.y) });
     this.canvas.addEventListener('pointerdown', (e) => {
       this.altDrag = e.altKey; // Alt + veto: siirrä vain valittu osa ilman siihen kiinnitettyjä osia
-      if (e.button !== 0 || this.physicsMode || this.gizmo.axis) return;
+      // Kosketuksessa veto siirtää ja nipistys zoomaa näkymää (valintalaatikko veisi molemmat)
+      if (e.button !== 0 || this.physicsMode || this.gizmo.axis || e.pointerType === 'touch') return;
       if (!(this.dim === '2d' || this.boxMode || e.shiftKey || e.ctrlKey || e.metaKey)) return;
       if (this.pickAt(e.clientX, e.clientY)) return;
       box = { start: { x: e.clientX, y: e.clientY }, additive: e.shiftKey || e.ctrlKey || e.metaKey, el: null };
@@ -341,16 +344,18 @@ export class Viewport {
   setupPicking() {
     this.setupMarquee();
     let down = null;
-    this.canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+    // Kahvan (gizmon) klikkaus ei valitse sen takana olevaa osaa: kahvan pointerup ehtii nollata dragging-tiedon,
+    // joten kahvan osuma muistetaan jo painalluksessa
+    this.canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, gizmo: !!this.gizmo.axis }; });
     this.canvas.addEventListener('pointerup', (e) => {
       if (this.suppressClick) { this.suppressClick = false; return; }
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return; // oli vetäminen, ei klikkaus
+      if (!down || down.gizmo || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return; // oli vetäminen, ei klikkaus
       if (this.gizmo.dragging || this.physicsMode) return;
       const r = this.canvas.getBoundingClientRect();
       const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       this.raycaster.setFromCamera(ndc, this.camera);
-      // Nivelet ensin, koska ne ovat osien sisällä
-      const hitJ = this.raycaster.intersectObjects(this.jointGroup.children, true)[0];
+      // Nivelet ensin, koska ne ovat osien sisällä (piilotettuja niveliä ei voi valita)
+      const hitJ = this.jointGroup.visible && this.raycaster.intersectObjects(this.jointGroup.children, true)[0];
       if (hitJ) { this.cb.onPick('joint', hitJ.object.userData.id, e.shiftKey || e.ctrlKey); return; }
       const hitB = this.raycaster.intersectObjects(this.modelGroup.children, true)[0];
       if (hitB) this.cb.onPick('body', hitB.object.userData.id, e.shiftKey || e.ctrlKey);
@@ -372,7 +377,8 @@ export class Viewport {
   // Valmiit kuvakulmat: kamera siirretään kohteen ympärillä säilyttäen etäisyys
   setView(name) {
     const dist = Math.max(2, this.camera.position.distanceTo(this.orbit.target));
-    const dirs = { iso: [0.6, 0.45, 0.66], front: [0, 0.08, 1], side: [1, 0.08, 0], top: [0, 1, 0.0001] };
+    // Robotti katsoo +x-suuntaan: edestä = kamera +x-akselilla, sivulta = +z (kuten 2D-rakentajan sivukuva)
+    const dirs = { iso: [0.6, 0.45, 0.66], front: [1, 0.08, 0], side: [0, 0.08, 1], top: [0, 1, 0.0001] };
     const d = new THREE.Vector3(...(dirs[name] || dirs.iso)).normalize().multiplyScalar(dist);
     this.camera.position.copy(this.orbit.target).add(d);
     this.orbit.update();

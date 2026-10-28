@@ -24,6 +24,11 @@ export function uniqueId(model, base) {
   const ids = new Set(model.bodies.map((b) => b.id));
   for (let i = 1; ; i++) if (!ids.has(base + i)) return base + i;
 }
+// Yhteinen juokseva numero useammalle uudelle osalle (esim. reisi3 + sääri3): kaikkien nimien pitää olla vapaita
+function freeNumber(model, ...bases) {
+  const ids = new Set(model.bodies.map((b) => b.id));
+  for (let i = 1; ; i++) if (bases.every((b) => !ids.has(b + i))) return i;
+}
 
 // ---------- Osat ----------
 export const PART_TYPES = {
@@ -165,7 +170,7 @@ export function addLeg(model, parent, dim) {
   const x = round(box.max.x - w), z = dim === '2d' ? 0 : round(box.max.z - w);
   const hipY = round(box.min.y + 0.05), kneeY = round(hipY - thigh);
   const thighBase = tr('reisi', 'thigh'), shinBase = tr('sääri', 'shin');
-  const n = uniqueId(model, thighBase).slice(thighBase.length); // juokseva numero
+  const n = freeNumber(model, thighBase, shinBase); // juokseva numero, vapaa molemmille osille
   const color = parent.color || COLORS[0];
   const t = { id: thighBase + n, pos: [x, round(hipY - thigh / 2), z], rot: [0, 0, 0], color, shapes: [{ type: 'box', size: [w, thigh, w], pos: [0, 0, 0], rot: [0, 0, 0] }] };
   const s = {
@@ -316,29 +321,36 @@ export function addSensor(model, parent, kind, dim) {
 
 // ---------- Peilaus ----------
 // Kopioi osat peilikuvana: 3D:ssä sivulle (z) tai eteen-taakse (x), 2D:ssä eteen-taakse (x).
-// Nivelet kopioidaan, jos niiden molemmat osat kopioidaan tai toinen on valinnan ulkopuolinen emo.
+// Peilitaso kulkee sen osan keskeltä, johon valinta on kiinni (muuten päärungon keskeltä), kuten pyöräparissa.
+// Nivel kopioidaan, kun sen lapsiosa kopioidaan: emo voi olla valinnan ulkopuolella (kopio kiinnittyy samaan emoon),
+// mutta valinnan ulkopuolinen lapsi ei saa toista emoa.
 export function mirror(model, ids, axisIndex, dim) {
   const sel = new Set(ids);
   const map = {};
-  const flipVec = (v) => v.map((c, i) => (i === axisIndex ? -c : c));
-  const flipRot = (r) => r.map((c, i) => (i === axisIndex ? c : -c));
+  const parentId = model.joints.find((j) => sel.has(j.b) && !sel.has(j.a))?.a;
+  const pb = model.bodies.find((b) => b.id === parentId) || model.bodies.find((b) => b.id === model.root);
+  let c = 0;
+  if (pb) { const box = bodyBox(pb); c = (box.min.getComponent(axisIndex) + box.max.getComponent(axisIndex)) / 2; }
+  const flipWorld = (v) => v.map((x, i) => (i === axisIndex ? round(2 * c - x) : x));
+  const flipLocal = (v) => v.map((x, i) => (i === axisIndex ? -x : x));
+  const flipRot = (r) => r.map((x, i) => (i === axisIndex ? x : -x));
   const created = [];
   for (const b of model.bodies.filter((x) => sel.has(x.id))) {
     const nb = RS.clone(b);
     nb.id = uniqueId(model, b.id.replace(/\d+$/, '') || 'osa');
     map[b.id] = nb.id;
-    nb.pos = flipVec(b.pos);
+    nb.pos = flipWorld(b.pos);
     nb.rot = flipRot(b.rot);
-    nb.shapes = b.shapes.map((s) => ({ ...RS.clone(s), pos: flipVec(s.pos), rot: flipRot(s.rot) }));
+    nb.shapes = b.shapes.map((s) => ({ ...RS.clone(s), pos: flipLocal(s.pos), rot: flipRot(s.rot) }));
     model.bodies.push(nb);
     created.push(nb);
   }
   for (const j of model.joints.slice()) {
-    if (!(j.b in map) && !(j.a in map)) continue;
+    if (!(j.b in map)) continue;
     const nj = RS.clone(j);
     nj.a = map[j.a] || j.a;
-    nj.b = map[j.b] || j.b;
-    nj.pos = flipVec(j.pos);
+    nj.b = map[j.b];
+    nj.pos = flipWorld(j.pos);
     // Kiertoakseli on pseudovektori: peilauksessa peilattava komponentti säilyy, muut vaihtavat merkkiä.
     nj.axis = j.axis.map((c, i) => (i === axisIndex ? c : -c));
     if (dim === '2d' && nj.axis[2] < 0) {
@@ -347,7 +359,25 @@ export function mirror(model, ids, axisIndex, dim) {
     }
     model.joints.push(nj);
   }
+  copyThrusters(model, (model.thrusters || []).slice(), map, flipLocal);
   return created;
+}
+
+// Kopioitujen osien roottorit: kiekolle ja työntövoimalle uusi yhteinen tunnus (muuten kopiossa olisi voimaton kiekko,
+// jota ei voi poistaa). tf muuntaa paikan ja suunnan osan koordinaatistossa (esim. peilaus).
+function copyThrusters(model, list, map, tf = (v) => v.slice()) {
+  let n = 0;
+  const vec3 = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  for (const t of list) {
+    const id = map[t?.body];
+    if (!id || !vec3(t.pos) || (t.dir && !vec3(t.dir))) continue; // liitetty teksti voi olla mitä tahansa
+    const rid = 'r' + Math.random().toString(36).slice(2, 7);
+    const disc = model.bodies.find((b) => b.id === id)?.shapes.find((s) => s.rotor === t.rid);
+    if (disc) disc.rotor = rid;
+    (model.thrusters ||= []).push({ body: id, pos: tf(t.pos), dir: tf(t.dir || [0, 1, 0]), rid });
+    n++;
+  }
+  if (n) balanceRotors(model);
 }
 
 // ---------- Kopiointi ja yhdistäminen ----------
@@ -370,22 +400,31 @@ export function duplicate(model, ids, offset) {
       model.joints.push(nj);
     }
   }
+  copyThrusters(model, (model.thrusters || []).slice(), map);
   return created;
 }
 
-// Liittää osan B osaan A yhdeksi jäykäksi kappaleeksi (B:n muodot siirtyvät A:lle).
+// Liittää osan B osaan A yhdeksi jäykäksi kappaleeksi (B:n muodot ja roottorit siirtyvät A:lle).
 export function merge(model, aId, bId) {
   const A = model.bodies.find((x) => x.id === aId), B = model.bodies.find((x) => x.id === bId);
   const qa = quat(A.rot), qaInv = qa.clone().invert(), qb = quat(B.rot);
+  const toA = (p) => new THREE.Vector3(...p).applyQuaternion(qb).add(new THREE.Vector3(...B.pos)).sub(new THREE.Vector3(...A.pos)).applyQuaternion(qaInv);
   for (const s of B.shapes) {
-    const world = new THREE.Vector3(...s.pos).applyQuaternion(qb).add(new THREE.Vector3(...B.pos));
-    const local = world.sub(new THREE.Vector3(...A.pos)).applyQuaternion(qaInv);
+    const local = toA(s.pos);
     const q = qaInv.clone().multiply(qb).multiply(quat(s.rot));
     A.shapes.push({ ...RS.clone(s), color: s.color || B.color, pos: [round(local.x), round(local.y), round(local.z)], rot: quatToDeg(q) });
   }
+  // Roottorien työntövoima seuraa kiekkoja A:lle (paikka ja suunta A:n koordinaatistoon)
+  for (const t of model.thrusters || []) {
+    if (t.body !== bId) continue;
+    const p = toA(t.pos), d = new THREE.Vector3(...(t.dir || [0, 1, 0])).applyQuaternion(qb).applyQuaternion(qaInv);
+    t.body = aId; t.pos = [round(p.x), round(p.y), round(p.z)]; t.dir = [round(d.x, 4), round(d.y, 4), round(d.z, 4)];
+  }
+  const wasRoot = model.root === bId;
   model.joints = model.joints.filter((j) => !((j.a === aId && j.b === bId) || (j.a === bId && j.b === aId)));
   for (const j of model.joints) { if (j.a === bId) j.a = aId; if (j.b === bId) j.b = aId; }
   removeBodies(model, [bId]);
+  if (wasRoot) model.root = aId; // päärunko säilyy yhdistetyssä osassa (ei listan ensimmäinen osa)
 }
 
 export function removeBodies(model, ids) {
@@ -463,17 +502,21 @@ export function copyParts(model, ids, dim) {
   return {
     format: CLIP_FORMAT, dim,
     bodies: RS.clone(model.bodies.filter((b) => sel.has(b.id))),
-    joints: RS.clone(model.joints.filter((j) => sel.has(j.a) && sel.has(j.b)))
+    joints: RS.clone(model.joints.filter((j) => sel.has(j.a) && sel.has(j.b))),
+    thrusters: RS.clone((model.thrusters || []).filter((t) => sel.has(t.body)))
   };
 }
 
 // Liittää osat uusilla nimillä ja siirrettynä. Väärän ulottuvuuden osat muunnetaan. Palauttaa luodut osat.
 export function pasteParts(model, clip, dim, offset) {
   let src = { ...emptyModel(clip.dim || dim), bodies: RS.clone(clip.bodies), joints: RS.clone(clip.joints || []) };
-  if ((clip.dim || dim) !== dim) src = dim === '2d' ? convertTo2D(src) : convertTo3D(src);
+  const sameDim = (clip.dim || dim) === dim;
+  if (!sameDim) src = dim === '2d' ? convertTo2D(src) : convertTo3D(src);
   const map = {}, created = [];
   for (const b of src.bodies) {
     const nb = RS.clone(b);
+    // Toisen ulottuvuuden roottorikiekot jäisivät ilman työntövoimaa: ne jätetään pois (roottorin voi lisätä uudelleen)
+    if (!sameDim && nb.shapes.some((s) => s.rotor) && nb.shapes.some((s) => !s.rotor)) nb.shapes = nb.shapes.filter((s) => !s.rotor);
     nb.id = uniqueId(model, b.id.replace(/\d+$/, '') || 'osa');
     nb.pos = b.pos.map((v, i) => round(v + offset[i]));
     map[b.id] = nb.id;
@@ -484,6 +527,7 @@ export function pasteParts(model, clip, dim, offset) {
     if (!(j.a in map) || !(j.b in map)) continue;
     model.joints.push({ ...RS.clone(j), a: map[j.a], b: map[j.b], pos: j.pos.map((v, i) => round(v + offset[i])) });
   }
+  if (sameDim && Array.isArray(clip.thrusters)) copyThrusters(model, clip.thrusters, map);
   if (!model.root && created.length) model.root = created[0].id;
   return created;
 }
@@ -495,12 +539,14 @@ export function moveBodies(model, ids, d) {
   for (const j of model.joints) if (sel.has(j.b)) j.pos = j.pos.map((v, i) => round(v + d[i]));
 }
 
-// Kääntää osia yhteisen keskipisteen ympäri akselin (0 = x, 1 = y, 2 = z) ympäri asteina
-export function rotateBodies(model, ids, axisIndex, deg) {
-  const sel = new Set(ids);
+// Kääntää osia yhteisen keskipisteen ympäri akselin (0 = x, 1 = y, 2 = z) ympäri asteina.
+// pivotIds: osat, joiden keskipiste on kiertokeskiö (oletus: kaikki käännettävät; esim. valittu osa ilman lapsiaan)
+export function rotateBodies(model, ids, axisIndex, deg, pivotIds = ids) {
+  const sel = new Set(ids), piv = new Set(pivotIds);
   const bodies = model.bodies.filter((b) => sel.has(b.id));
   if (!bodies.length) return;
-  const c = bodies.reduce((a, b) => a.add(new THREE.Vector3(...b.pos)), new THREE.Vector3()).divideScalar(bodies.length);
+  const pivots = model.bodies.filter((b) => piv.has(b.id));
+  const c = (pivots.length ? pivots : bodies).reduce((a, b) => a.add(new THREE.Vector3(...b.pos)), new THREE.Vector3()).divideScalar(pivots.length || bodies.length);
   const ax = new THREE.Vector3(axisIndex === 0 ? 1 : 0, axisIndex === 1 ? 1 : 0, axisIndex === 2 ? 1 : 0);
   const qr = new THREE.Quaternion().setFromAxisAngle(ax, THREE.MathUtils.degToRad(deg));
   const turn = (p) => new THREE.Vector3(...p).sub(c).applyQuaternion(qr).add(c).toArray().map((v) => round(v));
@@ -705,12 +751,18 @@ export function convertTo2D(model) {
     b.pos[2] = 0; b.rot = [0, 0, b.rot[2]];
     b.shapes = b.shapes.map((s) => {
       if (s.type === 'box') return { ...s, pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, s.rot[2]] };
-      if (s.type === 'capsule') return { type: 'box', size: [s.r * 2, s.h + 2 * s.r, 0.3], pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, s.rot[2]], color: s.color };
-      return { type: 'sphere', r: s.r, pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, 0], color: s.color };
+      if (s.type === 'capsule') return { type: 'box', size: [s.r * 2, s.h + 2 * s.r, 0.3], pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, s.rot[2]], color: s.color, deco: s.deco };
+      // Roottorin kiekko pysyy kiekkona (ohut laatikko kuten 2D-roottorissa), ei iso törmäävä ympyrä
+      if (s.rotor) return { type: 'box', size: [s.r * 2, 0.035, 0.3], pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, 0], color: s.color, round: 0, rotor: s.rotor };
+      return { type: 'sphere', r: s.r, pos: [s.pos[0], s.pos[1], 0], rot: [0, 0, 0], color: s.color, deco: s.deco, plain: s.plain };
     });
   }
   for (const j of m.joints) { j.pos[2] = 0; j.axis = [0, 0, 1]; j.torque = j.torque ?? 10; }
-  for (const t of m.thrusters || []) { t.pos = [t.pos[0], t.pos[1], 0]; const l = Math.hypot(t.dir[0], t.dir[1]) || 1; t.dir = [t.dir[0] / l, t.dir[1] / l || 1, 0]; }
+  for (const t of m.thrusters || []) {
+    t.pos = [t.pos[0], t.pos[1], 0];
+    const l = Math.hypot(t.dir[0], t.dir[1]);
+    t.dir = l > 1e-6 ? [t.dir[0] / l, t.dir[1] / l, 0] : [0, 1, 0]; // sivulle osoittava (z) työntö → ylös
+  }
   m.sensors = { lidar: m.sensors.lidar ?? 5 };
   if (m.target) m.target = { x: m.target.x, y: m.target.y };
   return m;
@@ -728,9 +780,12 @@ export function convertTo3D(model) {
 export function validate(model, dim) {
   const out = [];
   if (model.bodies.length === 0) {
-    out.push({ level: 'error', text: tr('Robotissa ei ole yhtään osaa. Lisää osa vasemmalta.', 'The robot has no parts. Add a part on the left.') });
+    out.push({ level: 'error', text: tr('Robotissa ei ole yhtään osaa. Aloita lisäämällä esimerkiksi laatikko rungoksi.', 'The robot has no parts. Start by adding for example a box as the body.') });
     return out;
   }
+  // Osa ilman muotoja on näkymätön eikä sitä voi klikata (esim. viimeinen muoto ja roottori poistettu)
+  for (const b of model.bodies) if (!b.shapes?.length) out.push({ level: 'error', id: b.id, text: tr(`Osalla "${b.id}" ei ole yhtään muotoa. Poista osa tai lisää sille muoto.`, `Part "${b.id}" has no shapes. Delete the part or add a shape to it.`) });
+  if (out.length) return out;
   try {
     if (dim === '2d') RS.normalizeModel(to2D(model)); else normalizeModel3D(to3D(model));
   } catch (e) {
@@ -749,15 +804,25 @@ export function validate(model, dim) {
   for (const b of model.bodies) {
     if (!seen.has(b.id) && !b.static) out.push({ level: 'warn', id: b.id, text: tr(`Osa "${b.id}" ei ole kiinni päärungossa nivelellä, joten se putoaa erilleen.`, `Part "${b.id}" is not connected to the main body by a joint, so it will fall off.`) });
   }
+  const parents = {}, pairs = new Set();
   for (const j of model.joints) {
     if (j.a === j.b) out.push({ level: 'error', text: tr(`Nivel yhdistää osan "${j.a}" itseensä.`, `A joint connects part "${j.a}" to itself.`) });
     const A = model.bodies.find((b) => b.id === j.a), B = model.bodies.find((b) => b.id === j.b);
     if (A && B) {
+      // Nivelen pitää olla kummankin osan lähellä (yhden osan sisällä oleva nivel kaukana toisesta on näkymätön vipu)
       const p = new THREE.Vector3(...j.pos);
-      const d = Math.min(bodyBox(A).distanceToPoint(p), bodyBox(B).distanceToPoint(p));
+      const d = Math.max(bodyBox(A).distanceToPoint(p), bodyBox(B).distanceToPoint(p));
       if (d > 0.3) out.push({ level: 'warn', text: tr(`Nivel ${j.a}–${j.b} on kaukana osistaan (${d.toFixed(2)} m). Siirrä se osien väliin.`, `Joint ${j.a}–${j.b} is far from its parts (${d.toFixed(2)} m). Move it between the parts.`) });
     }
-    if (j.lower != null && j.upper != null && j.lower >= j.upper) out.push({ level: 'error', text: tr(`Nivelen ${j.a}–${j.b} alaraja on suurempi kuin yläraja.`, `Joint ${j.a}–${j.b} has its lower limit above its upper limit.`) });
+    if (j.lower != null && j.upper != null && j.lower > j.upper) out.push({ level: 'error', text: tr(`Nivelen ${j.a}–${j.b} alaraja on suurempi kuin yläraja.`, `Joint ${j.a}–${j.b} has its lower limit above its upper limit.`) });
+    else if (j.lower != null && j.upper != null && j.lower === j.upper) out.push({ level: 'error', text: tr(`Nivelen ${j.a}–${j.b} ala- ja yläraja ovat samat, joten nivel ei voi liikkua.`, `Joint ${j.a}–${j.b} has equal lower and upper limits, so it cannot move.`) });
+    const pair = [j.a, j.b].sort().join('|');
+    if (pairs.has(pair)) out.push({ level: 'warn', text: tr(`Osien ${j.a} ja ${j.b} välillä on kaksi niveltä. Poista toinen.`, `Parts ${j.a} and ${j.b} have two joints between them. Delete one.`) });
+    pairs.add(pair);
+    (parents[j.b] ||= []).push(j.a);
+  }
+  for (const [id, ps] of Object.entries(parents)) {
+    if (ps.length > 1) out.push({ level: 'warn', id, text: tr(`Osa "${id}" on kiinni kahdella nivelellä (${ps.join(', ')}). Silmukka jäykistää robotin tai saa sen nykimään; tarkista nivelet.`, `Part "${id}" is attached by two joints (${ps.join(', ')}). The loop stiffens the robot or makes it jitter; check the joints.`) });
   }
   const motors = model.joints.filter((j) => j.motor !== false).length;
   if (motors === 0 && !liveThrusters(model).length) out.push({ level: 'warn', text: tr('Robotissa ei ole moottoreita, joten se ei voi liikkua itse. Yhdistä osia nivelillä.', 'The robot has no motors, so it cannot move by itself. Connect parts with joints.') });

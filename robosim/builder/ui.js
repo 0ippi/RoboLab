@@ -12,7 +12,10 @@ export { M, MODELS3D };
 // Kopio viedään myös järjestelmän leikepöydälle tekstinä, joten sen voi liittää toiseen välilehteen.
 let clipboard = null, pasteCount = 0;
 const partsN = (n) => (n === 1 ? tr('1 osa', '1 part') : tr(`${n} osaa`, `${n} parts`));
-const isTyping = (t) => /^(input|textarea|select)$/i.test(t?.tagName || '') || t?.isContentEditable;
+// Kirjoituskenttä: pikanäppäimet eivät toimi. Valintaruutu, liukusäädin ja värivalitsin eivät ole kirjoituskenttiä
+// (liukusäätimen nuolinäppäimet käsitellään erikseen onKeyssä).
+const isTyping = (t) => (/^(textarea|select)$/i.test(t?.tagName || '') || t?.isContentEditable
+  || (t?.tagName === 'INPUT' && !/^(checkbox|radio|range|color|button|submit|reset|file)$/i.test(t.type)));
 
 export function mount(root, dim, tool) {
   const key = 'build' + dim, other = dim === '2d' ? '3d' : '2d';
@@ -59,7 +62,7 @@ export function mount(root, dim, tool) {
           <div class="rsb-parts" id="rb-parts"></div>
           <h3 class="card-title" title="${tr('Valmiit kokonaisuudet, jotka kiinnittyvät valittuun osaan nivelillä. Valitse ensin osa (esim. runko).', 'Ready-made pieces that attach to the selected part with joints. Select a part first (e.g. the body).')}">${tr('Valmisosat', 'Ready-made')}</h3>
           <div class="rsb-parts">
-            <button class="btn" id="rb-addWheel" title="${tr('Lisää moottoroidun pyörän valitun osan sivulle. Peilaa se toiselle puolelle.', 'Adds a motorised wheel to the side of the selected part. Mirror it to the other side.')}">⚙ ${tr('Pyörä', 'Wheel')}</button>
+            <button class="btn" id="rb-addWheel" title="${dim === '3d' ? tr('Lisää moottoroidun pyörän valitun osan sivulle. Peilaa se toiselle puolelle.', 'Adds a motorised wheel to the side of the selected part. Mirror it to the other side.') : tr('Lisää moottoroidun pyörän valitun osan etuosaan. Peilaa se taakse, tai käytä Pyöräparia.', 'Adds a motorised wheel to the front of the selected part. Mirror it to the back, or use Wheel pair.')}">⚙ ${tr('Pyörä', 'Wheel')}</button>
             <button class="btn" id="rb-addRotor" title="${tr('Lisää roottorin (potkurin) valitun osan päälle. Roottorien voimat tasataan niin, että puolella teholla robotti leijuu. Neuroverkko säätää jokaisen roottorin työntövoimaa.', 'Adds a rotor (propeller) on top of the selected part. Rotor forces are balanced so the robot hovers at half power. The neural network controls each rotor’s thrust.')}">🌀 ${tr('Roottori', 'Rotor')}</button>
             <button class="btn" id="rb-addLeg" title="${tr('Lisää jalan (reisi + sääri, lonkka- ja polvinivel) valitun osan alle.', 'Adds a leg (thigh + shin, hip and knee joints) under the selected part.')}">🦵 ${tr('Jalka', 'Leg')}</button>
             <button class="btn" id="rb-addWheelPair" title="${dim === '3d' ? tr('Lisää moottoroidut pyörät valitun osan kummallekin puolelle. Sama käsky pyörittää molempia eteenpäin.', 'Adds motorised wheels to both sides of the selected part. The same command drives both forward.') : tr('Lisää moottoroidut pyörät valitun osan etu- ja takaosaan.', 'Adds motorised wheels to the front and back of the selected part.')}">⚙⚙ ${tr('Pyöräpari', 'Wheel pair')}</button>
@@ -98,7 +101,7 @@ export function mount(root, dim, tool) {
             <button class="btn" id="rb-modeMove" title="${tr('Siirrä (W)', 'Move (W)')}">✥</button>
             <button class="btn" id="rb-modeRotate" title="${tr('Käännä (E)', 'Rotate (E)')}">⟳</button>
             <button class="btn" id="rb-modeScale" title="${tr('Skaalaa (S): vedä akselista venyttääksesi osaa yhteen suuntaan tai keskeltä koko osaa. Usea osa skaalataan yhdessä samassa suhteessa.', 'Scale (S): drag an axis to stretch a part in one direction or the centre to scale it all. Several parts are scaled together in proportion.')}">⤢</button>
-            <button class="btn" id="rb-boxSel" title="${tr('Valintalaatikko (B): vedä tyhjästä kohdasta laatikko osien ympärille. 2D:ssä veto valitsee aina; 3D:ssä myös Shift- tai Ctrl+veto.', 'Box select (B): drag a box around parts from empty space. In 2D dragging always selects; in 3D also Shift or Ctrl + drag.')}" aria-pressed="false">⬚</button>
+            <button class="btn" id="rb-boxSel" ${dim === '2d' ? 'hidden' : ''} title="${tr('Valintalaatikko (B): vedä tyhjästä kohdasta laatikko osien ympärille. 3D:ssä myös Shift- tai Ctrl+veto.', 'Box select (B): drag a box around parts from empty space. In 3D also Shift or Ctrl + drag.')}" aria-pressed="false">⬚</button>
             <label class="mini-toggle" title="${tr('Kiinnittää siirrot 5 cm:n ja käännöt 15°:n välein.', 'Snaps moves to 5 cm and rotations to 15°.')}"><input type="checkbox" id="rb-snap" checked> ${tr('Kiinnitys', 'Snap')}</label>
             <button class="btn" id="rb-focusBtn" title="${tr('Kohdista kamera robottiin (F)', 'Focus the camera on the robot (F)')}">⌖</button>
             <label class="mini-toggle" title="${tr('Näytä tai piilota nivelten merkit (H).', 'Show or hide the joint markers (H).')}"><input type="checkbox" id="rb-showJoints" checked> ${tr('Nivelet', 'Joints')}</label>
@@ -146,8 +149,10 @@ export function mount(root, dim, tool) {
   }
   const snap = () => JSON.stringify(S.model);
 
-  // Kaikki mallin muutokset kulkevat tätä kautta
+  // Kaikki mallin muutokset kulkevat tätä kautta. Fysiikkatesti pysäytetään ensin: testin aikana muokattu malli
+  // on piilossa, joten muutos tapahtuisi näkymättömästi.
   function change(fn, keepSelection) {
+    if (S.test) { stopTest(true); toast(tr('Fysiikkatesti pysäytettiin, jotta muutos näkyy.', 'The physics test was stopped so you can see the change.')); }
     const before = snap();
     fn();
     if (snap() === before) { refresh(true); return; }
@@ -177,6 +182,8 @@ export function mount(root, dim, tool) {
     refresh(true);
   }
   const selectedBody = () => (S.sel.bodies.length === 1 ? S.model.bodies.find((b) => b.id === S.sel.bodies[0]) : null);
+  // Valmisosan kiinnityskohta: valittu osa, tai jos mitään ei ole valittu, päärunko (napit eivät ole turhaan harmaina)
+  const attachTarget = () => selectedBody() || (!S.sel.bodies.length && S.sel.joint == null ? S.model.bodies.find((b) => b.id === S.model.root) || null : null);
 
   // ---------- Päivitys ----------
   function refresh(selectionOnly) {
@@ -199,7 +206,8 @@ export function mount(root, dim, tool) {
 
   function updateButtons() {
     const n = S.sel.bodies.length, one = n === 1;
-    for (const id of ['addWheel', 'addLeg', 'addRotor', 'addWheelPair', 'addCaster', 'addArm', 'addGripper', 'addTail', 'addLidar', 'addCamera', 'addBumper', 'addSpringLeg']) q(id).disabled = !one;
+    const target = attachTarget();
+    for (const id of ['addWheel', 'addLeg', 'addRotor', 'addWheelPair', 'addCaster', 'addArm', 'addGripper', 'addTail', 'addLidar', 'addCamera', 'addBumper', 'addSpringLeg']) q(id).disabled = !target;
     q('jointBtn').disabled = n !== 2;
     q('mergeBtn').disabled = n !== 2;
     q('mirrorBtn').disabled = n === 0;
@@ -228,9 +236,10 @@ export function mount(root, dim, tool) {
     const n = S.sel.bodies.length;
     let h = text;
     if (!h) {
-      if (S.test) h = tr('Fysiikkatesti käynnissä. Liikuta moottoreita liukusäätimillä. Kameraa voi kääntää hiirellä.', 'Physics test running. Move the motors with the sliders. You can rotate the camera with the mouse.');
-      else if (!S.model.bodies.length) h = tr('Aloita lisäämällä osa vasemmalta (esim. laatikko rungoksi) tai valitse valmis robotti pohjaksi yläpuolelta.', 'Start by adding a part on the left (e.g. a box as the body) or pick a ready robot as a template above.');
-      else if (S.sel.joint != null) h = tr('Nivel valittu. Vedä se kohtaan, jossa osat kääntyvät toistensa suhteen. Säädä tyyppiä ja rajoja oikealla.', 'Joint selected. Drag it to where the parts turn relative to each other. Adjust its type and limits on the right.');
+      if (S.test) h = S.dim === '2d' ? tr('Fysiikkatesti käynnissä. Liikuta moottoreita liukusäätimillä. Näkymää voi siirtää vetämällä ja zoomata rullalla.', 'Physics test running. Move the motors with the sliders. Drag to move the view and scroll to zoom.')
+        : tr('Fysiikkatesti käynnissä. Liikuta moottoreita liukusäätimillä. Kameraa voi kääntää hiirellä.', 'Physics test running. Move the motors with the sliders. You can rotate the camera with the mouse.');
+      else if (!S.model.bodies.length) h = tr('Aloita lisäämällä osa Lisää osa -listasta (esim. laatikko rungoksi) tai valitse valmis robotti pohjaksi Uusi / pohja -valikosta.', 'Start by adding a part from the Add part list (e.g. a box as the body) or pick a ready robot as a template from the New / template menu.');
+      else if (S.sel.joint != null) h = tr('Nivel valittu. Vedä se kohtaan, jossa osat kääntyvät toistensa suhteen. Säädä tyyppiä ja rajoja Ominaisuudet-välilehdellä.', 'Joint selected. Drag it to where the parts turn relative to each other. Adjust its type and limits on the Properties tab.');
       else if (n === 1) h = tr('Siirrä (W), käännä (E) tai skaalaa (S) kahvasta. Osaan kiinnitetyt osat tulevat mukana (Alt + veto: vain tämä osa). Ctrl+klikkaa muita osia valitaksesi useita.', 'Move (W), rotate (E) or scale (S) with the handle. Parts attached to it come along (Alt + drag: this part only). Ctrl+click other parts to select several.');
       else if (n === 2) h = tr(`Paina "Yhdistä nivelellä": "${S.sel.bodies[0]}" on osa, johon kiinnitetään, ja "${S.sel.bodies[1]}" kääntyy sen suhteen. Kahvasta voit myös siirtää molempia.`, `Press "Join with a joint": "${S.sel.bodies[0]}" is the part to attach to and "${S.sel.bodies[1]}" turns relative to it. You can also move both with the handle.`);
       else if (n > 2) h = tr(`${n} osaa valittu. Siirrä, käännä tai skaalaa ne yhdessä kahvasta, tai peilaa, monista tai poista.`, `${n} parts selected. Move, rotate or scale them together with the handle, or mirror, duplicate or delete them.`);
@@ -289,8 +298,12 @@ export function mount(root, dim, tool) {
     if (opts.placeholder) i.placeholder = opts.placeholder;
     i.onchange = () => {
       const v = i.value === '' ? null : parseFloat(i.value);
-      if (v != null && !isFinite(v)) return;
-      change(() => onSet(v), true);
+      if (v != null && !isFinite(v)) { i.value = value ?? ''; return; }
+      // Sallitun alueen ulkopuolinen arvo rajataan: esim. nopeus 0 tai negatiivinen vaimennus rikkoisi fysiikan
+      const lo = opts.min != null ? +opts.min : -Infinity, hi = opts.max != null ? +opts.max : Infinity;
+      const cv = v == null ? null : Math.min(hi, Math.max(lo, v));
+      if (cv !== v) { i.value = cv; toast(tr(`Arvo rajattiin sallitulle alueelle (${cv}).`, `The value was limited to the allowed range (${cv}).`)); }
+      change(() => onSet(cv), true);
     };
     return i;
   }
@@ -302,7 +315,8 @@ export function mount(root, dim, tool) {
     names.forEach((n, k) => {
       const cell = document.createElement('div');
       const idx = opts.indices ? opts.indices[k] : k;
-      const i = numInput(values[idx], (v) => { const arr = values.slice(); arr[idx] = v ?? 0; onSet(arr); }, opts);
+      // Tyhjennetty kenttä ei muuta arvoa nollaksi (osa hyppäisi origoon): vanha arvo jää voimaan
+      const i = numInput(values[idx], (v) => { if (v == null) return; const arr = values.slice(); arr[idx] = v; onSet(arr); }, opts);
       const s = document.createElement('span');
       s.textContent = n;
       cell.append(i, s);
@@ -352,7 +366,10 @@ export function mount(root, dim, tool) {
       el.append(title(tr(`${S.sel.bodies.length} osaa valittu`, `${S.sel.bodies.length} parts selected`)));
       const p = document.createElement('p');
       p.className = 'note';
-      p.textContent = tr('Kahdella valitulla osalla: Yhdistä nivelellä tai Liitä yhteen. Useammalla: Peilaa, Monista tai Poista.', 'With two parts selected: Join with a joint or Merge. With more: Mirror, Duplicate or Delete.');
+      // Liitä yhteen näkyy vain Edistynyt-tasolla
+      p.textContent = S.level === 'pro'
+        ? tr('Kahdella valitulla osalla: Yhdistä nivelellä tai Liitä yhteen. Useammalla: Peilaa, Monista tai Poista.', 'With two parts selected: Join with a joint or Merge. With more: Mirror, Duplicate or Delete.')
+        : tr('Kahdella valitulla osalla: Yhdistä nivelellä. Useammalla: Peilaa, Monista tai Poista.', 'With two parts selected: Join with a joint. With more: Mirror, Duplicate or Delete.');
       el.append(p);
     } else renderRobotProps(el);
   }
@@ -407,9 +424,9 @@ export function mount(root, dim, tool) {
     if (b.shapes.length === 1) shapeFields(el, b, b.shapes[0], true);
     el.append(prop(tr('Sijainti (m)', 'Position (m)'), tr('Osan keskipiste. y = korkeus maasta. Robotti nostetaan simulaatiossa automaattisesti maan pinnalle.', 'The part’s centre. y = height above ground. The robot is lifted onto the ground automatically in the simulation.'),
       vecInput(b.pos, (v) => {
-        const d = v.map((x, i) => x - b.pos[i]);
-        for (const j of S.model.joints) if (j.b === b.id) j.pos = j.pos.map((x, i) => M.round(x + d[i]));
-        b.pos = is2d ? [v[0], v[1], 0] : v;
+        // Kiinnitetyt osat (lapset) siirtyvät mukana kuten vedettäessä
+        const d = (is2d ? [v[0], v[1], 0] : v).map((x, i) => x - b.pos[i]);
+        M.moveBodies(S.model, [b.id, ...M.descendants(S.model, [b.id])], d);
       }, is2d ? XY() : {})));
     el.append(prop(tr('Kierto (°)', 'Rotation (°)'), is2d ? tr('Osan kulma asteina.', 'The part’s angle in degrees.') : tr('Kierto x-, y- ja z-akselin ympäri asteina.', 'Rotation about the x, y and z axes in degrees.'), is2d
       ? numInput(b.rot[2], (v) => { b.rot = [0, 0, v || 0]; }, { step: 5 })
@@ -529,9 +546,18 @@ export function mount(root, dim, tool) {
         selectInput([...axes, ...(known ? [] : [['custom', tr('Oma suunta', 'Custom')]])], known ? k : 'custom', (v) => { if (v !== 'custom') j.axis = v.split(',').map(Number); })));
       el.append(prop(tr('Akseli (vektori)', 'Axis (vector)'), tr('Kiertoakselin suunta vapaasti (normalisoidaan).', 'Any rotation axis direction (normalised).'), vecInput(j.axis, (v) => { j.axis = v; }, { step: 0.1 }), true));
     }
-    if (type === 'servo') {
+    // Liikealue: servolla aina; vapaalla ja jousinivelellä rajat ovat valinnaisia (rajat toimivat fysiikassa niilläkin)
+    const limited = j.lower != null && j.upper != null;
+    if (type === 'servo' || limited) {
       el.append(prop(tr('Liikealue (°)', 'Range of motion (°)'), tr('Kuinka paljon nivel voi kääntyä kumpaankin suuntaan. Esim. polvi −45…45.', 'How far the joint can turn each way. E.g. a knee −45…45.'),
         vecInput([j.lower, j.upper], (v) => { j.lower = v[0]; j.upper = v[1]; }, { names: ['min', 'max'], step: 5 })));
+    }
+    if (type === 'free' || type === 'spring') {
+      const b = document.createElement('button');
+      b.className = 'link-btn';
+      b.textContent = limited ? tr('Poista liikealue (kääntyy vapaasti ympäri)', 'Remove the range (turns all the way round)') : tr('Lisää liikealue', 'Add a range of motion');
+      b.onclick = () => change(() => { if (limited) { delete j.lower; delete j.upper; } else { j.lower = -45; j.upper = 45; } }, true);
+      el.append(b);
     }
     if (type === 'spring') {
       el.append(prop(tr('Jousen jäykkyys', 'Spring stiffness'), tr('Kuinka voimakkaasti nivel palaa lepoasentoon. Isompi = jäykempi. Tavallisesti 10–100.', 'How strongly the joint returns to its rest position. Bigger = stiffer. Usually 10–100.'),
@@ -728,13 +754,15 @@ export function mount(root, dim, tool) {
     }, 30);
   }
 
+  // Nuolet, R ja G käsittelevät valitut osat kiinnitettyine osineen (lapset), kuten vetäminenkin
+  const withKids = (ids) => [...ids, ...M.descendants(S.model, ids)];
   function nudge(d) {
     if (S.sel.joint != null) {
       change(() => { const j = S.model.joints[S.sel.joint]; j.pos = j.pos.map((v, i) => M.round(v + d[i])); }, true);
-    } else if (S.sel.bodies.length) change(() => M.moveBodies(S.model, S.sel.bodies, d), true);
+    } else if (S.sel.bodies.length) change(() => M.moveBodies(S.model, withKids(S.sel.bodies), d), true);
   }
-  const rotateSel = (dir) => S.sel.bodies.length && change(() => M.rotateBodies(S.model, S.sel.bodies, S.dim === '2d' ? 2 : 1, 90 * dir), true);
-  const toGround = () => S.model.bodies.length && change(() => M.dropToGround(S.model, S.sel.bodies), true);
+  const rotateSel = (dir) => S.sel.bodies.length && change(() => M.rotateBodies(S.model, withKids(S.sel.bodies), S.dim === '2d' ? 2 : 1, 90 * dir, S.sel.bodies), true);
+  const toGround = () => S.model.bodies.length && change(() => M.dropToGround(S.model, S.sel.bodies.length ? withKids(S.sel.bodies) : []), true);
 
   // ---------- Hiiren oikean napin valikko ----------
   function showCtx(x, y) {
@@ -906,7 +934,7 @@ export function mount(root, dim, tool) {
     }
 
     const withParent = (fn) => () => {
-      const p = selectedBody();
+      const p = attachTarget();
       if (!p) return;
       change(() => { const made = fn(S.model, p, S.dim); S.sel = { bodies: made.map((x) => x.id), joint: null }; }, true);
     };
@@ -920,11 +948,11 @@ export function mount(root, dim, tool) {
     q('addBumper').onclick = withParent(M.addBumper);
     q('addSpringLeg').onclick = withParent(M.addSpringLeg);
     // Anturit lisätään valittuun osaan muotoina, joten valinta säilyy
-    const sensor = (kind) => () => { const p = selectedBody(); if (p) change(() => M.addSensor(S.model, p, kind, S.dim), true); };
+    const sensor = (kind) => () => { const p = attachTarget(); if (p) change(() => M.addSensor(S.model, p, kind, S.dim), true); };
     q('addLidar').onclick = sensor('lidar');
     q('addCamera').onclick = sensor('camera');
     q('addRotor').onclick = () => {
-      const b = selectedBody();
+      const b = attachTarget();
       if (!b) return;
       change(() => { M.addRotor(S.model, b, S.dim); }, true);
       toast(tr('Roottori lisätty. Lisää useampi, jotta robotti pysyy tasapainossa (esim. 4 kulmiin).', 'Rotor added. Add more to keep the robot balanced (e.g. 4 at the corners).'));
@@ -1112,6 +1140,8 @@ export function mount(root, dim, tool) {
     updateButtons();
   }
   function toggleBoxSel() {
+    // 2D:ssä veto tyhjästä kohdasta valitsee aina laatikolla, ja oikea nappi siirtää näkymää (kääntöä ei ole)
+    if (S.dim === '2d') { setHint(tr('2D-näkymässä valintalaatikko on aina käytössä: vedä tyhjästä kohdasta laatikko osien ympärille.', 'In the 2D view box select is always on: drag a box around parts from empty space.')); return; }
     view.boxMode = !view.boxMode;
     q('boxSel').classList.toggle('on', view.boxMode);
     q('boxSel').setAttribute('aria-pressed', view.boxMode);
@@ -1135,6 +1165,9 @@ export function mount(root, dim, tool) {
     if (isTyping(e.target) || document.querySelector('dialog[open]') || e.altKey) return;
     if (!$('#palette').hidden || e.target.closest?.('#ai-panel, #lesson, #rb-ctx')) return;
     const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+    if (e.target?.type === 'range' && (k.startsWith('arrow') || k === 'home' || k === 'end' || k.startsWith('page'))) return; // liukusäädin itse
+    // Fysiikkatestin aikana vain testin näppäimet (muokkaus kohdistuisi piilossa olevaan malliin)
+    if (S.test && !['t', 'escape', 'f', 'h'].includes(k)) return;
     const step = e.shiftKey ? 0.01 : 0.05; // nuolet: 5 cm, Shift: 1 cm
     if (mod && k === 'd') { e.preventDefault(); q('dupBtn').click(); }
     else if (mod && k === 'a') { e.preventDefault(); select('all'); }
@@ -1147,8 +1180,8 @@ export function mount(root, dim, tool) {
     } else if ((k === 'pageup' || k === 'pagedown') && S.dim === '3d' && (S.sel.bodies.length || S.sel.joint != null)) {
       e.preventDefault();
       nudge([0, 0, k === 'pageup' ? -step : step]);
-    } else if (k === 'tab' && S.model.bodies.length && !S.test) {
-      // Tab / Shift+Tab: seuraava / edellinen osa
+    } else if (k === 'tab' && S.model.bodies.length && !S.test && (e.target === document.body || e.target?.tagName === 'CANVAS')) {
+      // Tab / Shift+Tab: seuraava / edellinen osa, kun näppäimistö on näkymässä. Muualla Tab siirtää kohdistusta normaalisti.
       e.preventDefault();
       const ids = S.model.bodies.map((b) => b.id), i = ids.indexOf(S.sel.bodies[0]);
       select('body', ids[(i + (e.shiftKey ? -1 : 1) + ids.length) % ids.length]);
@@ -1197,10 +1230,17 @@ export function mount(root, dim, tool) {
       b.pos = np;
       const e = new THREE.Euler().setFromQuaternion(obj.quaternion);
       b.rot = is2d ? [0, 0, r(THREE.MathUtils.radToDeg(e.z))] : [e.x, e.y, e.z].map((v) => r(THREE.MathUtils.radToDeg(v)));
-      if (drag?.follow.length) {
-        if (d.some((v) => v)) M.moveBodies(S.model, drag.follow, d);
-        const dq = M.quat(b.rot).multiply(prevQ.invert());
-        if (Math.abs(dq.w) < 0.999999) M.rotateBodiesQ(S.model, drag.follow, dq, b.pos, S.dim);
+      if (drag?.follow.length && d.some((v) => v)) M.moveBodies(S.model, drag.follow, d);
+      const dq = M.quat(b.rot).multiply(prevQ.invert());
+      if (Math.abs(dq.w) < 0.999999) {
+        // Osan oma nivel (emoon) pysyy samassa kohdassa osaa: paikka kääntyy keskipisteen ympäri, 3D:ssä myös akseli
+        const c = new THREE.Vector3(...b.pos);
+        for (const j of S.model.joints) {
+          if (j.b !== id) continue;
+          j.pos = new THREE.Vector3(...j.pos).sub(c).applyQuaternion(dq).add(c).toArray().map((v) => r(v));
+          if (!is2d) j.axis = new THREE.Vector3(...j.axis).applyQuaternion(dq).toArray().map((v) => M.round(v, 4));
+        }
+        if (drag?.follow.length) M.rotateBodiesQ(S.model, drag.follow, dq, b.pos, S.dim);
       }
       view.syncBodies(S.model);
     } else if (kind === 'joint') {
@@ -1257,7 +1297,7 @@ export function mount(root, dim, tool) {
   const onBoxSelect = (ids, additive) => {
     S.sel = { bodies: additive ? [...new Set([...S.sel.bodies, ...ids])] : ids, joint: null };
     refresh(true);
-    if (ids.length) setHint(tr(`${S.sel.bodies.length} osaa valittu. Vedä kahvasta siirtääksesi, kääntääksesi tai skaalataksesi ne yhdessä.`, `${S.sel.bodies.length} parts selected. Drag the handle to move, rotate or scale them together.`));
+    if (S.sel.bodies.length > 1) setHint(tr(`${S.sel.bodies.length} osaa valittu. Vedä kahvasta siirtääksesi, kääntääksesi tai skaalataksesi ne yhdessä.`, `${S.sel.bodies.length} parts selected. Drag the handle to move, rotate or scale them together.`));
   };
   view = new Viewport(q('view'), { onPick: (kind, id, additive) => select(kind, id, additive), onBoxSelect, onTransformStart, onTransform, onTransformEnd });
   // Automaattitestit (tests-app.html, ?memstore) pääsevät käsiksi rakentajan tilaan
@@ -1267,18 +1307,37 @@ export function mount(root, dim, tool) {
   view.resize();
   view.setSnap(true, 0.05, 15);
   view.setDim(S.dim);
-  bindEvents();
-
-  // Simulaation "Avaa rakentajassa" jättää robotin tähän kenttään
-  if (saved.importRaw) {
-    const raw = saved.importRaw;
-    saveToolState(key, { ...saved, importRaw: undefined }, { undo: false });
-    try { loadRaw(raw, raw.builtin3d ? '3d' : dim); toast(tr('Robotti tuotiin simulaatiosta rakentajaan.', 'The robot was brought from the simulation into the builder.')); }
-    catch (e) { setHint(tr('Robotin tuonti epäonnistui: ', 'Importing the robot failed: ') + e.message); refresh(); }
-  } else {
-    refresh();
-    if (S.model.bodies.length) focusRobot();
+  function cleanup() {
+    dead = true;
+    cancelAnimationFrame(raf);
+    stopTest(true);
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('pointerdown', onDocDown);
+    document.removeEventListener('copy', onCopy);
+    document.removeEventListener('cut', onCopy);
+    document.removeEventListener('paste', onPaste);
+    ro.disconnect();
+    view?.dispose();
+    view = null;
   }
+  // Rikkinäinen tallennettu malli voi kaatua ensimmäisessä piirrossa: kuuntelijat ja 3D-näkymä vapautetaan,
+  // ja sovellus näyttää työkalun palautusnäkymän
+  try {
+    bindEvents();
+    // Simulaation "Avaa rakentajassa" jättää robotin tähän kenttään
+    if (saved.importRaw) {
+      const raw = saved.importRaw;
+      saveToolState(key, { ...saved, importRaw: undefined }, { undo: false });
+      try { loadRaw(raw, raw.builtin3d ? '3d' : dim); toast(tr('Robotti tuotiin simulaatiosta rakentajaan.', 'The robot was brought from the simulation into the builder.')); }
+      catch (e) { setHint(tr('Robotin tuonti epäonnistui: ', 'Importing the robot failed: ') + e.message); refresh(); }
+    } else {
+      refresh();
+      if (S.model.bodies.length) focusRobot();
+      // Toisesta rakentajasta tehty versio (Tee 2D/3D-versio) tallentuu ilman simulaation muotoa: lasketaan se nyt,
+      // jotta "Kouluta tämä robotti" toimii heti ilman muokkausta
+      if (saved.model && !saved.export && S.model.bodies.length) persist(false);
+    }
+  } catch (err) { cleanup(); throw err; }
   const frame = () => { if (dead) return; view.render(); raf = requestAnimationFrame(frame); };
   frame();
   if (dim === '3d') initPhysics();
@@ -1293,19 +1352,5 @@ export function mount(root, dim, tool) {
     ]);
   }, 800);
 
-  return {
-    unmount() {
-      dead = true;
-      cancelAnimationFrame(raf);
-      stopTest(true);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('pointerdown', onDocDown);
-      document.removeEventListener('copy', onCopy);
-      document.removeEventListener('cut', onCopy);
-      document.removeEventListener('paste', onPaste);
-      ro.disconnect();
-      view.dispose();
-      view = null;
-    }
-  };
+  return { unmount: cleanup };
 }
