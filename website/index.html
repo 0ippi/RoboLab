@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RoboLab — robotiikkaa rakentamalla</title>
-<meta name="description" content="RoboLab on ilmainen robotiikan oppimisympäristö: robottirakentajat, simulaatiot, neuroverkkokoulutus, konenäkö, kurssit ja tekoälyavustaja Volt.">
+<meta name="description" content="RoboLab on robotiikan oppimisympäristö selaimessa: robottirakentajat, simulaatiot, neuroverkkokoulutus, konenäkö, 11 kurssia ja opettajan luokkahuone. Aloita ilmaiseksi ilman tiliä.">
+<link rel="canonical" href="https://0ippi.github.io/RoboLab/website/">
+<!-- Esikatselu, kun linkki jaetaan (Teams, WhatsApp, some) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="RoboLab">
+<meta property="og:title" content="RoboLab — opi robotiikkaa rakentamalla">
+<meta property="og:description" content="Rakenna robotti, testaa se simulaatiossa ja kouluta sille neuroverkko. 11 ohjattua kurssia ja opettajan luokkahuone. Aloita ilmaiseksi selaimessa.">
+<meta property="og:url" content="https://0ippi.github.io/RoboLab/website/">
+<meta property="og:image" content="https://0ippi.github.io/RoboLab/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
 <link rel="icon" type="image/png" href="../icons/favicon-32.png">
 <link rel="stylesheet" href="assets/robots.css">
 <style>
@@ -93,8 +104,21 @@
   details summary { cursor: pointer; font-weight: 600; }
   details p { color: var(--text-2); margin: 10px 0 0; }
 
+  .course .free, .exp { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 99px; font-size: .72rem; font-weight: 600; vertical-align: middle; }
+  .course .free { color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent); }
+  .exp { color: #e0a600; border: 1px solid color-mix(in srgb, #e0a600 55%, transparent); }
+
+  /* Hinnat: tiivis kortti jokaiselle tasolle (hinnat samat kuin sovelluksen plans.js, testi tarkistaa) */
+  .prices { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 28px; }
+  .prices .card { display: flex; flex-direction: column; gap: 6px; }
+  .prices .who { color: var(--text-3); font-size: .85rem; }
+  .prices .p { font-size: 1.7rem; font-weight: 700; }
+  .prices .p small { font-size: .85rem; font-weight: 400; color: var(--text-2); }
+  .prices ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); font-size: .92rem; }
+
   footer { padding: 36px 0; color: var(--text-3); font-size: .88rem; border-top: 1px solid var(--border); }
   footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 16px; }
   @media (prefers-reduced-motion: reduce) { .robot, .robot * { animation: none !important; } html { scroll-behavior: auto; } }
 </style>
 </head>
@@ -106,8 +130,9 @@
     <nav>
       <a href="#tools"><span data-fi>Työkalut</span><span data-en>Tools</span></a>
       <a href="#courses"><span data-fi>Kurssit</span><span data-en>Courses</span></a>
+      <a href="#teachers"><span data-fi>Opettajille</span><span data-en>For teachers</span></a>
       <a href="#volt">Volt</a>
-      <a href="#hardware"><span data-fi>Oikea robotti</span><span data-en>Real robots</span></a>
+      <a href="#pricing"><span data-fi>Hinnat</span><span data-en>Pricing</span></a>
       <a href="#start"><span data-fi>Aloita</span><span data-en>Get started</span></a>
     </nav>
     <button class="lang" id="lang" aria-label="Language / kieli"></button>
@@ -119,13 +144,13 @@
     <div class="wrap">
       <div>
         <h1><span data-fi>Opi robotiikkaa <em>rakentamalla</em>, simuloimalla ja kouluttamalla.</span><span data-en>Learn robotics by <em>building</em>, simulating and training.</span></h1>
-        <p class="lead"><span data-fi>RoboLab on ilmainen robotiikan työpaja: rakenna robotti, testaa se fysiikkasimulaatiossa, opeta sille kävely neuroverkolla ja vie aivot oikealle ESP32:lle. Ohjatut kurssit ja tekoälyavustaja Volt auttavat matkan varrella.</span>
-          <span data-en>RoboLab is a free robotics workshop: build a robot, test it in a physics simulation, teach it to walk with a neural network and put the brain on a real ESP32. Guided courses and the AI assistant Volt help you along the way.</span></p>
+        <p class="lead"><span data-fi>RoboLab on robotiikan työpaja selaimessa: rakenna robotti, testaa se fysiikkasimulaatiossa ja opeta sille kävely neuroverkolla. Ohjatut kurssit ja tekoälyavustaja Volt auttavat matkan varrella, ja opettaja näkee luokan etenemisen.</span>
+          <span data-en>RoboLab is a robotics workshop in your browser: build a robot, test it in a physics simulation and teach it to walk with a neural network. Guided courses and the AI assistant Volt help you along the way, and teachers see the class's progress.</span></p>
         <div class="cta">
           <a class="btn primary" href="../index.html"><span data-fi>Avaa RoboLab</span><span data-en>Open RoboLab</span> →</a>
           <a class="btn" href="#start"><span data-fi>Asenna koneelle</span><span data-en>Install on your computer</span></a>
         </div>
-        <p class="small"><span data-fi>Toimii selaimessa ja ilman nettiä · Ei mainoksia · Suomeksi ja englanniksi</span><span data-en>Runs in the browser and offline · No ads · In Finnish and English</span></p>
+        <p class="small"><span data-fi>Aloita ilmaiseksi ilman tiliä · Toimii selaimessa ja ilman nettiä · Ei mainoksia · Suomeksi ja englanniksi</span><span data-en>Start free without an account · Runs in the browser and offline · No ads · In Finnish and English</span></p>
       </div>
       <div class="stage" aria-hidden="true">
         <div class="main" data-bot="volt" data-size="260"></div>
@@ -183,24 +208,40 @@
   <section id="courses" class="alt">
     <div class="wrap">
       <h2><span data-fi>11 ohjattua kurssia</span><span data-en>11 guided courses</span></h2>
-      <p class="lead"><span data-fi>Lyhyet vaiheet oikeissa työkaluissa: tehtävät tarkistuvat automaattisesti, vihjeitä saa tarvittaessa ja jokainen vaihe päättyy pikakysymykseen.</span><span data-en>Short steps in the real tools: tasks check themselves, hints are there when you need them and every step ends with a quick question.</span></p>
+      <p class="lead"><span data-fi>Lyhyet vaiheet oikeissa työkaluissa: tehtävät tarkistuvat automaattisesti, vihjeitä saa tarvittaessa ja jokainen vaihe päättyy pikakysymykseen. Kolme kurssia on ilmaisia.</span><span data-en>Short steps in the real tools: tasks check themselves, hints are there when you need them and every step ends with a quick question. Three courses are free.</span></p>
       <div class="courses">
-        <div class="course"><div><b data-fi>Aloita tästä: miten robotti toimii</b><b data-en>Start here: how a robot works</b><small data-fi>Rakenna, laske nopeus, aja maaliin</small><small data-en>Build it, work out its speed, drive to a goal</small></div></div>
-        <div class="course"><div><b data-fi>Navigointi ja kartat</b><b data-en>Navigation and maps</b><small data-fi>Reittihaku, odometria ja SLAM</small><small data-en>Path finding, odometry and SLAM</small></div></div>
-        <div class="course"><div><b data-fi>Säätötekniikka: PID-säädin</b><b data-en>Control basics: the PID controller</b><small data-fi>P, I ja D kokeilemalla</small><small data-en>P, I and D by experimenting</small></div></div>
-        <div class="course"><div><b data-fi>Anturit ja elektroniikka</b><b data-en>Sensors and electronics</b><small data-fi>Sarjaportti, etäisyysanturit, kohina, USB</small><small data-en>Serial port, distance sensors, noise, USB</small></div></div>
-        <div class="course"><div><b data-fi>Virta ja akut</b><b data-en>Power and batteries</b><small data-fi>Käyttöaika, virrat ja jännitesäätimet</small><small data-en>Runtime, currents and regulators</small></div></div>
-        <div class="course"><div><b data-fi>Konenäkö: robotti näkee</b><b data-en>Computer vision: a robot that sees</b><small data-fi>Pikselit, kynnystys, värit ja reunat</small><small data-en>Pixels, thresholds, colours and edges</small></div></div>
-        <div class="course"><div><b data-fi>Koordinaatistot ja rotaatiot</b><b data-en>Frames and rotations</b><small data-fi>Euler, kardaanilukko, kvaterniot</small><small data-en>Euler, gimbal lock, quaternions</small></div></div>
-        <div class="course"><div><b data-fi>ROS-perusteet</b><b data-en>ROS basics</b><small data-fi>Topicit, TF, URDF ja kartat</small><small data-en>Topics, TF, URDF and maps</small></div></div>
-        <div class="course"><div><b data-fi>Ensimmäinen robottikäsi</b><b data-en>Your first robot arm</b><small data-fi>Kinematiikka, liike ja moottorit</small><small data-en>Kinematics, motion and motors</small></div></div>
-        <div class="course"><div><b data-fi>Robotin tekoäly</b><b data-en>Robot AI</b><small data-fi>Kouluta neuroverkko ja vie se robotille</small><small data-en>Train a neural network and put it on a robot</small></div></div>
-        <div class="course"><div><b data-fi>Palkkiot ja tavoitteet</b><b data-en>Rewards and goals</b><small data-fi>Oma tavoite, reittipisteet, kisat ja haasteet</small><small data-en>Custom goals, waypoints, races and challenges</small></div></div>
+        <div class="course" data-course="start"><div><b><span data-fi>Aloita tästä: miten robotti toimii</span><span data-en>Start here: how a robot works</span><span class="free" data-fi>Ilmainen</span><span class="free" data-en>Free</span></b><small data-fi>Rakenna, laske nopeus, aja maaliin</small><small data-en>Build it, work out its speed, drive to a goal</small></div></div>
+        <div class="course" data-course="nav"><div><b data-fi>Navigointi ja kartat</b><b data-en>Navigation and maps</b><small data-fi>Reittihaku, odometria ja SLAM</small><small data-en>Path finding, odometry and SLAM</small></div></div>
+        <div class="course" data-course="pid"><div><b data-fi>Säätötekniikka: PID-säädin</b><b data-en>Control basics: the PID controller</b><small data-fi>P, I ja D kokeilemalla</small><small data-en>P, I and D by experimenting</small></div></div>
+        <div class="course" data-course="sensors"><div><b><span data-fi>Anturit ja elektroniikka</span><span data-en>Sensors and electronics</span><span class="free" data-fi>Ilmainen</span><span class="free" data-en>Free</span></b><small data-fi>Sarjaportti, etäisyysanturit, kohina, USB</small><small data-en>Serial port, distance sensors, noise, USB</small></div></div>
+        <div class="course" data-course="power"><div><b><span data-fi>Virta ja akut</span><span data-en>Power and batteries</span><span class="free" data-fi>Ilmainen</span><span class="free" data-en>Free</span></b><small data-fi>Käyttöaika, virrat ja jännitesäätimet</small><small data-en>Runtime, currents and regulators</small></div></div>
+        <div class="course" data-course="vision"><div><b data-fi>Konenäkö: robotti näkee</b><b data-en>Computer vision: a robot that sees</b><small data-fi>Pikselit, kynnystys, värit ja reunat</small><small data-en>Pixels, thresholds, colours and edges</small></div></div>
+        <div class="course" data-course="frames"><div><b data-fi>Koordinaatistot ja rotaatiot</b><b data-en>Frames and rotations</b><small data-fi>Euler, kardaanilukko, kvaterniot</small><small data-en>Euler, gimbal lock, quaternions</small></div></div>
+        <div class="course" data-course="ros"><div><b data-fi>ROS-perusteet</b><b data-en>ROS basics</b><small data-fi>Topicit, TF, URDF ja kartat</small><small data-en>Topics, TF, URDF and maps</small></div></div>
+        <div class="course" data-course="arm"><div><b data-fi>Ensimmäinen robottikäsi</b><b data-en>Your first robot arm</b><small data-fi>Kinematiikka, liike ja moottorit</small><small data-en>Kinematics, motion and motors</small></div></div>
+        <div class="course" data-course="ai"><div><b data-fi>Robotin tekoäly</b><b data-en>Robot AI</b><small data-fi>Kouluta neuroverkko ja vie se robotille</small><small data-en>Train a neural network and put it on a robot</small></div></div>
+        <div class="course" data-course="reward"><div><b data-fi>Palkkiot ja tavoitteet</b><b data-en>Rewards and goals</b><small data-fi>Oma tavoite, reittipisteet, kisat ja haasteet</small><small data-en>Custom goals, waypoints, races and challenges</small></div></div>
       </div>
     </div>
   </section>
 
-  <section id="volt">
+  <section id="teachers">
+    <div class="wrap">
+      <h2><span data-fi>Opettajille: valmis kokonaisuus luokkaan</span><span data-en>For teachers: ready for the classroom</span></h2>
+      <p class="lead"><span data-fi>Oppilaat eivät tarvitse tiliä: he liittyvät luokkaan koodilla ja nimimerkillä, ja sinä näet heidän etenemisensä.</span><span data-en>Students don't need accounts: they join your class with a code and an alias, and you see their progress.</span></p>
+      <div class="grid">
+        <div class="card"><div class="ico">🏫</div><h3><span data-fi>Luokkahuone</span><span data-en>Classroom</span></h3>
+          <p><span data-fi>Anna luokalle kurssit, haasteet ja määräpäivät. Näet jokaisen oppilaan vaiheet, vihjeet ja loppukokeen tuloksen, ja tiedot saa CSV-taulukoksi.</span><span data-en>Give the class courses, challenges and due dates. You see every student's steps, hints and final quiz result, and you can export them as CSV.</span></p></div>
+        <div class="card"><div class="ico">📋</div><h3><span data-fi>Valmiit oppitunnit</span><span data-en>Ready lessons</span></h3>
+          <p><span data-fi>Neljä oppituntia, joissa on tunnin kulku minuutteineen, tulostettava oppilaan moniste, ratkaisut ja arviointikriteerit.</span><span data-en>Four lessons with a minute-by-minute plan, a printable student worksheet, solutions and assessment criteria.</span></p></div>
+        <div class="card"><div class="ico">🔒</div><h3><span data-fi>Oppilaan tietosuoja</span><span data-en>Student privacy</span></h3>
+          <p><span data-fi>Oppilaasta tallennetaan vain nimimerkki ja kurssien eteneminen lukuina: ei nimiä, sähköposteja eikä vastauksia. Tiedot ovat EU:ssa.</span><span data-en>For a student only the alias and course progress as numbers are stored: no names, emails or answers. The data is in the EU.</span></p></div>
+      </div>
+      <div class="cta"><a class="btn" href="../index.html#/teach"><span data-fi>Katso Opettajille-sivu</span><span data-en>See the teacher page</span> →</a></div>
+    </div>
+  </section>
+
+  <section id="volt" class="alt">
     <div class="wrap split">
       <div>
         <h2><span data-fi>Volt — ilmainen tekoälyavustaja</span><span data-en>Volt — a free AI assistant</span></h2>
@@ -210,6 +251,7 @@
           <li><span data-fi>Kevyt, normaali tai paras malli koneen mukaan</span><span data-en>Light, normal or best model to suit your computer</span></li>
           <li><span data-fi>Halutessasi oma Claude API -avain parhaisiin vastauksiin</span><span data-en>Optionally your own Claude API key for the best answers</span></li>
         </ul>
+        <p class="small"><span data-fi>Ilmainen kielimalli vastaa englanniksi, koska pienet mallit kirjoittavat suomea heikosti. Suomeksi vastaavat sisäänrakennettu opas ja oma Claude-avain.</span><span data-en>The free language model answers in English. The built-in guide and your own Claude key answer in Finnish too.</span></p>
       </div>
       <div class="chat" aria-hidden="true">
         <div class="msg user"><span data-fi>Miksi robottini heiluu PID-säädöllä?</span><span data-en>Why does my robot oscillate with PID?</span></div>
@@ -218,21 +260,46 @@
     </div>
   </section>
 
-  <section id="hardware" class="alt">
+  <section id="hardware">
     <div class="wrap split">
       <div class="chat" aria-hidden="true">
         <div class="row"><span data-bot="neura" data-size="40"></span><div class="msg volt"><span data-fi>Koulutin kävelyni simulaatiossa. Nyt aivoni ovat ESP32:lla!</span><span data-en>I trained my walk in the simulation. Now my brain is on an ESP32!</span></div></div>
         <div class="msg user" style="font-family:ui-monospace,Consolas,monospace;font-size:.8rem">S:0.12,-0.40,0.98 → M:0.300,-1.000</div>
       </div>
       <div>
-        <h2><span data-fi>Simulaatiosta oikeaan robottiin</span><span data-en>From simulation to a real robot</span></h2>
+        <h2><span data-fi>Simulaatiosta oikeaan robottiin</span><span data-en>From simulation to a real robot</span> <span class="exp" data-fi>Kokeellinen</span><span class="exp" data-en>Experimental</span></h2>
         <p class="lead"><span data-fi>Koulutetut aivot viedään Arduino-, C/C++-, MicroPython- tai JSON-muodossa. ESP32:lle ja Picolle koodi latautuu suoraan USB:llä, ja live-linkillä robotti testataan ennen latausta.</span><span data-en>Trained brains export as Arduino, C/C++, MicroPython or JSON. For ESP32 and Pico the code uploads straight over USB, and the live link tests the robot before uploading.</span></p>
         <ul class="checks">
           <li><span data-fi>Itsetesti varmistaa, että laite laskee kuten simulaatio</span><span data-en>A self-test checks the device computes like the simulation</span></li>
           <li><span data-fi>Kytkentätaulukko jokaiselle anturille ja moottorille</span><span data-en>A wiring table for every sensor and motor</span></li>
           <li><span data-fi>Kytkentäohje: ehdotetut osat ja Raspberry Pi Picon nastat juuri sinun robotillesi</span><span data-en>A wiring guide: suggested parts and Raspberry Pi Pico pins for your robot</span></li>
         </ul>
+        <p class="small"><span data-fi>Vienti, USB-lataus ja live-linkki on testattu simuloidulla laitteella mutta ei vielä oikealla robotilla. Kerro meille, miten se toimi sinulla.</span><span data-en>Export, USB upload and the live link have been tested with a simulated device but not yet on a real robot. Tell us how it worked for you.</span></p>
       </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="alt">
+    <div class="wrap">
+      <h2><span data-fi>Hinnat</span><span data-en>Pricing</span></h2>
+      <p class="lead"><span data-fi>Aloita ilmaiseksi ilman tiliä. Maksullinen taso avaa lisää työkaluja ja kursseja. Hinnat sisältävät arvonlisäveron.</span><span data-en>Start free without an account. A paid plan unlocks more tools and courses. Prices include VAT.</span></p>
+      <div class="prices">
+        <div class="card"><h3>Free</h3><span class="who" data-fi>kaikille</span><span class="who" data-en>for everyone</span>
+          <div class="p">0 €</div>
+          <ul><li><span data-fi>Perustyökalut ja kolme kurssia</span><span data-en>The basic tools and three courses</span></li><li><span data-fi>Ei tiliä</span><span data-en>No account</span></li></ul></div>
+        <div class="card"><h3>Education</h3><span class="who" data-fi>oppilaalle</span><span class="who" data-en>for students</span>
+          <div class="p"><span data-price="education.month">2</span> € <small data-fi>/ kk tai <span data-price="education.year">19</span> € / vuosi</small><small data-en>/ mo or <span data-price="education.year">19</span> € / year</small></div>
+          <ul><li><span data-fi>Lisää työkaluja ja kahdeksan kurssia</span><span data-en>More tools and eight courses</span></li><li><b data-fi>Maksuton opettajan luokkakoodilla</b><b data-en>Free with your teacher's class code</b></li></ul></div>
+        <div class="card"><h3>Pro</h3><span class="who" data-fi>itseopiskelijalle</span><span class="who" data-en>for self-learners</span>
+          <div class="p"><span data-price="pro.month">7</span> € <small data-fi>/ kk tai <span data-price="pro.year">59</span> € / vuosi</small><small data-en>/ mo or <span data-price="pro.year">59</span> € / year</small></div>
+          <ul><li><span data-fi>Kaikki työkalut ja kaikki 11 kurssia</span><span data-en>Every tool and all 11 courses</span></li><li><span data-fi>Ei luokkahuonetta</span><span data-en>No classroom</span></li></ul></div>
+        <div class="card"><h3>Teacher</h3><span class="who" data-fi>opettajalle</span><span class="who" data-en>for teachers</span>
+          <div class="p"><span data-price="teacher.month">5</span> € <small data-fi>/ kk tai <span data-price="teacher.year">45</span> € / vuosi</small><small data-en>/ mo or <span data-price="teacher.year">45</span> € / year</small></div>
+          <ul><li><span data-fi>Luokkahuone ja valmiit oppitunnit</span><span data-en>Classroom and ready lessons</span></li>
+            <li><span data-fi><span data-price="teacher.included">5</span> oppilasta sisältyy, lisäpaikat <span data-price="teacher.seat">1</span> € / oppilas / lukuvuosi</span><span data-en><span data-price="teacher.included">5</span> students included, extra seats <span data-price="teacher.seat">1</span> € / student / school year</span></li>
+            <li><span data-fi>Koululisenssi <span data-price="school.year">290</span> € / vuosi, enintään <span data-price="school.seats">300</span> oppilasta</span><span data-en>School licence <span data-price="school.year">290</span> € / year, up to <span data-price="school.seats">300</span> students</span></li></ul></div>
+      </div>
+      <div class="cta"><a class="btn" href="../index.html#/plans"><span data-fi>Tasot ja tilaaminen sovelluksessa</span><span data-en>Plans and ordering in the app</span> →</a></div>
     </div>
   </section>
 
@@ -244,18 +311,24 @@
           <p><span data-fi>Avaa RoboLab Chromessa tai Edgessä. Mitään ei tarvitse asentaa kokeillaksesi.</span><span data-en>Open RoboLab in Chrome or Edge. Nothing to install to try it.</span></p></div>
         <div class="card"><b>2</b><h3><span data-fi>Asenna sovellukseksi</span><span data-en>Install it as an app</span></h3>
           <p><span data-fi>Paina yläpalkin Asenna sovellus -nappia. RoboLab saa oman ikkunan, kuvakkeen ja toimii ilman nettiä.</span><span data-en>Press Install app in the top bar. RoboLab gets its own window and icon and works offline.</span></p></div>
-        <div class="card"><b>3</b><h3><span data-fi>Luo oma tili</span><span data-en>Create your account</span></h3>
-          <p><span data-fi>Jokaisella käyttäjällä on omat projektit, robotit ja kurssit. Siirrä kaikki toiselle koneelle varmuuskopiolla.</span><span data-en>Every user has their own projects, robots and courses. Move everything to another computer with a backup.</span></p></div>
+        <div class="card"><b>3</b><h3><span data-fi>Luo halutessasi pilvitili</span><span data-en>Create a cloud account if you like</span></h3>
+          <p><span data-fi>Pilvitilillä projektit, robotit ja kurssit kulkevat mukanasi kaikille laitteillesi. Ilman tiliäkin kaikki toimii, ja työt voi siirtää varmuuskopiolla.</span><span data-en>With a cloud account your projects, robots and courses go with you to all your devices. Everything works without an account too, and you can move your work with a backup.</span></p></div>
       </div>
       <div class="cta"><a class="btn primary" href="../index.html"><span data-fi>Avaa RoboLab nyt</span><span data-en>Open RoboLab now</span> →</a></div>
 
       <h2 style="margin-top:48px"><span data-fi>Usein kysyttyä</span><span data-en>FAQ</span></h2>
       <details><summary><span data-fi>Maksaako RoboLab jotain?</span><span data-en>Does RoboLab cost anything?</span></summary>
-        <p><span data-fi>Ei. Kaikki työkalut, kurssit ja ilmainen Volt ovat maksuttomia. Vain oma Claude API -avain (vapaaehtoinen) laskuttaa käytön mukaan.</span><span data-en>No. All tools, courses and the free Volt cost nothing. Only your own Claude API key (optional) is billed per use.</span></p></details>
+        <p><span data-fi>Free-taso on ilmainen eikä vaadi tiliä: perustyökalut ja kolme kurssia. Lisää työkaluja ja kursseja saa Education-, Pro- ja Teacher-tasoilla (katso Hinnat). Oppilas saa Education-tason maksutta opettajan luokkakoodilla. Ilmainen Volt on aina maksuton; vain oma Claude API -avain (vapaaehtoinen) laskuttaa käytön mukaan.</span><span data-en>The Free plan costs nothing and needs no account: the basic tools and three courses. Education, Pro and Teacher unlock more tools and courses (see Pricing). A student gets Education for free with a teacher's class code. The free Volt is always free; only your own Claude API key (optional) is billed per use.</span></p></details>
       <details><summary><span data-fi>Minne tietoni tallentuvat?</span><span data-en>Where is my data stored?</span></summary>
-        <p><span data-fi>Vain omalle koneellesi selaimen muistiin. Tilit ovat paikallisia, ja tiedot siirretään toiselle koneelle varmuuskopiotiedostolla.</span><span data-en>Only on your own computer, in the browser's storage. Accounts are local, and data moves to another computer with a backup file.</span></p></details>
+        <p><span data-fi>Ilman tiliä kaikki tallentuu vain omaan selaimeesi. Jos luot vapaaehtoisen pilvitilin, työsi tallentuu myös RoboLabin pilveen EU:ssa. Luokkaan liittyneen oppilaan opettaja näkee nimimerkin ja kurssien etenemisen. Emme käytä analytiikkaa emmekä mainoksia.</span><span data-en>Without an account everything is stored only in your own browser. If you create an optional cloud account, your work is also stored in RoboLab's cloud in the EU. The teacher of a student in a class sees the alias and course progress. We use no analytics and no ads.</span>
+          <a href="../tietosuoja.html"><span data-fi>Tietosuojaseloste</span><span data-en>Privacy policy</span></a></p></details>
+      <details><summary><span data-fi>Kenelle RoboLab sopii?</span><span data-en>Who is RoboLab for?</span></summary>
+        <p><span data-fi>Noin 10-vuotiaasta alkaen aloittelijoille, nuorille ja aikuisille, harrastajille ja kouluille. Ohjelmointitaitoa ei tarvita.</span><span data-en>From about age 10: beginners, young people and adults, hobbyists and schools. No programming skills needed.</span></p></details>
       <details><summary><span data-fi>Mitä laitteita tarvitsen?</span><span data-en>What hardware do I need?</span></summary>
-        <p><span data-fi>Pelkkä tietokone riittää. Oikeaa robottia varten käy esim. Arduino, ESP32 tai Raspberry Pi Pico; konenäköön verkkokamera.</span><span data-en>A computer is enough. For a real robot, an Arduino, ESP32 or Raspberry Pi Pico works; for computer vision, a webcam.</span></p></details>
+        <p><span data-fi>Pelkkä tietokone riittää. Oikeaa robottia varten käy esim. Arduino, ESP32 tai Raspberry Pi Pico (kokeellinen); konenäköön verkkokamera.</span><span data-en>A computer is enough. For a real robot, an Arduino, ESP32 or Raspberry Pi Pico works (experimental); for computer vision, a webcam.</span></p></details>
+      <details><summary><span data-fi>Mistä saan apua tai miten annan palautetta?</span><span data-en>Where do I get help or give feedback?</span></summary>
+        <p><span data-fi>Sovelluksen Ohjeet ja tuki -sivulla on usein kysytyt kysymykset ja lomake, jolla voit lähettää viestin kehittäjälle ilman tiliä.</span><span data-en>The app's Help &amp; support page has frequently asked questions and a form for sending a message to the developer without an account.</span>
+          <a href="../index.html#/help"><span data-fi>Ohjeet ja tuki</span><span data-en>Help &amp; support</span></a></p></details>
       <details><summary><span data-fi>Toimiiko RoboLab heikolla koneella?</span><span data-en>Does RoboLab run on a slow computer?</span></summary>
         <p><span data-fi>Kyllä. Asetuksista voi valita kevyen grafiikan ja kevyimmän Volt-mallin. Ilman WebGPU:ta Volt vastaa paikallisella oppaalla.</span><span data-en>Yes. Settings offer light graphics and the lightest Volt model. Without WebGPU, Volt answers from its local guide.</span></p></details>
     </div>
@@ -265,7 +338,12 @@
 <footer>
   <div class="wrap">
     <span>© <span id="year"></span> RoboLab</span>
-    <span><a href="../index.html"><span data-fi>Avaa sovellus</span><span data-en>Open the app</span></a></span>
+    <nav>
+      <a href="../index.html#/help"><span data-fi>Ohjeet ja tuki</span><span data-en>Help &amp; support</span></a>
+      <a href="../index.html#/plans"><span data-fi>Tasot ja hinnat</span><span data-en>Plans &amp; pricing</span></a>
+      <a href="../tietosuoja.html"><span data-fi>Tietosuojaseloste</span><span data-en>Privacy policy</span></a>
+      <a href="../index.html"><span data-fi>Avaa sovellus</span><span data-en>Open the app</span></a>
+    </nav>
   </div>
 </footer>
 
