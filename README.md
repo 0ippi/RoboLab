@@ -2,7 +2,7 @@
 
 **Robotiikan oppimisympäristö ja työkalupakki selaimessa.** Free-taso on ilmainen eikä vaadi tiliä. Education (2 €/kk, oppilaille ilmainen opettajan luokkakoodilla), Teacher (5 €/kk) ja Pro (7 €/kk) avaavat lisää kursseja ja työkaluja. Toimii asennuksen jälkeen myös ilman nettiä.
 
-👉 Kokeile: **https://0ippi.github.io/RoboLab/**
+👉 Kokeile: **https://0ippi.github.io/RoboLab/** · Esittely: https://0ippi.github.io/RoboLab/website/
 
 *English summary below.*
 

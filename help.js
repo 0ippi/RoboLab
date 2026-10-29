@@ -7,13 +7,13 @@
    - Kehittäjä (Plans.isDeveloper) näkee saapuneet viestit samalla sivulla.
    - Tietosuojaseloste luetaan tietosuoja.html-tiedostosta: sama teksti kuin erillisellä sivulla, toimii myös ilman nettiä. */
 (() => {
-  const TOPIC_KEY = "rl-help-topic";
+  const TOPIC_KEY = "rl-help-topic", MSG_KEY = "rl-help-msg"; // sessionStorage: aihe ja valmis viesti lomakkeeseen
   const MAX = 2000;
   const topics = () => [
     ["bug", tr("Ongelma tai virhe", "A problem or bug")],
     ["question", tr("Kysymys", "A question")],
     ["idea", tr("Palaute tai toive", "Feedback or a wish")],
-    ["school", tr("Koulut, lisenssit ja laskutus", "Schools, licences and invoicing")],
+    ["school", tr("Tilaukset, koulut ja laskutus", "Orders, schools and invoicing")],
     ["privacy", tr("Tietosuoja", "Privacy")],
   ];
   const topicName = (id) => (topics().find(([k]) => k === id) || [, id])[1];
@@ -86,7 +86,7 @@
 
   const placeholder = (topic) => topic === "bug"
     ? tr("Kerro, mitä teit, mitä odotit tapahtuvan ja mitä tapahtui.", "Tell us what you did, what you expected and what happened.")
-    : topic === "school" ? tr("Kerro koulusta ja ryhmän koosta sekä siitä, mitä tarvitsette (esim. pilotti, lisenssi, laskutus).", "Tell us about the school, the group size and what you need (e.g. a pilot, a licence, invoicing).")
+    : topic === "school" ? tr("Kerro, mitä haluat tilata, tai koulusta, ryhmän koosta ja tarpeista (esim. pilotti, koululisenssi, laskutus).", "Tell us what you'd like to order, or about the school, the group size and your needs (e.g. a pilot, a school licence, invoicing).")
       : tr("Kirjoita viestisi tähän.", "Write your message here.");
 
   function bindForm(el) {
@@ -94,9 +94,13 @@
     if (!f) return;
     const topic = f.querySelector("#hf-topic"), msg = f.querySelector("#hf-msg"), count = f.querySelector("#hf-count");
     const sync = () => { msg.placeholder = placeholder(topic.value); count.textContent = `${msg.value.length} / ${MAX}`; };
-    let pre = null;
-    try { pre = sessionStorage.getItem(TOPIC_KEY); sessionStorage.removeItem(TOPIC_KEY); } catch {}
-    if (pre && topics().some(([k]) => k === pre)) { topic.value = pre; setTimeout(() => { f.scrollIntoView({ block: "start" }); msg.focus({ preventScroll: true }); }, 50); }
+    let pre = null, text = null;
+    try { pre = sessionStorage.getItem(TOPIC_KEY); text = sessionStorage.getItem(MSG_KEY); sessionStorage.removeItem(TOPIC_KEY); sessionStorage.removeItem(MSG_KEY); } catch {}
+    if (text && !msg.value) msg.value = text.slice(0, MAX); // esim. tilaus Tasot-sivulta, kun verkkomaksu ei ole käytössä
+    if (pre && topics().some(([k]) => k === pre)) {
+      topic.value = pre;
+      setTimeout(() => { f.scrollIntoView({ block: "start" }); msg.focus({ preventScroll: true }); msg.setSelectionRange(msg.value.length, msg.value.length); }, 50);
+    }
     sync();
     topic.onchange = sync;
     msg.oninput = () => { sync(); f.querySelector("#hf-sent").hidden = true; };
@@ -164,7 +168,8 @@
         ${formHtml()}
       </div>
       ${dev ? `<div class="card dev-card help-inbox"><h3 class="card-title">🛠 ${tr("Saapuneet viestit", "Received messages")}</h3><div id="hf-inbox"><p class="note">${tr("Ladataan…", "Loading…")}</p></div></div>` : ""}
-      <p class="note dash-links"><a href="#/privacy">${tr("Tietosuojaseloste", "Privacy policy")}</a> · RoboLab v${esc(VERSION)}</p>`;
+      <p class="note dash-links"><a href="#/privacy">${tr("Tietosuojaseloste", "Privacy policy")}</a>
+        · <a href="website/" target="_blank" rel="noopener">${tr("Tietoa RoboLabista", "About RoboLab")}</a> · RoboLab v${esc(VERSION)}</p>`;
     bindForm(el);
     el.onclick = (e) => {
       const h = e.target.closest("[data-help]")?.dataset.help;

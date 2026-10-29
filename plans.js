@@ -292,10 +292,22 @@ const Plans = (() => {
   /* ===== Osto ===== */
   // Maksulinkit (esim. Stripe Payment Links) tulevat cloud-config.js:stä. Tilaus liitetään pilvitiliin.
   const payLinks = () => window.ROBOLAB_CLOUD?.payments || {};
+  // Ilman verkkomaksua tilaus lähtee viestinä: Ohjeet ja tuki -sivun lomake aukeaa tilaus valmiiksi kirjoitettuna
+  function orderText(key) {
+    if (key === "seats") return tr("Haluaisin ostaa Teacher-tason lisäoppilaspaikkoja. Määrä: ", "I'd like to buy extra student seats for the Teacher plan. Number: ");
+    const [plan, period] = key.split("_");
+    return tr(`Haluaisin tilata: ${NAMES[plan] || plan}, ${period === "year" ? "vuosi" : "kuukausi"}. Pilvitilin sähköposti, johon taso liitetään: `,
+      `I'd like to order: ${NAMES[plan] || plan}, ${period === "year" ? "yearly" : "monthly"}. Cloud account email to link the plan to: `);
+  }
   function buy(key) {
     const url = payLinks()[key];
     const acc = Accounts.current();
-    if (!url) { location.hash = "#/plans"; toast(tr("Verkkomaksu avataan pian. Siihen asti tilauksen saa ottamalla yhteyttä (linkki Tasot-sivun lopussa).", "Online payment opens soon. Until then you can order by getting in touch (link at the end of the Plans page).")); return; }
+    if (!url) {
+      try { sessionStorage.setItem("rl-help-topic", "school"); sessionStorage.setItem("rl-help-msg", orderText(key)); } catch {}
+      location.hash = "#/help";
+      toast(tr("Verkkomaksu avataan pian. Siihen asti voit tilata viestillä: tilaus on valmiiksi kirjoitettuna lomakkeessa.", "Online payment opens soon. Until then you can order by message: the order is already written in the form."));
+      return;
+    }
     if (!acc?.cloud) { toast(tr("Kirjaudu tai luo ensin pilvitili, niin tilaus liitetään siihen.", "Sign in or create a cloud account first so the subscription is linked to it.")); window.AccountsUI?.showLogin("cloud"); return; }
     const u = new URL(url);
     u.searchParams.set("client_reference_id", acc.cloudUid);

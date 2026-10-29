@@ -22,7 +22,8 @@ const APP_FILES = [
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png", "icons/favicon-32.png",
 ];
 
-// Kirjastot haetaan valmiiksi, jotta 3D-työkalut ja simulaatiot toimivat ilman nettiä heti asennuksen jälkeen
+// Kirjastot haetaan valmiiksi asennetulle sovellukselle (app.js lähettää viestin "prefetch-libs"), jotta 3D-työkalut ja
+// simulaatiot toimivat ilman nettiä heti asennuksen jälkeen. Selaimessa ne tallentuvat, kun niitä käytetään ensimmäisen kerran.
 const LIB_FILES = [
   "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
   "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.core.js",
@@ -38,15 +39,18 @@ const LIB_FILES = [
 self.addEventListener("install", (e) => {
   e.waitUntil((async () => {
     await (await caches.open(APP)).addAll(APP_FILES);
-    // Kirjastot parhaan yrityksen mukaan: puuttuva netti ei saa estää asennusta
-    const libs = await caches.open(LIBS);
-    await Promise.all(LIB_FILES.map(async (u) => {
-      if (await libs.match(u)) return;
-      try { const r = await fetch(u, { mode: "cors" }); if (r.ok) await libs.put(u, r); } catch {}
-    }));
     await self.skipWaiting();
   })());
 });
+
+// Kirjastot parhaan yrityksen mukaan: puuttuva netti ei saa estää mitään
+async function prefetchLibs() {
+  const libs = await caches.open(LIBS);
+  await Promise.all(LIB_FILES.map(async (u) => {
+    if (await libs.match(u)) return;
+    try { const r = await fetch(u, { mode: "cors" }); if (r.ok) await libs.put(u, r); } catch {}
+  }));
+}
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
@@ -57,6 +61,7 @@ self.addEventListener("activate", (e) => {
 
 // Päivitys: sovellus pyytää hakemaan kaikki omat tiedostot uudelleen, jotta offline-versio on kokonaan uusi
 self.addEventListener("message", (e) => {
+  if (e.data?.type === "prefetch-libs") { e.waitUntil(prefetchLibs()); return; }
   if (e.data?.type !== "refresh") return;
   const reply = e.ports[0];
   e.waitUntil((async () => {

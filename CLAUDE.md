@@ -122,4 +122,10 @@ Projektit ja asetukset ovat selaimen localStorage-tallennuksessa (origin localho
 `robosim/core/usb.js`: MicroPython-lataus (raw REPL, main.py) ja live-linkki (`S:`/`M:`-rivit) Web Serialilla. Testattu simuloidulla laitteella, ei oikealla.
 
 ## Sivusto
-`website/` on staattinen esittelysivu (linkittää `../index.html`:ään). Hahmot kopioidaan sovelluksesta: aja `website/update-assets.ps1`, kun hahmoja muutetaan.
+`website/` on staattinen esittelysivu (linkittää `../index.html`:ään; sovelluksen etusivun ja Ohjeet-sivun "Tietoa RoboLabista" vie sinne). Hahmot kopioidaan sovelluksesta: aja `website/update-assets.ps1`, kun hahmoja muutetaan.
+- Esittelysivun väitteiden pitää vastata sovellusta: hinnat `data-price="taso.kenttä"` (= `Plans.PRICES`), kurssit `data-course` ja ilmaiset `.free` (= `FEATURES.free.courses`). tests-app tarkistaa nämä. Laitevienti on merkitty kokeelliseksi, kunnes se on testattu oikealla laitteella.
+- Jaettaessa esikatselu tulee og-tageista (kuva `icons/icon-512.png`).
+
+## Offline ja lataus
+- Service worker tallentaa asennuksessa vain sovelluksen omat tiedostot. CDN-kirjastot (`LIB_FILES`, noin 4,5 Mt) haetaan valmiiksi vain asennetulle sovellukselle (`prefetchLibs` app.js:ssä → sw.js-viesti `prefetch-libs`, myös `appinstalled`); selaimessa ne tallentuvat ensimmäisellä käyttökerralla.
+- Ilman maksulinkkejä (`cloud-config.js` `payments`) Tilaa-napit avaavat Ohjeet ja tuki -lomakkeen tilaus valmiiksi kirjoitettuna (`Plans.buy` → `orderText`, sessionStorage `rl-help-topic`/`rl-help-msg`).

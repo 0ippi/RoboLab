@@ -1133,7 +1133,8 @@ function dashboardPage() {
     ${upgradeHtml}
     <p class="note dash-links"><a href="#/help">${tr("Ohjeet ja tuki", "Help & support")}</a>
       · <a href="#/help" data-help-topic="bug">${tr("Ilmoita ongelmasta", "Report a problem")}</a>
-      · <a href="#/privacy">${tr("Tietosuojaseloste", "Privacy policy")}</a></p>
+      · <a href="#/privacy">${tr("Tietosuojaseloste", "Privacy policy")}</a>
+      · <a href="website/" target="_blank" rel="noopener">${tr("Tietoa RoboLabista", "About RoboLab")}</a></p>
   `;
 }
 
@@ -1731,6 +1732,12 @@ let installPrompt = null;
 // Asennettu sovellus (standalone) ei näytä nappia. Työpöydän kuvakkeen ?app-ikkuna voi vielä asentua oikeaksi
 // Windows-sovellukseksi: silloin se saa oman tehtäväpalkkikuvakkeen ja käynnistyy ilman selainta.
 const inAppWindow = new URLSearchParams(location.search).has("app") || matchMedia("(display-mode: standalone)").matches;
+// 3D- ja fysiikkakirjastot (noin 4,5 Mt) haetaan valmiiksi vain asennetulle sovellukselle, jotta se toimii heti ilman nettiä.
+// Selaimessa vierailevalle ne latautuvat vasta, kun 3D-työkalu avataan (sw.js tallentaa ne silloin).
+function prefetchLibs() {
+  navigator.serviceWorker?.ready.then((reg) => reg.active?.postMessage({ type: "prefetch-libs" })).catch(() => {});
+}
+if (inAppWindow && "serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) window.addEventListener("load", prefetchLibs);
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault(); // oma nappi selaimen oletuskehotteen sijaan
   if (matchMedia("(display-mode: standalone)").matches) return;
@@ -1744,6 +1751,7 @@ window.addEventListener("beforeinstallprompt", (e) => {
 window.addEventListener("appinstalled", () => {
   installPrompt = null;
   $("#install-app").hidden = true;
+  prefetchLibs();
   toast(tr("RoboLab asennettu! Löydät sen Käynnistä-valikosta ja työpöydältä.", "RoboLab installed! You'll find it in the Start menu and on the desktop."));
 });
 $("#install-app").onclick = async () => {

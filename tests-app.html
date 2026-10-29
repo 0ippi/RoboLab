@@ -887,12 +887,13 @@ async function test(name, fn) {
 
   await test("Mobiilirobotti 2D ajaa maaliin ja nollautuu", async () => {
     await go("#/sim2d", 800);
-    // Piilossa olevassa välilehdessä selain pysäyttää animaatiot, jolloin simulaatio ei etene
+    // Piilossa tai peitossa olevassa ikkunassa selain pysäyttää tai harventaa animaatiot (jopa 2 kuvaa/s), jolloin
+    // simulaatio ei ehdi maaliin. Ajologiikan testaa askel kerrallaan ajettava testi yllä.
     let frames = 0;
-    const tick = () => { frames++; if (frames < 5) w.requestAnimationFrame(tick); };
+    const tick = () => { frames++; if (frames < 40) w.requestAnimationFrame(tick); };
     w.requestAnimationFrame(tick);
     await sleep(500);
-    if (frames < 2) throw new Skip("selain ei piirrä tätä ikkunaa (piilossa), joten animaatio ei etene");
+    if (frames < 10) throw new Skip(`selain piirtää tätä ikkunaa liian harvoin (${frames * 2} kuvaa/s), joten animaatio ei etene ajoissa`);
     const a0 = w.sim2dStatus().arrivals;
     w.document.querySelector("#mb-goal").click();
     await waitFor(() => w.sim2dStatus().arrivals > a0, 30000, "maaliin pääsy");
@@ -1394,6 +1395,10 @@ async function test(name, fn) {
     w.Plans.PROOF.length = 0;
     w.document.querySelector('[data-buy="pro_month"]').click();
     ok(/pian|soon/i.test(lastToast()), "ilmoitus: " + lastToast());
+    // Ilman verkkomaksua tilaus avautuu viestilomakkeeseen valmiiksi kirjoitettuna
+    await waitFor(() => w.document.querySelector("#help-form"), 3000, "tilauslomake");
+    eq(w.document.querySelector("#hf-topic").value, "school", "tilauksen aihe");
+    ok(/Pro/.test(w.document.querySelector("#hf-msg").value), "tilaus puuttuu viestistä");
   });
 
   const pm = (window.__robolabSupabaseMock = makeSupabaseMock());
@@ -1601,8 +1606,8 @@ async function test(name, fn) {
   await test("Ohjeet ja tuki: kysymykset ja viesti kehittäjälle ilman tiliä; palvelimen hylkäys säilyttää viestin", async () => {
     const fm = (window.__robolabSupabaseMock = makeSupabaseMock());
     useDevice("A"); fresh(); await boot();
-    // Etusivun linkit pysyvät sovelluksessa (ei GitHubia)
-    eq([...w.document.querySelectorAll(".dash-links a")].map((a) => a.getAttribute("href")), ["#/help", "#/help", "#/privacy"], "etusivun linkit");
+    // Etusivun linkit pysyvät sovelluksessa (ei GitHubia); esittelysivu avautuu omaan välilehteen
+    eq([...w.document.querySelectorAll(".dash-links a")].map((a) => a.getAttribute("href")), ["#/help", "#/help", "#/privacy", "website/"], "etusivun linkit");
     w.document.querySelector('.dash-links a[data-help-topic="bug"]').click();
     await waitFor(() => w.document.querySelector("#help-form"), 3000, "lomake");
     ok(w.document.querySelectorAll(".help-faq details").length >= 5, "kysymykset puuttuvat");
@@ -1680,6 +1685,21 @@ async function test(name, fn) {
     await sleep(200);
     ok(w.document.querySelector("#app").classList.contains("mobile-open"), "valikko ei auennut");
     eq(bad, [], "vaakavieritys");
+  });
+
+  await test("Esittelysivu vastaa sovellusta: hinnat, kurssit ja ilmaiset kurssit; ei väitettä, että kaikki on ilmaista", async () => {
+    const html = await fetch("website/index.html", { cache: "reload" }).then((r) => r.text());
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const P = w.Plans.PRICES;
+    const prices = [...doc.querySelectorAll("[data-price]")];
+    ok(prices.length >= 10, "hinnat puuttuvat esittelysivulta");
+    eq(prices.filter((el) => { const [k, f] = el.dataset.price.split("."); return String(P[k]?.[f]) !== el.textContent.trim(); }).map((el) => `${el.dataset.price}=${el.textContent}`), [], "hinnat poikkeavat plans.js:stä");
+    const courses = [...doc.querySelectorAll("[data-course]")];
+    eq(courses.map((el) => el.dataset.course).sort(), w.Courses._courses.map((c) => c.id).sort(), "kurssilista");
+    eq(courses.filter((el) => el.querySelector(".free")).map((el) => el.dataset.course).sort(), [...w.Plans.FEATURES.free.courses].sort(), "ilmaiset kurssit");
+    ok(html.includes(`${courses.length} ohjattua kurssia`), "kurssimäärä otsikossa");
+    ok(!/Kaikki työkalut, kurssit ja ilmainen Volt ovat maksuttomia|Tilit ovat paikallisia/.test(html), "vanhentunut väite maksuttomuudesta tai tallennuksesta");
+    ok(doc.querySelector('meta[property="og:image"]') && doc.querySelector('a[href="../index.html#/help"]') && doc.querySelector('a[href="../tietosuoja.html"]'), "esikatselukuva tai linkit puuttuvat");
   });
 
   await test("Offline: jokainen index.html:n tiedosto ja kirjasto on service workerin listalla", async () => {
