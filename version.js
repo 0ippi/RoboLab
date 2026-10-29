@@ -3,6 +3,17 @@
    tarjoaa päivitystä ja näyttää "Mitä uutta" -ikkunan. Ensimmäinen version-rivi on nykyinen versio. */
 const ROBOLAB_RELEASES = [
   {
+    version: "2.15.1", date: "2026-10-29",
+    fi: ["Tilaa-napit avaavat Ohjeet ja tuki -lomakkeen tilaus valmiiksi kirjoitettuna, kunnes verkkomaksu avautuu.",
+      "Ensimmäinen käynti selaimessa on kevyempi: 3D-kirjastot (noin 4,5 Mt) ladataan vasta, kun 3D-työkalu avataan. Asennettu sovellus hakee ne edelleen valmiiksi ilman nettiä käyttöä varten.",
+      "Esittelysivu päivitetty: oikeat tiedot hinnoista ja tietojen tallennuksesta, uudet Opettajille- ja Hinnat-osiot sekä linkit ohjeisiin ja tietosuojaan. Etusivulta ja Ohjeet-sivulta pääsee esittelyyn (Tietoa RoboLabista).",
+      "Vie omalle robotille -ikkuna kertoo, että laitevienti on vielä kokeellinen."],
+    en: ["The order buttons open the Help & support form with the order already written until online payment opens.",
+      "The first visit in a browser is lighter: the 3D libraries (about 4.5 MB) load only when a 3D tool is opened. The installed app still fetches them in advance for offline use.",
+      "The website was updated: correct information on prices and data storage, new For teachers and Pricing sections, and links to help and privacy. You can reach it from the home page and the Help page (About RoboLab).",
+      "The Put on a real robot window says that exporting to hardware is still experimental."],
+  },
+  {
     version: "2.15.0", date: "2026-10-28",
     fi: ["Korjaus: kurssin oppituntipaneeli ei enää peitä Tasot ja hinnat -sivua, etusivua tai muita yleissivuja. Se piiloutuu niillä ja palaa, kun avaat työkalun, eikä kurssi keskeydy.",
       "Sivupalkissa ovat nyt kaikki työkalut samoissa ryhmissä kuin etusivulla. Lukitut näkyvät lukolla, ja niistä näkee, millä tasolla ne saa käyttöön.",
